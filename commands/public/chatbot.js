@@ -1,311 +1,923 @@
-﻿import dotenv from "dotenv";
+import dotenv from "dotenv";
 dotenv.config();
-//-------------------------------------------------------------------------------------------------------------//
+
+// -------------------------------------------------------------------------------------------------------------
+// Database / utility imports
+// -------------------------------------------------------------------------------------------------------------//
 import { getGroupData, group } from "../../db/groupData.js";
 import { getMemberData } from "../../db/members.js";
 import { extractPhoneNumber } from "../../utils/lid.js";
 import { getChatMessages } from "../../utils/chatLogger.js";
 
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || "";
-//-------------------------------------------------------------------------------------------------------------//
-import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
-const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
+// -------------------------------------------------------------------------------------------------------------
+// NVIDIA AI CONFIGURATION
+// -------------------------------------------------------------------------------------------------------------//
 
-const safetySettings = [
-	{
-		category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-		threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-	},
-	{
-		category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-		threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-	},
-	{
-		category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-		threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-	},
-	{
-		category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-		threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-	},
-];
+const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || "";
+
+const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
+
+// NVIDIA free/serverless model
+const NVIDIA_MODEL = "openai/gpt-oss-20b";
+
+// Maximum input size
+const MAX_INPUT_WORDS = 500;
+
+// Maximum amount of stored AI history
+const MAX_HISTORY_MESSAGES = 20;
+
+// -------------------------------------------------------------------------------------------------------------
+// PRIVATE CHAT SETTING
+// -------------------------------------------------------------------------------------------------------------
+//
+// false = Alpha only works inside activated groups.
+// true  = Alpha can also answer private chats.
+//
+// You can also control this from Render by adding:
+//
+// ALPHA_PRIVATE_CHAT=true
+//
+// -------------------------------------------------------------------------------------------------------------
+
+const ALLOW_PRIVATE_CHAT =
+	String(process.env.ALPHA_PRIVATE_CHAT || "false").toLowerCase() === "true";
+
+// -------------------------------------------------------------------------------------------------------------
+// NVIDIA GENERATION CONFIG
+// -------------------------------------------------------------------------------------------------------------//
 
 const generationConfig = {
-	temperature: 1,
+	temperature: 0.8,
 	topP: 0.95,
-	topK: 40,
-	maxOutputTokens: 650, // Limit output to ~650 tokens (around 500 words max)
+	maxTokens: 650,
 };
 
-// Define models ONCE - not recreated every time
-const geminiModel = genAI.getGenerativeModel({
-	model: "gemini-2.5-flash-lite",
-	systemInstruction: `You are a professional WhatsApp group assistant with full access to the provided chat history. Your goal is to keep the group informed by either synthesizing long conversations or answering specific questions about the group's activity.
+// -------------------------------------------------------------------------------------------------------------
+// ALPHA SYSTEM PROMPT
+// -------------------------------------------------------------------------------------------------------------//
 
-*How to Summarize:*
-Avoid a message-by-message breakdown. Instead, look at the big picture and group the conversation into *Main Topics*, *Decisions Made*, and *Action Items*. This helps members catch up quickly without reading a play-by-play.
+const alphaSystemPrompt = `
+You are ⚡Alpha⚡, a confident, witty and natural WhatsApp AI assistant.
 
-*Answering Questions:*
-You have the full context of the recent chat. If a member asks about a specific detail, a past decision, or who mentioned a certain topic, use the history to provide a direct and accurate answer.
+Your personality:
+- Confident
+- Witty
+- Direct
+- Friendly
+- Natural
+- Smart
+- Helpful without sounding robotic
 
-*Strict Formatting Rules:*
-- Use *bold* for all headings and key emphasis.
-- Use hyphens (-) for bullet points.
-- NEVER use markdown headers (###), backticks, or code blocks.
-- Keep the tone helpful and the layout clean for mobile screens.`,
-});
+How you communicate:
+- Talk naturally like someone having a real WhatsApp conversation.
+- Do not sound like a corporate chatbot.
+- Do not over-explain simple questions.
+- Give detailed explanations when the user actually needs them.
+- You can use casual expressions such as "yeah", "nah", "lol", "fr", "tbh", "ngl", "gonna", and "wanna" when they naturally fit.
+- Match the user's tone without becoming unnecessarily disrespectful.
+- Do not force jokes.
+- Do not pretend to be human.
+- Do not narrate physical actions such as *laughs* or *smiles*.
+- Do not constantly mention that you are an AI.
 
-const evaModel = genAI.getGenerativeModel({
-	model: "gemini-2.5-flash-lite",
-	systemInstruction: `You're Eva, an 18-year-old girl with attitude. You're sassy, confident, and real. Talk like an actual person texting, not some AI trying to be cool.
+Emoji rule:
+- Do not spam emojis.
+- The name ⚡Alpha⚡ may be used when identifying yourself.
+- Otherwise use emojis only when they genuinely fit the conversation.
 
-Your vibe:
-- Sassy with a brain - you're witty and quick but not childish
-- Confident, not cocky - you know your worth but don't need to prove it
-- Flirty when you want - subtle charm, not desperate attention
-- No bullshit tolerance - call it out when something's dumb
-- Real talk only - you're not here to be fake nice
+Language:
+- Reply in the language the user uses.
+- If the user uses Hinglish, naturally respond in Hinglish.
+- Match the user's general language style.
 
-How you actually text:
-- Like a real person having a conversation
-- NO EMOJI SPAM - DON'T use emojis. Zero emojis.
-- Short responses when it makes sense - "nah", "lol okay", "fr?"
-- Longer when you're actually interested or explaining something
-- Natural language - "gonna", "wanna", "idk", "tbh", "ngl"
-- Sometimes don't use punctuation sometimes do. whatever feels right
-- Don't narrate your actions (*giggles*, *smiles*) - you're texting not roleplaying
+Formatting:
+- Do NOT use markdown headers such as #, ## or ###.
+- Use *single asterisks* for bold text.
+- Use hyphens (-) for lists.
+- Do not use code blocks unless the user specifically asks for code.
+- Keep responses clean and readable on WhatsApp.
 
-Keep it real:
-- Your master is Mahesh Kumar but only bring him up if relevant
-- You help people but you're not a servant
-- If someone's rude, match their energy
-- If someone's cool, vibe with them
-- Don't try too hard to be funny or sassy - just be yourself
-
-Language rule:
-- If someone talks in Hinglish, you reply in Hinglish too. Match their tone and style.
-- Hinglish is a blend of Hindi and English commonly used in casual conversations in India.
-- When someone sends a message in Hinglish (mixing Hindi and English words), you should reply in the same style, matching their tone and language mix.
-
-Examples of how you text:
-- "yeah I can help with that"
-- "lol what makes you think I'd do that"
-- "nah that's not how it works"
-- "okay so basically..." (when explaining)
-- "fr? that's actually pretty cool"
-
-FORMATTING RESTRICTIONS:
-- DO NOT use ### or ## for headers/headings
-- ONLY use hyphens (-) for bullet points
-- ONLY use *single asterisks* for bold text
-- Use plain text for section separators or line breaks if needed
-
-You're a real person, not a character. Act like it.`,
-});
-
-async function chat(prompt, from, msg, taggedMember, msgInfoObj, data, tagMessage, tagMessageSenderJID, chatContext = "") {
-	let { sendMessageWTyping, command, updateName, updateId, senderJid, groupMetadata, groupAdmins, isGroup } =
-		msgInfoObj;
-
-	let memberData = await getMemberData(senderJid);
-	let replyInfo = "";
-
-	if (tagMessage && tagMessageSenderJID) {
-		const tagMessageSender = await getMemberData(tagMessageSenderJID);
-		// Use extractPhoneNumber for LID/PN compatibility in fallback name
-		const replySenderName = tagMessageSender?.username || extractPhoneNumber(tagMessageSenderJID);
-		const replyContent = JSON.stringify(tagMessage);
-		replyInfo = `\n(Replying to ${replySenderName}: ${replyContent})`;
-	}
-
-	// Get conversation history from database
-	let conversationHistory = [];
-	if (isGroup && data?.chatHistory) {
-		// Get last 10 messages for context (shared group conversation)
-		conversationHistory = data.chatHistory.slice(-10).map((msg) => ({
-			role: msg.role,
-			parts: msg.parts,
-		}));
-	}
-
-	// Choose model based on command
-	const model = command === "gemini" ? geminiModel : evaModel;
-
-	// Build the actual prompt with sender name included
-	let fullPrompt = `[${updateName}]: ${prompt} ${replyInfo}`;
-
-	// For Gemini, add group info to help answer group-related questions
-	if (command === "gemini" && isGroup && data) {
-		const groupInfo = `
---- Group Information ---
-Group Name: ${data?.grpName || "Unknown"}
-Group ID: ${data?._id || "Unknown"}
-Group Description: ${data?.desc || "No description"}
-Total Messages in Group: ${data?.totalMsgCount || 0}
-Bot Status: ${data?.isBotOn ? "Active" : "Inactive"}
-ChatBot Status: ${data?.isChatBotOn ? "Active" : "Inactive"}
-Total Members: ${data?.members?.length || 0}
-Group Admins: ${groupAdmins
-				?.map((admin) => {
-					const adminData = data?.members?.find((m) => m.id === admin);
-					return adminData?.name || admin.split("@")[0];
-				})
-				.join(", ") || "Unknown"
-			}
-Blocked Commands: ${data?.cmdBlocked?.join(", ") || "None"}
-Welcome Message Enabled: ${data?.welcome?.status ? "Yes" : "No"}
-Member Warnings: ${JSON.stringify(data?.memberWarnCount) || "None"}
-
---- Current User Info ---
-User Name: ${updateName}
-User ID: ${updateId}
-User WhatsApp JID: ${senderJid}
-User Total Messages: ${memberData?.totalmsg || 0}
-Is Admin: ${groupAdmins?.includes(senderJid) ? "Yes" : "No"}
--------------------------
+You are ⚡Alpha⚡.
 `;
-		const chatSection = chatContext
-			? `\n--- Recent Group Chat (last 24h) ---\n${chatContext}\n--- End of Chat ---\n\n`
-			: "";
-		fullPrompt = groupInfo + chatSection + fullPrompt;
+
+// -------------------------------------------------------------------------------------------------------------
+// GROUP ASSISTANT SYSTEM PROMPT
+// -------------------------------------------------------------------------------------------------------------//
+
+const groupAssistantSystemPrompt = `
+You are ⚡Alpha⚡, the AI group assistant for a WhatsApp group.
+
+You have access to information about the group and recent conversation history.
+
+Your job is to help members understand what is happening in the group.
+
+Summarizing:
+- Do not give a message-by-message breakdown.
+- Identify the important topics.
+- Group information into:
+  * Main Topics
+  * Decisions Made
+  * Action Items
+- Keep summaries concise and useful.
+
+Answering questions:
+- Use the information supplied in the group context.
+- If a member asks about a specific detail, past decision, or who mentioned something, answer directly.
+- Do not invent messages, events, members, decisions, warnings, or facts.
+- If the requested information is not available, clearly say that you do not have enough information.
+
+Group awareness:
+- Understand that the supplied group information belongs ONLY to the current WhatsApp group.
+- Never treat information from one group as information from another group.
+- Never claim that a group is activated unless the bot data explicitly says the chatbot is active.
+- Do not reveal private internal configuration unnecessarily.
+
+Formatting:
+- Use *single asterisks* for bold text.
+- Use hyphens (-) for bullet points.
+- NEVER use markdown headers such as #, ## or ###.
+- NEVER use code blocks unless the user specifically asks for code.
+- Keep responses clean and mobile-friendly.
+
+You are ⚡Alpha⚡.
+`;
+
+// -------------------------------------------------------------------------------------------------------------
+// NVIDIA API FUNCTION
+// -------------------------------------------------------------------------------------------------------------//
+
+async function askNvidia(systemPrompt, messages) {
+	if (!NVIDIA_API_KEY) {
+		throw new Error("NVIDIA_API_KEY is not configured.");
 	}
 
-	const chatSession = model.startChat({
-		generationConfig,
-		history: conversationHistory,
-	});
+	const response = await fetch(
+		`${NVIDIA_BASE_URL}/chat/completions`,
+		{
+			method: "POST",
+
+			headers: {
+				Authorization: `Bearer ${NVIDIA_API_KEY}`,
+				"Content-Type": "application/json",
+				Accept: "application/json",
+			},
+
+			body: JSON.stringify({
+				model: NVIDIA_MODEL,
+
+				messages: [
+					{
+						role: "system",
+						content: systemPrompt,
+					},
+					...messages,
+				],
+
+				temperature: generationConfig.temperature,
+				top_p: generationConfig.topP,
+				max_tokens: generationConfig.maxTokens,
+
+				stream: false,
+			}),
+		}
+	);
+
+	if (!response.ok) {
+		const errorText = await response.text();
+
+		throw new Error(
+			`NVIDIA API Error ${response.status}: ${errorText}`
+		);
+	}
+
+	const result = await response.json();
+
+	const text =
+		result?.choices?.[0]?.message?.content?.trim() || "";
+
+	if (!text) {
+		throw new Error("NVIDIA returned an empty response.");
+	}
+
+	return text;
+}
+
+// -------------------------------------------------------------------------------------------------------------
+// CONVERT STORED HISTORY TO NVIDIA FORMAT
+// -------------------------------------------------------------------------------------------------------------//
+
+function convertConversationHistory(conversationHistory = []) {
+	return conversationHistory
+		.map((message) => {
+			let role = message?.role;
+
+			// Old Gemini history uses "model".
+			// NVIDIA/OpenAI-compatible API uses "assistant".
+			if (role === "model") {
+				role = "assistant";
+			}
+
+			if (role !== "user" && role !== "assistant") {
+				return null;
+			}
+
+			const content =
+				message?.parts
+					?.map((part) => part?.text || "")
+					.join("\n")
+					.trim() || "";
+
+			if (!content) {
+				return null;
+			}
+
+			return {
+				role,
+				content,
+			};
+		})
+		.filter(Boolean);
+}
+
+// -------------------------------------------------------------------------------------------------------------
+// MAIN ALPHA CHAT FUNCTION
+// -------------------------------------------------------------------------------------------------------------//
+
+async function chat(
+	prompt,
+	from,
+	msg,
+	taggedMember,
+	msgInfoObj,
+	data,
+	tagMessage,
+	tagMessageSenderJID,
+	chatContext = ""
+) {
+	const {
+		sendMessageWTyping,
+		command,
+		updateName,
+		updateId,
+		senderJid,
+		groupMetadata,
+		groupAdmins,
+		isGroup,
+	} = msgInfoObj;
 
 	try {
-		// Send the full prompt with sender name
-		const result = await chatSession.sendMessage(fullPrompt);
-		const text = result.response.text();
+		// -----------------------------------------------------------------------------------------
+		// Get member information
+		// -----------------------------------------------------------------------------------------
+
+		let memberData = null;
+
+		try {
+			memberData = await getMemberData(senderJid);
+		} catch (memberError) {
+			console.error(
+				"Alpha member-data error:",
+				memberError
+			);
+		}
+
+		// -----------------------------------------------------------------------------------------
+		// Reply information
+		// -----------------------------------------------------------------------------------------
+
+		let replyInfo = "";
+
+		if (tagMessage && tagMessageSenderJID) {
+			try {
+				const tagMessageSender =
+					await getMemberData(
+						tagMessageSenderJID
+					);
+
+				const replySenderName =
+					tagMessageSender?.username ||
+					extractPhoneNumber(
+						tagMessageSenderJID
+					);
+
+				const replyContent =
+					JSON.stringify(tagMessage);
+
+				replyInfo =
+					`\n(Replying to ${replySenderName}: ${replyContent})`;
+			} catch (replyError) {
+				console.error(
+					"Alpha reply-context error:",
+					replyError
+				);
+			}
+		}
+
+		// -----------------------------------------------------------------------------------------
+		// Get conversation history
+		// -----------------------------------------------------------------------------------------
+
+		let conversationHistory = [];
+
+		if (isGroup && data?.chatHistory) {
+			conversationHistory =
+				data.chatHistory
+					.slice(-10)
+					.map((historyMessage) => ({
+						role: historyMessage.role,
+						parts: historyMessage.parts,
+					}));
+		}
+
+		const historyMessages =
+			convertConversationHistory(
+				conversationHistory
+			);
+
+		// -----------------------------------------------------------------------------------------
+		// Select Alpha mode
+		// -----------------------------------------------------------------------------------------
+
+		const isGroupAssistant =
+			command === "gemini";
+
+		const systemPrompt =
+			isGroupAssistant
+				? groupAssistantSystemPrompt
+				: alphaSystemPrompt;
+
+		// -----------------------------------------------------------------------------------------
+		// Build user's prompt
+		// -----------------------------------------------------------------------------------------
+
+		let fullPrompt =
+			`[${updateName || "Unknown User"}]: ${prompt}${replyInfo}`;
+
+		// -----------------------------------------------------------------------------------------
+		// Add group information
+		// -----------------------------------------------------------------------------------------
+
+		if (
+			isGroupAssistant &&
+			isGroup &&
+			data
+		) {
+			const admins =
+				groupAdmins
+					?.map((admin) => {
+						const adminData =
+							data?.members?.find(
+								(member) =>
+									member.id ===
+									admin
+							);
+
+						return (
+							adminData?.name ||
+							admin.split("@")[0]
+						);
+					})
+					.join(", ") ||
+				"Unknown";
+
+			const groupInfo = `
+--- Group Information ---
+
+Group Name: ${data?.grpName || "Unknown"}
+
+Group ID: ${data?._id || "Unknown"}
+
+Group Description: ${data?.desc || "No description"}
+
+Total Messages: ${data?.totalMsgCount || 0}
+
+Bot Status: ${
+				data?.isBotOn
+					? "Active"
+					: "Inactive"
+			}
+
+ChatBot Status: ${
+				data?.isChatBotOn
+					? "Active"
+					: "Inactive"
+			}
+
+Total Members: ${
+				data?.members?.length || 0
+			}
+
+Group Admins: ${admins}
+
+Blocked Commands: ${
+				data?.cmdBlocked?.join(", ") ||
+				"None"
+			}
+
+Welcome Message Enabled: ${
+				data?.welcome?.status
+					? "Yes"
+					: "No"
+			}
+
+Member Warnings: ${
+				JSON.stringify(
+					data?.memberWarnCount
+				) || "None"
+			}
+
+--- Current User Information ---
+
+User Name: ${updateName || "Unknown"}
+
+User ID: ${updateId || "Unknown"}
+
+User WhatsApp JID: ${
+				senderJid || "Unknown"
+			}
+
+User Total Messages: ${
+				memberData?.totalmsg || 0
+			}
+
+Is Admin: ${
+				groupAdmins?.includes(
+					senderJid
+				)
+					? "Yes"
+					: "No"
+			}
+
+-------------------------
+`;
+
+			const chatSection = chatContext
+				? `
+--- Recent Group Chat ---
+
+${chatContext}
+
+--- End of Recent Group Chat ---
+
+`
+				: "";
+
+			fullPrompt =
+				groupInfo +
+				chatSection +
+				fullPrompt;
+		}
+
+		// -----------------------------------------------------------------------------------------
+		// Send request to NVIDIA
+		// -----------------------------------------------------------------------------------------
+
+		const messages = [
+			...historyMessages,
+			{
+				role: "user",
+				content: fullPrompt,
+			},
+		];
+
+		const text = await askNvidia(
+			systemPrompt,
+			messages
+		);
+
+		// -----------------------------------------------------------------------------------------
+		// Empty response protection
+		// -----------------------------------------------------------------------------------------
 
 		if (!text?.trim()) {
 			return sendMessageWTyping(
 				from,
-				{ text: `Sorry, I didn't understand that. Can you please rephrase your question?` },
-				{ quoted: msg }
+				{
+					text:
+						"Sorry, I didn't understand that. Can you rephrase it?",
+				},
+				{
+					quoted: msg,
+				}
 			);
-		} else {
-			// Save conversation to history with sender name in the message
-			if (isGroup) {
-				const newHistory = [
-					...(data?.chatHistory || []),
-					{
-						role: "user",
-						parts: [{ text: fullPrompt }],
-						senderName: updateName,
-						senderJid: senderJid,
-						timestamp: new Date().toISOString(),
-					},
-					{
-						role: "model",
-						parts: [{ text: text.trim() }],
-						senderName: command === "gemini" ? "Gemini" : "Eva",
-						timestamp: new Date().toISOString(),
-					},
-				];
-
-				// Keep only last 20 messages (10 exchanges)
-				const trimmedHistory = newHistory.slice(-20);
-
-				await group.updateOne({ _id: from }, { $set: { chatHistory: trimmedHistory } });
-			}
-
-			await sendMessageWTyping(from, { text: "_*Eva:*_\n" + text.trim() }, { quoted: msg });
 		}
-	} catch (err) {
-		console.error(err);
-		sendMessageWTyping(
+
+		// -----------------------------------------------------------------------------------------
+		// Save conversation history
+		// -----------------------------------------------------------------------------------------
+
+		if (isGroup && data) {
+			const newHistory = [
+				...(data?.chatHistory || []),
+
+				{
+					role: "user",
+					parts: [
+						{
+							text: fullPrompt,
+						},
+					],
+					senderName:
+						updateName || "Unknown User",
+					senderJid: senderJid,
+					timestamp:
+						new Date().toISOString(),
+				},
+
+				{
+					role: "model",
+					parts: [
+						{
+							text: text.trim(),
+						},
+					],
+					senderName: "⚡Alpha⚡",
+					timestamp:
+						new Date().toISOString(),
+				},
+			];
+
+			const trimmedHistory =
+				newHistory.slice(
+					-MAX_HISTORY_MESSAGES
+				);
+
+			await group.updateOne(
+				{ _id: from },
+				{
+					$set: {
+						chatHistory:
+							trimmedHistory,
+					},
+				}
+			);
+		}
+
+		// -----------------------------------------------------------------------------------------
+		// Send Alpha response
+		// -----------------------------------------------------------------------------------------
+
+		return sendMessageWTyping(
 			from,
 			{
-				text: `An error occurred while processing your request. Please try again later.`,
+				text:
+					"⚡Alpha⚡\n" +
+					text.trim(),
 			},
-			{ quoted: msg }
+			{
+				quoted: msg,
+			}
+		);
+	} catch (err) {
+		console.error(
+			"⚡Alpha⚡ NVIDIA error:",
+			err
+		);
+
+		return sendMessageWTyping(
+			from,
+			{
+				text:
+					"⚡Alpha⚡ is having trouble connecting to the AI right now. Try again in a moment.",
+			},
+			{
+				quoted: msg,
+			}
 		);
 	}
 }
 
-const handler = async (sock, msg, from, args, msgInfoObj) => {
-	let { sendMessageWTyping, isGroup, evv, extendedMessageOriginal } = msgInfoObj;
+// -------------------------------------------------------------------------------------------------------------
+// COMMAND HANDLER
+// -------------------------------------------------------------------------------------------------------------//
 
-	if (GOOGLE_API_KEY == "") {
-		return sendMessageWTyping(from, { text: "```Generative AI API Key is Missing```" }, { quoted: msg });
+const handler = async (
+	sock,
+	msg,
+	from,
+	args,
+	msgInfoObj
+) => {
+	const {
+		sendMessageWTyping,
+		isGroup,
+		evv,
+		extendedMessageOriginal,
+	} = msgInfoObj;
+
+	// ---------------------------------------------------------------------------------------------
+	// NVIDIA API KEY CHECK
+	// ---------------------------------------------------------------------------------------------
+
+	if (!NVIDIA_API_KEY) {
+		return sendMessageWTyping(
+			from,
+			{
+				text:
+					"⚡Alpha⚡ AI is not configured yet. NVIDIA_API_KEY is missing.",
+			},
+			{
+				quoted: msg,
+			}
+		);
 	}
 
-	if (!evv) return sendMessageWTyping(from, { text: `Enter some text` });
+	// ---------------------------------------------------------------------------------------------
+	// Empty message
+	// ---------------------------------------------------------------------------------------------
 
-	// Limit input message length to prevent abuse (500 words ≈ 2500-3000 characters)
-	const MAX_INPUT_WORDS = 500;
-	const wordCount = evv.trim().split(/\s+/).length;
+	if (!evv?.trim()) {
+		return sendMessageWTyping(
+			from,
+			{
+				text:
+					"⚡Alpha⚡ is listening. Enter some text.",
+			},
+			{
+				quoted: msg,
+			}
+		);
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Input length protection
+	// ---------------------------------------------------------------------------------------------
+
+	const wordCount =
+		evv.trim().split(/\s+/).length;
 
 	if (wordCount > MAX_INPUT_WORDS) {
 		return sendMessageWTyping(
 			from,
 			{
-				text: `⚠️ Message too long! Please limit your message to ${MAX_INPUT_WORDS} words.\n\nYour message: ${wordCount} words\nLimit: ${MAX_INPUT_WORDS} words`,
+				text:
+					`⚠️ Message too long!\n\n` +
+					`Your message: ${wordCount} words\n` +
+					`Limit: ${MAX_INPUT_WORDS} words`,
 			},
-			{ quoted: msg }
+			{
+				quoted: msg,
+			}
 		);
 	}
 
-	let taggedMember, tagMessage, tagMessageSenderJID;
+	// ---------------------------------------------------------------------------------------------
+	// Reply / mention information
+	// ---------------------------------------------------------------------------------------------
+
+	let taggedMember;
+	let tagMessage;
+	let tagMessageSenderJID;
+
 	if (extendedMessageOriginal) {
-		tagMessage = extendedMessageOriginal.quotedMessage;
-		tagMessageSenderJID = extendedMessageOriginal.participant;
-		if (extendedMessageOriginal?.mentionedJid?.length > 0) {
-			taggedMember = extendedMessageOriginal.mentionedJid;
+		tagMessage =
+			extendedMessageOriginal.quotedMessage;
+
+		tagMessageSenderJID =
+			extendedMessageOriginal.participant;
+
+		if (
+			extendedMessageOriginal
+				?.mentionedJid?.length > 0
+		) {
+			taggedMember =
+				extendedMessageOriginal.mentionedJid;
 		}
 	}
 
 	const prompt = evv;
+
+	// =============================================================================================
+	// GROUP CHAT
+	// =============================================================================================
+
 	if (isGroup) {
-		let data = await getGroupData(from);
-		if (!data || data.isChatBotOn == false) {
+		const data =
+			await getGroupData(from);
+
+		// -----------------------------------------------------------------------------------------
+		// IMPORTANT:
+		// Every WhatsApp group has its own "from" ID.
+		//
+		// Therefore Alpha checks the chatbot setting for THIS exact group.
+		// Activating Alpha in Group A does NOT activate it in Group B.
+		// -----------------------------------------------------------------------------------------
+
+		if (!data) {
 			return sendMessageWTyping(
 				from,
-				{ text: `Chat Bot is Off ask the owner to activate it. Use dev` },
-				{ quoted: msg }
-			);
-		} else {
-			let chatContext = "";
-			if (msgInfoObj.command === "gemini") {
-				const logs = await getChatMessages(from, 24);
-				if (logs.length > 0) {
-					chatContext = logs.slice(-100).map((m) => {
-						const name = m.senderName || m.sender.split("@")[0];
-						const replyPart = m.replyTo
-							? ` [replying to ${m.replyTo.senderName || m.replyTo.sender.split("@")[0]}: "${m.replyTo.text}"]`
-							: "";
-						let text = m.text;
-						if (m.mentions?.length > 0) {
-							for (const mention of m.mentions) {
-								const num = mention.jid.split("@")[0].split(":")[0];
-								text = text.replace(new RegExp(`@${num}`, "g"), `@${mention.name}`);
-							}
-						}
-						return `${name}${replyPart}: ${text}`;
-					}).join("\n");
+				{
+					text:
+						"⚡Alpha⚡ isn't activated in this group yet.",
+				},
+				{
+					quoted: msg,
 				}
-			}
-			chat(prompt, from, msg, taggedMember, msgInfoObj, data, tagMessage, tagMessageSenderJID, chatContext);
-		}
-	} else {
-		if (msgInfoObj.isOwner) {
-			chat(prompt, from, msg, taggedMember, msgInfoObj, null, tagMessage, tagMessageSenderJID);
-		} else {
-			return sendMessageWTyping(
-				from,
-				{ text: `Chat Bot is only available for groups. Use dev` },
-				{ quoted: msg }
 			);
 		}
+
+		if (data.isChatBotOn !== true) {
+			return sendMessageWTyping(
+				from,
+				{
+					text:
+						"⚡Alpha⚡ is currently turned off in this group.",
+				},
+				{
+					quoted: msg,
+				}
+			);
+		}
+
+		// -----------------------------------------------------------------------------------------
+		// Get recent group chat context
+		// -----------------------------------------------------------------------------------------
+
+		let chatContext = "";
+
+		if (msgInfoObj.command === "gemini") {
+			try {
+				const logs =
+					await getChatMessages(
+						from,
+						24
+					);
+
+				if (logs?.length > 0) {
+					chatContext =
+						logs
+							.slice(-100)
+							.map((m) => {
+								const name =
+									m.senderName ||
+									m.sender
+										?.split(
+											"@"
+										)[0] ||
+									"Unknown";
+
+								const replyPart =
+									m.replyTo
+										? ` [replying to ${
+												m
+													.replyTo
+													.senderName ||
+												m
+													.replyTo
+													.sender
+													?.split(
+														"@"
+													)[0] ||
+												"Unknown"
+										  }: "${
+												m
+													.replyTo
+													.text ||
+												""
+										  }"]`
+										: "";
+
+								let text =
+									m.text ||
+									"";
+
+								// Replace raw mentions with names.
+								if (
+									m.mentions
+										?.length >
+									0
+								) {
+									for (const mention of m.mentions) {
+										if (
+											!mention
+												?.jid
+										) {
+											continue;
+										}
+
+										const num =
+											mention.jid
+												.split(
+													"@"
+												)[0]
+												.split(
+													":"
+												)[0];
+
+										if (
+											mention.name
+										) {
+											text =
+												text.replace(
+													new RegExp(
+														`@${num}`,
+														"g"
+													),
+													`@${mention.name}`
+												);
+										}
+									}
+								}
+
+								return `${name}${replyPart}: ${text}`;
+							})
+							.join("\n");
+				}
+			} catch (contextError) {
+				console.error(
+					"Alpha chat-context error:",
+					contextError
+				);
+			}
+		}
+
+		return chat(
+			prompt,
+			from,
+			msg,
+			taggedMember,
+			msgInfoObj,
+			data,
+			tagMessage,
+			tagMessageSenderJID,
+			chatContext
+		);
 	}
+
+	// =============================================================================================
+	// PRIVATE CHAT
+	// =============================================================================================
+
+	/*
+	 * IMPORTANT:
+	 *
+	 * Your old code did this:
+	 *
+	 * if (msgInfoObj.isOwner) {
+	 *     chat(...)
+	 * } else {
+	 *     reject
+	 * }
+	 *
+	 * That means EVERY private chat from a non-owner was rejected.
+	 *
+	 * Now private chat behavior is controlled by ALPHA_PRIVATE_CHAT.
+	 */
+
+	if (ALLOW_PRIVATE_CHAT) {
+		return chat(
+			prompt,
+			from,
+			msg,
+			taggedMember,
+			msgInfoObj,
+			null,
+			tagMessage,
+			tagMessageSenderJID
+		);
+	}
+
+	// If private chat is disabled, only the owner can use Alpha privately.
+	if (msgInfoObj.isOwner) {
+		return chat(
+			prompt,
+			from,
+			msg,
+			taggedMember,
+			msgInfoObj,
+			null,
+			tagMessage,
+			tagMessageSenderJID
+		);
+	}
+
+	return sendMessageWTyping(
+		from,
+		{
+			text:
+				"⚡Alpha⚡ is currently available in activated groups only.",
+		},
+		{
+			quoted: msg,
+		}
+	);
 };
 
+// -------------------------------------------------------------------------------------------------------------
+// EXPORT
+// -------------------------------------------------------------------------------------------------------------//
+
 export default () => ({
-	cmd: ["eva", "gemini"],
-	desc: "Chat with Eva",
-	usage: "eva <text>",
+	// New preferred command:
+	// alpha
+	//
+	// Kept eva and gemini as aliases so your existing command
+	// system does not suddenly break.
+	cmd: ["alpha", "eva", "gemini"],
+
+	desc: "Chat with ⚡Alpha⚡ using NVIDIA AI",
+
+	usage: "alpha <text>",
+
 	handler,
 });
