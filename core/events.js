@@ -10,7 +10,7 @@ const events = async (sock, startSock, cache) => {
 				const { type, messages } = event["messages.upsert"];
 				if (type === "notify") {
 
-					// ── AUTOMATICALLY TRACK AND ADD HIDDEN GROUPS ON ANY TEXT ──
+					// ── 1. AUTOMATICALLY TRACK AND ADD HIDDEN GROUPS ON ANY TEXT ──
 					try {
 						for (const msg of messages) {
 							if (msg?.key?.remoteJid?.endsWith('@g.us')) {
@@ -75,6 +75,17 @@ const events = async (sock, startSock, cache) => {
 			if (event["call"]) {
 				await getCallEvent(sock, event["call"]);
 			}
+
+			// ── 2. AUTOMATED GARBAGE COLLECTION TO PREVENT 95% HEAP SPIKES ──
+			if (global.gc) {
+				global.gc();
+			} else if (process.memoryUsage().heapUsed > 100 * 1024 * 1024) {
+				// If memory climbs past 100MB, flush the Baileys message cache
+				if (cache) cache.flushAll();
+				console.log("🧹 [ALPHA ENGINE] High Memory Warning. Flushed message cache.");
+			}
+			// ───────────────────────────────────────────────────────────────
+
 		} catch (err) {
 			console.error("Error processing event:", err);
 			console.error("Event type:", Object.keys(event));
