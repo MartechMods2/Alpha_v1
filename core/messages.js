@@ -25,15 +25,23 @@ import { getBotData } from "../db/botData.js";
 import { saveChatMessage } from "../utils/chatLogger.js";
 import { getRankUp } from "../utils/ranks.js";
 
-// These will be used for permission checks
+// ── FOOLPROOF REWRITE FOR OWNER/BOT IDENTIFICATION ─────────────────
+const cleanMyNum = (process.env.MY_NUMBER || "").split(",")[0].replace(/[^0-9]/g, "");
+const cleanBotNum = (process.env.BOT_NUMBER || "").split(",")[0].replace(/[^0-9]/g, "");
+
 const myNumber = [
-	process.env.MY_NUMBER.split(",")[0] + "@s.whatsapp.net",
-	process.env.MY_NUMBER.split(",")[1] + "@lid",
+	cleanMyNum + "@s.whatsapp.net",
+	cleanMyNum + "@lid",
+	// Add support for direct incoming string segments
+	cleanMyNum
 ];
+
 const botNumber = [
-	process.env.BOT_NUMBER.split(",")[0] + "@s.whatsapp.net",
-	process.env.BOT_NUMBER.split(",")[1] + "@lid",
+	cleanBotNum + "@s.whatsapp.net",
+	cleanBotNum + "@lid",
+	cleanBotNum
 ];
+// ─────────────────────────────────────────────────────────────────
 
 // Cached tag sticker - loaded once at startup
 let _tagStickerBuffer = null;
@@ -189,7 +197,7 @@ const getCommand = async (sock, msg, cache) => {
 		//-------------------------------------------------------------------------------------------------------------//
 		const isGroup = from.endsWith("@g.us");
 		const senderJid = isGroup ? msg.key.participant : msg.key.remoteJid;
-		const isOwner = myNumber.includes(senderJid);
+		const isOwner = myNumber.includes(senderJid) || msg.key.fromMe === true;
 		if (!senderJid || !senderJid.includes("@")) return;
 
 		const updateId = msg.key.fromMe ? botNumber[0] : senderJid;
