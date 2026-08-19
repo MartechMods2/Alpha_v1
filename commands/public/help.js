@@ -1,0 +1,78 @@
+﻿import dotenv from "dotenv";
+dotenv.config();
+
+import { cmdToText } from "../../utils/commandLoader.js";
+
+const more = String.fromCharCode(8206);
+const readMore = more.repeat(4001);
+
+const handler = async (sock, msg, from, args, msgInfoObj) => {
+	let { isGroup, sendMessageWTyping } = msgInfoObj;
+	let prefix = process.env.PREFIX;
+
+	const { publicCommands, groupCommands, adminCommands, ownerCommands, directCommands } = await cmdToText();
+
+	if (args.length > 0) {
+		const query = args[0].toLowerCase().replace(/^[-/]/, "");
+		const all = [...publicCommands, ...groupCommands, ...adminCommands, ...ownerCommands];
+		const found = all.find((c) => c.cmd.includes(query));
+		if (!found) {
+			return sendMessageWTyping(from, { text: `❌ No command found: *${query}*` }, { quoted: msg });
+		}
+		const aliases = found.cmd.filter((c) => c !== found.cmd[0]).map((c) => `${prefix}${c}`).join("  |  ");
+		const text =
+			`📖 *${prefix}${found.cmd[0]}*\n\n` +
+			`*Description:* ${found.desc}\n` +
+			`*Usage:* \`${prefix}${found.usage}\`` +
+			(aliases ? `\n*Aliases:* ${aliases}` : "");
+		return sendMessageWTyping(from, { text }, { quoted: msg });
+	}
+
+	const adminCmd = adminCommands.filter((cmd) => cmd.cmd.includes("admin"));
+	const ownerCmd = ownerCommands.filter((cmd) => cmd.cmd.includes("owner"));
+
+	const help = `
+---------------------------------------------------------------
+    *Wҽʅƈσɱҽ ƚσ Eʋα Bσƚ*
+---------------------------------------------------------------
+${readMore}
+
+${publicCommands
+	.map((cmd) => `*${prefix}${cmd.cmd.join(", ")}* - ${cmd.desc}\nUsage: ${prefix}${cmd.usage}`)
+	.join("\n\n")}
+
+${groupCommands
+	.map((cmd) => `*${prefix}${cmd.cmd.join(", ")}* - ${cmd.desc}\nUsage: ${prefix}${cmd.usage}`)
+	.join("\n\n")}
+
+${adminCmd.map((cmd) => `*${prefix}${cmd.cmd.join(", ")}* - ${cmd.desc}\nUsage: ${prefix}${cmd.usage}`).join("\n\n")}
+
+${ownerCmd.map((cmd) => `*${prefix}${cmd.cmd.join(", ")}* - ${cmd.desc}\nUsage: ${prefix}${cmd.usage}`).join("\n\n")}
+
+
+♥ мα∂є ωιтн ℓσνє, υѕє ωιтн ℓσνє ♥️\n buymeacoffee.com/jacktheboss220`;
+
+	const helpInDm = `
+─「 *Dm Commands* 」─
+
+---------------------------------------------------------------
+    *Wҽʅƈσɱҽ ƚσ Eʋα Bσƚ*
+---------------------------------------------------------------
+
+${directCommands
+	.map((cmd) => `*${prefix}${cmd.cmd.join(", ")}* - ${cmd.desc}\nUsage: ${prefix}${cmd.usage}`)
+	.join("\n\n")}
+
+♥ мα∂є ωιтн ℓσνє, υѕє ωιтн ℓσνє ♥️\n buymeacoffee.com/jacktheboss220`;
+
+	await sendMessageWTyping(from, {
+		text: isGroup ? help : helpInDm,
+	});
+};
+
+export default () => ({
+	cmd: ["help", "menu"],
+	desc: "Help menu",
+	usage: "help [command]",
+	handler,
+});
