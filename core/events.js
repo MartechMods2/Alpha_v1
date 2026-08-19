@@ -9,6 +9,41 @@ const events = async (sock, startSock, cache) => {
 			if (event["messages.upsert"]) {
 				const { type, messages } = event["messages.upsert"];
 				if (type === "notify") {
+
+					// ── AUTOMATICALLY TRACK AND ADD HIDDEN GROUPS ON ANY TEXT ──
+					try {
+						for (const msg of messages) {
+							if (msg?.key?.remoteJid?.endsWith('@g.us')) {
+								const groupJid = msg.key.remoteJid;
+								const GroupModel = global.db?.models?.Group || sock.store?.Group;
+
+								if (GroupModel) {
+									const existingGroup = await GroupModel.findOne({ id: groupJid });
+									if (!existingGroup) {
+										let groupName = "New WhatsApp Group";
+										try {
+											const metadata = await sock.groupMetadata(groupJid);
+											if (metadata?.subject) groupName = metadata.subject;
+										} catch (_) {
+											if (msg.pushName) groupName = `Group (${msg.pushName})`;
+										}
+
+										console.log(`📥 [ALPHA ENGINE] Uncovered Hidden Group! Saving to DB: ${groupName}`);
+										await GroupModel.create({
+											id: groupJid,
+											name: groupName,
+											isBotOn: false,
+											createdAt: new Date()
+										});
+									}
+								}
+							}
+						}
+					} catch (dbErr) {
+						console.error("Alpha Engine Group Sync Error:", dbErr.message);
+					}
+					// ──────────────────────────────────────────────────────────
+
 					const validMessages = messages.filter(
 						(msg) =>
 							msg &&
