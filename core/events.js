@@ -49,7 +49,6 @@ const events = async (sock, startSock, cache) => {
 							msg &&
 							msg.message &&
 							msg.key?.remoteJid &&
-							!msg.key.fromMe &&
 							Object.keys(msg.message).length > 0
 					);
 
