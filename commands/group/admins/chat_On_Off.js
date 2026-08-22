@@ -1,4 +1,4 @@
-import { getPNFromLID } from "../utils/lid.js";
+import { getPNFromLID } from "../../../utils/lid.js";
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
     const { botNumber, sendMessageWTyping } = msgInfoObj;
