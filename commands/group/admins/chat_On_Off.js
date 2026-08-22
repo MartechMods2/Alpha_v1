@@ -1,19 +1,34 @@
 const handler = async (sock, msg, from, args, msgInfoObj) => {
-    const { groupAdmins, botNumber, sendMessageWTyping } = msgInfoObj;
+    const { botNumber, sendMessageWTyping } = msgInfoObj;
 
-    // Extract pure numeric part correctly
+    // --- FORCE LIVE FETCH: Ignore stale cache ---
+    console.log("🔍 [DEBUG] Fetching fresh group metadata from WhatsApp...");
+    let freshMetadata;
+    try {
+        freshMetadata = await sock.groupMetadata(from);
+    } catch (err) {
+        console.error("❌ Failed to fetch group metadata:", err.message);
+        return sendMessageWTyping(from, { text: `❌ Failed to fetch group info.` }, { quoted: msg });
+    }
+
+    // Extract admin JIDs from fresh metadata
+    const freshGroupAdmins = freshMetadata.participants
+        .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
+        .map(p => p.id);
+
+    console.log("🔍 [DEBUG] Fresh admin IDs:", freshGroupAdmins);
+
+    // Extract the bot's pure number
     const botRaw = botNumber[2] || botNumber[1]?.split('@')[0] || botNumber[0]?.split('@')[0] || sock.user.id.split('@')[0];
     const botPureNumber = botRaw.split(':')[0];
-    
-    // Check if bot is admin using pure number comparison
-    const isBotAdmin = groupAdmins.some(adminId => {
+
+    // Check if the bot is an admin in the fresh list
+    const isBotAdmin = freshGroupAdmins.some(adminId => {
         const adminPure = adminId.split('@')[0].split(':')[0];
         return adminPure === botPureNumber;
     });
 
-    // Debug logs (visible in Render)
     console.log("🔍 [DEBUG] botPureNumber:", botPureNumber);
-    console.log("🔍 [DEBUG] Admin pure numbers:", groupAdmins.map(a => a.split('@')[0].split(':')[0]));
     console.log("🔍 [DEBUG] isBotAdmin:", isBotAdmin);
 
     if (!isBotAdmin) {
