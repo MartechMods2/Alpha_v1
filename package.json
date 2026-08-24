@@ -18,7 +18,8 @@
     "build": "bun install && bun run --cwd dashboard build",
     "start": "bun index.js",
     "start:dev": "bun --inspect index.js",
-    "start:production": "bun --smol index.js"
+    "start:production": "bun --smol index.js",
+    "test": "node --test tests/*.test.js"
   },
   "keywords": [],
   "author": "mahesh kumar",

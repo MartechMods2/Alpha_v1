@@ -1,5 +1,7 @@
-const getGroupAdmins = (participants) => {
-	return participants?.filter((i) => i.admin === "admin" || i.admin === "superadmin").map((i) => i.id);
-};
+import { isAdminParticipant, participantJids } from "./groupParticipants.js";
+
+const getGroupAdmins = (participants) => [
+	...new Set((participants || []).filter(isAdminParticipant).flatMap(participantJids)),
+];
 
 export default getGroupAdmins;

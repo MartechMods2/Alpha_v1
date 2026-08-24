@@ -26,12 +26,13 @@ A feature-rich WhatsApp bot with a modern React/Vite admin dashboard. Supports d
 | :-----------------: | :-------------------------------------------------------: | :------------------------------------: | :---------------------: |
 |       -alive        |             Check if the bot is online or not             |                `-alive`                |            ✔            |
 |       -admin        |                  List of admin commands                   |                `-admin`                |            ✔            |
-|        -song        |                  Download a song by name                  |      `-song love me like you do`       |           ❌            |
+|        -song        |           Send a song as playable WhatsApp audio           |      `-song love me like you do`       |            ✔            |
 |         -l          |                   Get lyrics for a song                   | `-l Main woh chaand by darshan raval`  |            ✔            |
 |       -delete       |             Delete a message sent by the bot              |               `-delete`                |            ✔            |
 |        -joke        |                     Get a random joke                     |                `-joke`                 |            ✔            |
 |  -joke categories   |            Get a joke from a specific category            |          `-joke programming`           |            ✔            |
 |        -meme        |                     Get a random meme                     |                `-meme`                 |            ✔            |
+|    -meme top \| bottom |        Create a meme from a sent/replied image          |       `-meme hello \| goodbye`         |            ✔            |
 |       -movie        |              Get a download link for a movie              |           `-movie Avengers`            |           ❌            |
 |       -anime        |        Get a quote from an anime character or show        |                `-anime`                |            ✔            |
 |     -anime name     | Get a quote from an anime character with a specific name  |         `-anime name Saitama`          |            ✔            |
@@ -67,6 +68,10 @@ A feature-rich WhatsApp bot with a modern React/Vite admin dashboard. Supports d
 |    -qpt authors     |              Get a list of authors for poems              |             `-qpt authors`             |            ✔            |
 |      -qpoetry       |              Get a poem written by an author              |               `-qpoetry`               |            ✔            |
 |      -removebg      |            Remove the background from an image            |              `-removebg`               |            ✔            |
+|     -aisticker      |       Remove an image background and create a sticker       |     Reply to image: `-aisticker`       |            ✔            |
+|    -textsticker     |              Create a local text sticker                    |       `-textsticker lets go`           |            ✔            |
+|      -gamehelp      |     Show scored games, ranks and leaderboard commands       |             `-gamehelp`                |            ✔            |
+|       -poll         |                 Create a native group poll                  | `-poll Food? \| Rice \| Pizza`         |            ✔            |
 |        -nsfw        |            Get the NSFW percentage of an image            |                `-nsfw`                 |           ❌            |
 |        -tts         |                 Change text to a sticker                  |              `-tts text`               |            ✔            |
 |        -text        |            Add a header and footer to an image            |       `-text TopText;BottomText`       |            ✔            |
@@ -92,8 +97,10 @@ A feature-rich WhatsApp bot with a modern React/Vite admin dashboard. Supports d
 |      -tagall       | Send an attendance alert to all members |     `-tagall message`     |            ✔            |
 |    -ref_delete     |    Delete a company (Admin only)       |      `-ref_delete Google`  |            ✔            |
 |    -ref_update     |  Update a company name (Admin only)    | `-ref_update Google Alphabet` |         ✔            |
-|   -warning set     |       Set warning limit for group        |     `-warning set 3`      |            ✔            |
-|  -welcome msg      |     Set custom welcome message          | `-welcome msg Welcome!`   |            ✔            |
+|      -automod      | Configure warnings, anti-link and spam   |     `-automod status`     |            ✔            |
+|      -goodbye      |     Set an automatic goodbye message    | `-goodbye set Bye {user}` |            ✔            |
+|       -rules       |          View or set group rules         |         `-rules`          |            ✔            |
+|    -gamereset      |       Reset the group's game season       | `-gamereset confirm`      |            ✔            |
 
 <br>
 
@@ -258,6 +265,101 @@ group isBotOn:true
 
 ---
 
+## Group Safety and Fun Pack
+
+All new automatic features are disabled by default. Start with status, enable only what the group needs, and change one setting at a time:
+
+```text
+-automod status
+-welcome set Welcome {users} to *{group}*! Please read -rules.
+-welcome on
+-goodbye set Goodbye {users}. Thanks for being part of *{group}*.
+-goodbye on
+-rules set 1. Be respectful. 2. No spam. 3. Ask before sharing links.
+```
+
+Configure warning-based moderation:
+
+```text
+# Remove a non-admin member when the third warning is reached
+-automod warnings 3 remove
+
+# Only notify admins at the limit; do not remove anyone
+-automod warnings 3 notify
+
+-warn @member repeated spam
+-unwarn @member
+-getwarn @member
+```
+
+Anti-link and anti-spam are opt-in. Admins, the group owner, and the bot are exempt from automatic actions:
+
+```text
+-automod antilink on warn
+-automod allow add youtube.com
+-automod allow list
+
+-automod spam 6 12 3
+-automod antispam on
+```
+
+`antilink on delete` deletes the triggering message when the bot is an admin and also records a warning. Anti-spam warns after either the configured message flood or duplicate-message threshold, then applies a one-minute cooldown so one burst cannot produce repeated bot replies.
+
+Low-volume, on-demand social games include:
+
+```text
+-truth        -dare          -wyr           -icebreaker
+-compliment   -coinflip      -dice 20       -8ball <question>
+-choose tea | coffee
+```
+
+The scored Game Arena adds group-wide rounds and persistent MongoDB standings:
+
+```text
+-gamehelp                         show the arena guide
+-trivia [general|science|tech|africa]
+-mathgame   -scramble   -emojiguess   -riddle   -fasttype
+-answer <answer>                  one attempt per member; first correct wins
+-rps <rock|paper|scissors>        instant scored match
+-gamescore                        personal points, streak and rank
+-gameboard                        group top 10
+-gamereset confirm                admin-only season reset
+```
+
+Competitive Arena extensions:
+
+```text
+-trivia [general|science|tech|africa|sports|naija]
+-oddoneout   -flagguess   -truefalse   -numberguess
+-dailychallenge                   one deterministic 25-point race per group/day
+-battle @member                   issue a head-to-head quiz challenge
+-acceptbattle                     accept the invitation
+-battleanswer <answer>            first correct duellist wins 20 points
+-battleboard                      duel ranking by wins
+-badges                           personal trophy cabinet
+-seasonstats                      group-wide season totals
+```
+
+The group toolkit stores useful shared information in MongoDB and only responds when requested:
+
+```text
+-groupkit                         show the toolkit guide
+-gnote save Title | text          save a shared note (three per non-admin member)
+-gnote list / read 1 / delete 1
+-todo add <task>                   collaborative task board
+-todo list / done 1 / undo 1 / remove 1
+-birthday set DD-MM               save day/month only; no birth year
+-birthday list / remove
+-countdown YYYY-MM-DD | event     calculate an event countdown
+-groupkitreset confirm            admin-only toolkit reset
+```
+
+Media Studio commands are deliberately request-driven: `-meme top | bottom` creates a local captioned meme from a sent or replied image, `-textsticker` creates a sticker locally, and `-aisticker` uses remove.bg to produce a transparent cut-out sticker. `-song` sends one playable MP3 result, while `-songdoc` sends the same result as a downloadable document. Only download media you are permitted to use.
+
+The outbound queue spaces group sends, automated join/leave notices are batched into one message per event, command bursts are rate-limited, and synthetic typing/presence events are disabled. These safeguards reduce unnecessary automation traffic, but no unofficial WhatsApp client can guarantee that an account will not be restricted.
+
+---
+
 # Deploy on Koyeb.com
 
 1. Create an account at [https://app.koyeb.com/auth/signup](https://app.koyeb.com/auth/signup).
@@ -295,13 +397,14 @@ Create a `.env` file in the project root with the following keys.
 | ----------------------- | ---------------------------------------------------------------------------------------- |
 | `PORT`                  | Server port (default: `8000`)                                                            |
 | `NODE_ENV`              | `development` or `production`                                                            |
+| `BOT_TIMEZONE`          | Time zone used for daily challenges. Default: `Africa/Lagos`                             |
 | `SESSION_SECRET`        | Secret used to sign the session cookie. Set a strong random string in production.        |
 | `GOOGLE_API_KEY`        | Google/Gemini API key — used by the AI chatbot (`-chat`) and image generation commands   |
 | `GOOGLE_API_KEY_SEARCH` | Google API key for the Custom Search API — used by the `-img` image search command       |
 | `SEARCH_ENGINE_KEY`     | Google Custom Search Engine ID — required alongside `GOOGLE_API_KEY_SEARCH` for `-img`   |
 | `GENIUS_ACCESS_SECRET`  | Genius API token — used by the `-l` lyrics command                                       |
 | `PIN_KEY`               | Pinterest API key for Pinterest image search                                             |
-| `REMOVE_BG_KEY`         | remove.bg API key — used by the `-removebg` command                                     |
+| `REMOVE_BG_KEY`         | remove.bg API key — used by `-removebg` and AI cut-out `-aisticker`                    |
 | `TRUECALLER_ID`         | Truecaller API ID for caller identification                                              |
 | `TWITTER_BEARER_TOKEN`  | Twitter/X API bearer token for Twitter-related features                                  |
 | `FFMPEG_PATH`           | Path to a custom `ffmpeg` binary. If unset the bundled `ffmpeg-static` binary is used.  |
@@ -336,7 +439,11 @@ ADMIN_PASSWORD=supersecretpassword
 # Optional
 PORT=8000
 NODE_ENV=production
+BOT_TIMEZONE=Africa/Lagos
 SESSION_SECRET=change_this_to_a_random_string
+MESSAGE_DELAY_MS=500
+GROUP_MESSAGE_DELAY_MS=900
+MAX_CONCURRENT_SENDS=2
 
 # Google / Gemini — AI chatbot and image generation
 GOOGLE_API_KEY=your_google_gemini_api_key_here

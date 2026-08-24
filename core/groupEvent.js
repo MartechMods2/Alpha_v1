@@ -1,36 +1,62 @@
 import { escapeHtml } from "../notify/telegram.js";
 import notifyOwner from "../notify/owner.js";
 import { fake_quoted } from "../utils/fakeQuoted.js";
-import { getGroupData } from "../db/groupData.js";
-import { extractPhoneNumber, formatJIDForDisplay } from "../utils/lid.js";
+import { createGroupData, getGroupData } from "../db/groupData.js";
+import { extractPhoneNumber } from "../utils/lid.js";
 import messageQueue from "../queue/messageQueue.js";
+import { delGroupMeta } from "../cache/redisCache.js";
+import { getGroupSafetySettings, renderTemplate } from "../utils/groupSafety.js";
 
 const getPhone = (p) =>
 	typeof p === "string"
 		? extractPhoneNumber(p)
 		: extractPhoneNumber(p?.id || p?.jid || p?.phoneNumber || "");
 
+const getParticipantJid = (participant) =>
+	typeof participant === "string"
+		? participant
+		: participant?.id || participant?.jid || participant?.lid || participant?.phoneNumber || "";
+
 const getGroupEvent = async (sock, events, cache) => {
 	let jid = events.id;
 	let groupDataDB = await getGroupData(jid);
 	cache.del(jid + ":groupMetadata");
-	// Group doc is only created on first text message (see core/messages.js) — a join
-	// event can fire before that ever happens, so bail instead of crashing on null.
-	if (!groupDataDB) return;
+	await delGroupMeta(jid);
+	if (!groupDataDB) {
+		try {
+			const metadata = await sock.groupMetadata(jid);
+			await createGroupData(jid, metadata);
+			groupDataDB = await getGroupData(jid);
+		} catch (error) {
+			console.warn("Could not initialize group event data:", error.message);
+			return;
+		}
+	}
+	const settings = getGroupSafetySettings(groupDataDB);
+	const participantJids = events.participants.map(getParticipantJid).filter(Boolean);
+	const userTags = participantJids.map((participant) => `@${getPhone(participant)}`).join(", ");
+	const templateValues = {
+		users: userTags,
+		group: groupDataDB.grpName,
+		count: groupDataDB.members?.length || "",
+	};
 
 	if (events.action == "add") {
-		if (groupDataDB.welcome != "") {
-			for (const member of events.participants) {
-				const phoneNumber = getPhone(member);
-				await messageQueue.enqueue(jid, () => sock.sendMessage(
-					jid,
-					{
-						text: "Welcome @" + phoneNumber + "\n\n" + groupDataDB.welcome,
-						mentions: [member.id],
-					},
-					{ quoted: fake_quoted(events, "Welcome to " + groupDataDB.grpName) }
-				), 1);
-			}
+		if (settings.isWelcomeOn && participantJids.length > 0) {
+			const welcomeText = renderTemplate(
+				groupDataDB.welcome || "Welcome {users} to *{group}*! Please check the group rules.",
+				templateValues,
+			);
+			await messageQueue.enqueue(
+				jid,
+				() =>
+					sock.sendMessage(
+						jid,
+						{ text: welcomeText, mentions: participantJids },
+						{ quoted: fake_quoted(events, "Welcome to " + groupDataDB.grpName) },
+					),
+				1,
+			);
 		}
 		//91Only Working
 		if (groupDataDB.is91Only == true) {
@@ -39,7 +65,11 @@ const getGroupEvent = async (sock, events, cache) => {
 				return phoneNumber && !phoneNumber.startsWith("91");
 			});
 			if (filteredParticipants.length > 0) {
-				sock.groupParticipantsUpdate(jid, filteredParticipants, "remove");
+				await sock.groupParticipantsUpdate(
+					jid,
+					filteredParticipants.map(getParticipantJid).filter(Boolean),
+					"remove",
+				);
 				await messageQueue.enqueue(jid, () => sock.sendMessage(
 					jid,
 					{
@@ -57,6 +87,17 @@ const getGroupEvent = async (sock, events, cache) => {
 			`👤 <b>Joined:</b> ${addedNumbers}`
 		);
 	} else {
+		if (events.action === "remove" && settings.isGoodbyeOn && participantJids.length > 0) {
+			const goodbyeText = renderTemplate(
+				groupDataDB.goodbye || "Goodbye {users}. Thanks for being part of *{group}*.",
+				templateValues,
+			);
+			await messageQueue.enqueue(
+				jid,
+				() => sock.sendMessage(jid, { text: goodbyeText, mentions: participantJids }),
+				1,
+			);
+		}
 		const actionEmoji = events.action === "remove" ? "➖" : events.action === "promote" ? "⬆️" : events.action === "demote" ? "⬇️" : "🔄";
 		const actionLabel = events.action === "remove" ? "Left / Removed" : events.action === "promote" ? "Promoted to Admin" : events.action === "demote" ? "Demoted from Admin" : escapeHtml(events.action);
 		const numbers = events.participants.map((p) => `<code>${escapeHtml(getPhone(p))}</code>`).join(", ");

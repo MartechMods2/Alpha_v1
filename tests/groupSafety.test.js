@@ -1,0 +1,78 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+	extractLinkHosts,
+	getGroupSafetySettings,
+	hasDisallowedLink,
+	renderTemplate,
+} from "../utils/groupSafety.js";
+import { clearSpamTracker, detectSpam } from "../utils/spamTracker.js";
+
+test("safety settings are off by default and numeric values are bounded", () => {
+	const settings = getGroupSafetySettings({
+		spamLimit: 99,
+		spamWindowSeconds: 1,
+		duplicateLimit: 20,
+		warningLimit: 50,
+	});
+	assert.equal(settings.isAntiLinkOn, false);
+	assert.equal(settings.isAntiSpamOn, false);
+	assert.equal(settings.spamLimit, 12);
+	assert.equal(settings.spamWindowSeconds, 5);
+	assert.equal(settings.duplicateLimit, 5);
+	assert.equal(settings.warningLimit, 10);
+	assert.equal(getGroupSafetySettings(null).isAntiSpamOn, false);
+});
+
+test("legacy welcome text remains enabled unless explicitly disabled", () => {
+	assert.equal(getGroupSafetySettings({ welcome: "Hello" }).isWelcomeOn, true);
+	assert.equal(
+		getGroupSafetySettings({ welcome: "Hello", isWelcomeOn: false }).isWelcomeOn,
+		false,
+	);
+});
+
+test("link detection honors exact domains and their subdomains", () => {
+	assert.deepEqual(extractLinkHosts("See https://news.example.com/a and wa.me/123"), [
+		"news.example.com",
+		"wa.me",
+	]);
+	assert.equal(hasDisallowedLink("https://news.example.com/a", ["example.com"]), false);
+	assert.equal(hasDisallowedLink("https://evil-example.com", ["example.com"]), true);
+	assert.equal(hasDisallowedLink("ordinary group conversation", []), false);
+});
+
+test("join/leave templates replace every supported placeholder", () => {
+	assert.equal(
+		renderTemplate("Hi {user} in {group}; users={users}; count={count}", {
+			users: "@1, @2",
+			group: "Alpha",
+			count: 20,
+		}),
+		"Hi @1, @2 in Alpha; users=@1, @2; count=20",
+	);
+});
+
+test("spam tracker detects duplicate messages and applies a cooldown", () => {
+	clearSpamTracker();
+	const settings = { spamWindowSeconds: 10, spamLimit: 6, duplicateLimit: 3 };
+	assert.equal(detectSpam({ key: "g:u", body: "hello", settings, now: 0 }), null);
+	assert.equal(detectSpam({ key: "g:u", body: " hello ", settings, now: 1000 }), null);
+	assert.equal(
+		detectSpam({ key: "g:u", body: "HELLO", settings, now: 2000 }),
+		"Repeated-message spam",
+	);
+	assert.equal(detectSpam({ key: "g:u", body: "hello", settings, now: 3000 }), null);
+});
+
+test("spam tracker detects a flood inside the configured window", () => {
+	clearSpamTracker();
+	const settings = { spamWindowSeconds: 5, spamLimit: 4, duplicateLimit: 3 };
+	assert.equal(detectSpam({ key: "g:u", body: "one", settings, now: 0 }), null);
+	assert.equal(detectSpam({ key: "g:u", body: "two", settings, now: 1000 }), null);
+	assert.equal(detectSpam({ key: "g:u", body: "three", settings, now: 2000 }), null);
+	assert.equal(
+		detectSpam({ key: "g:u", body: "four", settings, now: 3000 }),
+		"Message flood detected",
+	);
+});

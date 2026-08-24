@@ -1,7 +1,7 @@
-import { extractPhoneNumber } from "../../../utils/lid.js";
+import { isSameGroupUser } from "../../../utils/groupParticipants.js";
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
-	let { botNumber, sendMessageWTyping, groupAdmins, extendedMessageOriginal } = msgInfoObj;
+	let { groupMetadata, botJids, isBotAdmin, sendMessageWTyping, extendedMessageOriginal } = msgInfoObj;
 
 	try {
 		if (!extendedMessageOriginal) {
@@ -9,14 +9,9 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		}
 
 		const participant = extendedMessageOriginal.participant;
-		// Use extractPhoneNumber for LID/PN compatibility
-		if (
-			!(
-				extractPhoneNumber(participant) == extractPhoneNumber(botNumber[0]) ||
-				extractPhoneNumber(participant) == extractPhoneNumber(botNumber[1])
-			)
-		) {
-			if (!groupAdmins.includes(botNumber[0]) && !groupAdmins.includes(botNumber[1]))
+		const isBotMessage = isSameGroupUser(groupMetadata, participant, botJids);
+		if (!isBotMessage) {
+			if (!isBotAdmin)
 				return sendMessageWTyping(
 					from,
 					{ text: `❌ Bot need to be admin in order to delete messages.` },
@@ -31,11 +26,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			participant: extendedMessageOriginal.participant,
 		};
 
-		if (
-			extractPhoneNumber(participant) == extractPhoneNumber(botNumber[0]) ||
-			extractPhoneNumber(participant) == extractPhoneNumber(botNumber[1])
-		) {
-			options.remoteJid = botNumber[0];
+		if (isBotMessage) {
 			options.fromMe = true;
 		}
 

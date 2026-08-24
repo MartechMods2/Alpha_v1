@@ -1,139 +1,176 @@
 import fs from "fs";
 import yts from "yt-search";
-import ffmpeg from "ffmpeg-static";
+import ffmpegStatic from "ffmpeg-static";
 import defaultYoutubedl, { create } from "youtube-dl-exec";
 import memoryManager from "../../../utils/memory.js";
-import { readFileEfficiently, isValidAudioFile } from "../../../utils/file.js";
-
-const getRandom = (ext) => memoryManager.generateTempFileName(ext);
-
-// Use the system yt-dlp binary when YTDLP_PATH is set (e.g. /usr/local/bin/yt-dlp on
-// the server). Otherwise fall back to the binary bundled with youtube-dl-exec.
-const youtubedl = process.env.YTDLP_PATH ? create(process.env.YTDLP_PATH) : defaultYoutubedl;
-
+import { isValidAudioFile, readFileEfficiently } from "../../../utils/file.js";
 import { getCookiePath } from "../../../functions/cookieManager.js";
 
-const ytdlpOpts = async (extra = {}) => {
-	const opts = {
+const youtubedl = process.env.YTDLP_PATH ? create(process.env.YTDLP_PATH) : defaultYoutubedl;
+const audioCache = new Map();
+const requestCooldowns = new Map();
+const CACHE_TTL_MS = 15 * 60_000;
+const MAX_CACHE_BYTES = 35 * 1024 * 1024;
+const MAX_TRACK_BYTES = 25 * 1024 * 1024;
+
+const normalizeQuery = (value) =>
+	String(value || "")
+		.trim()
+		.replace(/\s+/g, " ")
+		.slice(0, 120);
+
+const safeFileName = (title) =>
+	String(title || "song")
+		.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "")
+		.trim()
+		.slice(0, 100) || "song";
+
+const purgeAudioCache = (now = Date.now()) => {
+	for (const [key, entry] of audioCache) {
+		if (entry.expires <= now) audioCache.delete(key);
+	}
+	let total = [...audioCache.values()].reduce((sum, entry) => sum + entry.buffer.length, 0);
+	while (total > MAX_CACHE_BYTES || audioCache.size > 3) {
+		const oldestKey = audioCache.keys().next().value;
+		if (!oldestKey) break;
+		total -= audioCache.get(oldestKey).buffer.length;
+		audioCache.delete(oldestKey);
+	}
+};
+
+const rememberAudio = (key, entry) => {
+	if (entry.buffer.length > 12 * 1024 * 1024) return;
+	audioCache.delete(key);
+	audioCache.set(key, { ...entry, expires: Date.now() + CACHE_TTL_MS });
+	purgeAudioCache();
+};
+
+const ytdlpOptions = async (extra = {}) => {
+	const options = {
 		noCheckCertificates: true,
 		noWarnings: true,
 		noPlaylist: true,
 		forceIpv4: true,
-		ffmpegLocation: ffmpeg,
-		// tv + android_vr work without a PO token (server-side, no browser). web is
-		// kept last as a cookie-backed extra. android/ios are dead on modern YouTube.
+		ffmpegLocation: process.env.FFMPEG_PATH || ffmpegStatic || "ffmpeg",
 		extractorArgs: "youtube:player_client=tv,android_vr,web",
-		// yt-dlp now requires an EJS runtime to solve YouTube JS challenges (2026+).
-		// Node.js is available in the container, so use it.
 		jsRuntimes: "node",
 		...extra,
 	};
 	const cookiePath = await getCookiePath();
-	if (cookiePath) opts.cookies = cookiePath;
-	return opts;
+	if (cookiePath) options.cookies = cookiePath;
+	return options;
 };
 
-const findSongURL = async (name) => {
-	const r = await yts(`${name}`);
-	if (!r.all || r.all.length === 0) throw new Error("No results found");
-	return r.all[0].url;
+const resolveTrack = async (query) => {
+	if (/^https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(query)) {
+		const info = await youtubedl(query, await ytdlpOptions({ dumpSingleJson: true }));
+		if ((info.duration || 0) > 12 * 60) throw new Error("Track is longer than 12 minutes");
+		return { url: query, title: info.title || "Song" };
+	}
+	const results = await yts(query);
+	const track = (results.videos || []).find(
+		(video) => video.url && (!video.seconds || video.seconds <= 12 * 60),
+	);
+	if (!track) throw new Error("No song under 12 minutes was found");
+	return { url: track.url, title: track.title || query };
+};
+
+const sendTrack = async ({ from, msg, command, sendMessageWTyping, buffer, title }) => {
+	const fileName = `${safeFileName(title)}.mp3`;
+	if (command === "songdoc" || command === "mp3file") {
+		return sendMessageWTyping(
+			from,
+			{
+				document: buffer,
+				mimetype: "audio/mpeg",
+				fileName,
+				caption: `🎵 *${safeFileName(title)}*`,
+			},
+			{ quoted: msg },
+		);
+	}
+	return sendMessageWTyping(
+		from,
+		{ audio: buffer, mimetype: "audio/mpeg", fileName, ptt: false },
+		{ quoted: msg },
+	);
 };
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
-	const { evv, command, sendMessageWTyping } = msgInfoObj;
+	const { command, senderJid, sendMessageWTyping } = msgInfoObj;
+	const query = normalizeQuery(args.join(" "));
+	if (!query) {
+		return sendMessageWTyping(
+			from,
+			{ text: "❌ Usage: `song artist - title`" },
+			{ quoted: msg },
+		);
+	}
 
-	if (!args[0]) return sendMessageWTyping(from, { text: `❌ *Enter song name*` }, { quoted: msg });
+	const cacheKey = query.toLowerCase();
+	purgeAudioCache();
+	const cached = audioCache.get(cacheKey);
+	if (cached) {
+		return sendTrack({ from, msg, command, sendMessageWTyping, ...cached });
+	}
 
-	await sendMessageWTyping(from, { text: `🔍 Searching for: *${evv}*...` }, { quoted: msg });
-	console.log("Song request:", evv);
-
-	const fileDown = getRandom(".mp3");
-	let title = "Unknown Song";
+	const now = Date.now();
+	if ((requestCooldowns.get(senderJid) || 0) > now) {
+		return sendMessageWTyping(
+			from,
+			{ text: "⏳ Song cooldown: wait 45 seconds before requesting another download." },
+			{ quoted: msg },
+		);
+	}
+	requestCooldowns.set(senderJid, now + 45_000);
+	const outputPath = memoryManager.generateTempFileName(".mp3");
 
 	try {
-		let URL;
-		try {
-			URL = await findSongURL(evv);
-			console.log("Found URL:", URL);
-		} catch (searchError) {
-			console.error("Search failed:", searchError);
-			return sendMessageWTyping(from, { text: `❌ No songs found for: *${evv}*` }, { quoted: msg });
-		}
-
-		await sendMessageWTyping(from, { text: `⏳ Downloading audio...` }, { quoted: msg });
-
-		// Title (best-effort)
-		try {
-			const info = await youtubedl(URL, await ytdlpOpts({ dumpSingleJson: true }));
-			title = info.title || "Unknown Song";
-		} catch (e) {
-			console.log("Title fetch failed:", e.message);
-		}
-
-		// Download + extract to mp3 (yt-dlp uses ffmpeg-static)
+		const track = await resolveTrack(query);
 		await youtubedl(
-			URL,
-			await ytdlpOpts({
+			track.url,
+			await ytdlpOptions({
 				format: "bestaudio/best",
 				extractAudio: true,
 				audioFormat: "mp3",
-				audioQuality: 0,
-				output: fileDown,
-			})
+				audioQuality: 5,
+				output: outputPath,
+			}),
 		);
-
-		if (!fs.existsSync(fileDown)) throw new Error("Audio file was not created");
-		if (!isValidAudioFile(fileDown)) throw new Error("Invalid audio file generated");
-
-		const stats = await fs.promises.stat(fileDown);
-		const fileSizeMB = stats.size / 1024 / 1024;
-		if (stats.size === 0) throw new Error("Downloaded file is empty");
-		if (fileSizeMB > 50) throw new Error(`File too large: ${fileSizeMB.toFixed(2)}MB (max 50MB)`);
-
-		console.log(`Audio ready: ${fileSizeMB.toFixed(2)}MB - ${title}`);
-
-		const audioBuffer = await readFileEfficiently(fileDown);
-		let sock_data;
-		if (command === "song") {
-			sock_data = {
-				document: audioBuffer,
-				mimetype: "audio/mpeg",
-				fileName: `${title}.mp3`,
-				ptt: true,
-				caption: `🎵 *${title}*\n📊 Size: ${fileSizeMB.toFixed(2)}MB`,
-			};
-		} else {
-			sock_data = {
-				audio: audioBuffer,
-				mimetype: "audio/mpeg",
-				fileName: `${title}.mp3`,
-			};
+		if (!fs.existsSync(outputPath) || !isValidAudioFile(outputPath)) {
+			throw new Error("A valid MP3 file was not produced");
 		}
-
-		await sendMessageWTyping(from, sock_data, { quoted: msg });
-		console.log("Audio sent successfully");
-	} catch (err) {
-		console.error("Song download error:", err);
-		const m = (err.message || "").toLowerCase();
-		let errorMsg = "❌ Download failed. ";
-		if (m.includes("sign in to confirm") || m.includes("bot")) {
-			errorMsg += "YouTube is blocking this server. Set YTDLP_COOKIES to fix.";
-		} else if (m.includes("age")) {
-			errorMsg += "Age-restricted. Set YTDLP_COOKIES to download.";
-		} else if (m.includes("too large")) {
-			errorMsg += err.message;
-		} else {
-			errorMsg += "Please try again with a different song.";
+		const stats = await fs.promises.stat(outputPath);
+		if (stats.size > MAX_TRACK_BYTES) throw new Error("Track is larger than the 25MB safety limit");
+		const buffer = await readFileEfficiently(outputPath, MAX_TRACK_BYTES, false);
+		rememberAudio(cacheKey, { buffer, title: track.title });
+		return sendTrack({
+			from,
+			msg,
+			command,
+			sendMessageWTyping,
+			buffer,
+			title: track.title,
+		});
+	} catch (error) {
+		requestCooldowns.delete(senderJid);
+		console.error("Song download failed:", error.message);
+		const message = String(error.message || "").toLowerCase();
+		let detail = "Try a more specific song title.";
+		if (message.includes("sign in") || message.includes("bot")) {
+			detail = "YouTube blocked this server; refresh the configured cookies.";
+		} else if (message.includes("12 minutes") || message.includes("25mb")) {
+			detail = error.message;
 		}
-		await sendMessageWTyping(from, { text: errorMsg }, { quoted: msg });
+		return sendMessageWTyping(from, { text: `❌ Song failed. ${detail}` }, { quoted: msg });
 	} finally {
-		memoryManager.safeUnlink(fileDown);
+		memoryManager.safeUnlink(outputPath);
 	}
 };
 
 export default () => ({
-	cmd: ["song", "play"],
-	desc: "Download song",
-	usage: "song | play | song [song name]",
+	cmd: ["song", "play", "songdoc", "mp3file"],
+	desc: "Find a song and send it directly as playable MP3 audio",
+	usage: "song <artist - title> | songdoc <artist - title>",
 	handler,
 });
