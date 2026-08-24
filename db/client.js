@@ -33,6 +33,18 @@ const mdClient = new MongoClient(uri, {
 			{ groupJid: 1, points: -1, wins: -1, bestStreak: -1 },
 			{ background: true },
 		);
+		await db.collection("GameDailyChallenges").createIndex(
+			{ groupJid: 1, dateKey: -1 },
+			{ background: true },
+		);
+		await db.collection("GameDailyChallenges").createIndex(
+			{ expiresAt: 1 },
+			{ background: true, expireAfterSeconds: 0 },
+		);
+		await db.collection("GroupTools").createIndex(
+			{ updatedAt: -1 },
+			{ background: true },
+		);
 	} catch (err) {
 		console.error("Error connecting to MongoDB:", err);
 	}

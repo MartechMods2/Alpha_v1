@@ -27,6 +27,20 @@ const triviaBanks = Object.freeze({
 		["What is the capital of Kenya?", ["nairobi"]],
 		["Which country is home to the pyramids of Giza?", ["egypt"]],
 	],
+	sports: [
+		["How many players does one football team have on the pitch at kick-off?", ["11", "eleven"]],
+		["How many minutes are in a standard football match before added time?", ["90", "ninety"]],
+		["Which sport uses a racket and a shuttlecock?", ["badminton"]],
+		["How many points is a free throw worth in basketball?", ["1", "one"]],
+		["Which country hosted the first modern Olympic Games in 1896?", ["greece"]],
+	],
+	naija: [
+		["What is the capital city of Nigeria?", ["abuja"]],
+		["What are Nigeria's national colours?", ["green and white", "green white"]],
+		["Which city is popularly called the Centre of Excellence?", ["lagos"]],
+		["How many geopolitical zones does Nigeria have?", ["6", "six"]],
+		["What is Nigeria's currency called?", ["naira", "the naira"]],
+	],
 });
 
 const riddles = Object.freeze([
@@ -45,6 +59,35 @@ const emojiPuzzles = Object.freeze([
 	["🐝 + 🍃", ["belief", "believe"]],
 	["📚 + 🪱", ["bookworm"]],
 	["🌙 + 🚶", ["moonwalk", "moonwalking"]],
+]);
+
+const oddOneOutPuzzles = Object.freeze([
+	["apple · mango · carrot · banana", ["carrot"]],
+	["lion · tiger · goat · leopard", ["goat"]],
+	["triangle · square · circle · cube", ["cube"]],
+	["keyboard · mouse · monitor · bicycle", ["bicycle"]],
+	["Monday · Friday · August · Sunday", ["august"]],
+	["red · blue · green · seven", ["seven", "7"]],
+]);
+
+const flagPuzzles = Object.freeze([
+	["🇳🇬", ["nigeria"]],
+	["🇬🇭", ["ghana"]],
+	["🇿🇦", ["south africa"]],
+	["🇰🇪", ["kenya"]],
+	["🇨🇦", ["canada"]],
+	["🇯🇵", ["japan"]],
+	["🇧🇷", ["brazil"]],
+	["🇫🇷", ["france"]],
+]);
+
+const trueFalsePuzzles = Object.freeze([
+	["A triangle has four sides.", ["false"]],
+	["Water freezes at 0°C under normal atmospheric pressure.", ["true"]],
+	["The Pacific Ocean is larger than the Atlantic Ocean.", ["true"]],
+	["A byte contains eight bits.", ["true"]],
+	["The Moon is a planet.", ["false"]],
+	["Abuja is the capital of Nigeria.", ["true"]],
 ]);
 
 const scrambleWords = Object.freeze([
@@ -119,7 +162,56 @@ export const createGameRound = (game, option = "", random = Math.random) => {
 		const phrase = pick(fastTypePhrases, random);
 		return { game, title: "Fast Type", prompt: phrase, answers: [phrase], points: 8 };
 	}
+	if (game === "oddoneout") {
+		const [prompt, answers] = pick(oddOneOutPuzzles, random);
+		return { game, title: "Odd One Out", prompt, answers, points: 10 };
+	}
+	if (game === "flagguess") {
+		const [prompt, answers] = pick(flagPuzzles, random);
+		return { game, title: "Flag Sprint", prompt: `Name this country: ${prompt}`, answers, points: 10 };
+	}
+	if (game === "truefalse") {
+		const [prompt, answers] = pick(trueFalsePuzzles, random);
+		return { game, title: "True or False", prompt, answers, points: 8 };
+	}
+	if (game === "numberguess") {
+		const answer = 1 + Math.floor(random() * 20);
+		return {
+			game,
+			title: "Number Hunt",
+			prompt: "I picked a whole number from 1 to 20. Guess it.",
+			answers: [String(answer)],
+			points: 15,
+		};
+	}
 	throw new Error("Unknown game type");
 };
 
 export const gameCategories = Object.freeze(Object.keys(triviaBanks));
+
+export const createSeededRandom = (seedValue) => {
+	let state = [...String(seedValue)].reduce(
+		(hash, character) => Math.imul(hash ^ character.charCodeAt(0), 16777619) >>> 0,
+		2166136261,
+	);
+	return () => {
+		state += 0x6d2b79f5;
+		let value = state;
+		value = Math.imul(value ^ (value >>> 15), value | 1);
+		value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+		return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+	};
+};
+
+export const createDailyGameRound = (groupJid, dateKey) => {
+	const random = createSeededRandom(`${groupJid}:${dateKey}:alpha-daily`);
+	const categories = gameCategories;
+	const category = categories[Math.floor(random() * categories.length)];
+	return {
+		...createGameRound("trivia", category, random),
+		game: "daily",
+		title: `Daily Challenge · ${dateKey}`,
+		points: 25,
+		dailyKey: dateKey,
+	};
+};

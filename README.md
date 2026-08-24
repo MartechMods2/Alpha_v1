@@ -326,6 +326,34 @@ The scored Game Arena adds group-wide rounds and persistent MongoDB standings:
 -gamereset confirm                admin-only season reset
 ```
 
+Competitive Arena extensions:
+
+```text
+-trivia [general|science|tech|africa|sports|naija]
+-oddoneout   -flagguess   -truefalse   -numberguess
+-dailychallenge                   one deterministic 25-point race per group/day
+-battle @member                   issue a head-to-head quiz challenge
+-acceptbattle                     accept the invitation
+-battleanswer <answer>            first correct duellist wins 20 points
+-battleboard                      duel ranking by wins
+-badges                           personal trophy cabinet
+-seasonstats                      group-wide season totals
+```
+
+The group toolkit stores useful shared information in MongoDB and only responds when requested:
+
+```text
+-groupkit                         show the toolkit guide
+-gnote save Title | text          save a shared note (three per non-admin member)
+-gnote list / read 1 / delete 1
+-todo add <task>                   collaborative task board
+-todo list / done 1 / undo 1 / remove 1
+-birthday set DD-MM               save day/month only; no birth year
+-birthday list / remove
+-countdown YYYY-MM-DD | event     calculate an event countdown
+-groupkitreset confirm            admin-only toolkit reset
+```
+
 Media Studio commands are deliberately request-driven: `-meme top | bottom` creates a local captioned meme from a sent or replied image, `-textsticker` creates a sticker locally, and `-aisticker` uses remove.bg to produce a transparent cut-out sticker. `-song` sends one playable MP3 result, while `-songdoc` sends the same result as a downloadable document. Only download media you are permitted to use.
 
 The outbound queue spaces group sends, automated join/leave notices are batched into one message per event, command bursts are rate-limited, and synthetic typing/presence events are disabled. These safeguards reduce unnecessary automation traffic, but no unofficial WhatsApp client can guarantee that an account will not be restricted.
@@ -369,6 +397,7 @@ Create a `.env` file in the project root with the following keys.
 | ----------------------- | ---------------------------------------------------------------------------------------- |
 | `PORT`                  | Server port (default: `8000`)                                                            |
 | `NODE_ENV`              | `development` or `production`                                                            |
+| `BOT_TIMEZONE`          | Time zone used for daily challenges. Default: `Africa/Lagos`                             |
 | `SESSION_SECRET`        | Secret used to sign the session cookie. Set a strong random string in production.        |
 | `GOOGLE_API_KEY`        | Google/Gemini API key — used by the AI chatbot (`-chat`) and image generation commands   |
 | `GOOGLE_API_KEY_SEARCH` | Google API key for the Custom Search API — used by the `-img` image search command       |
@@ -410,6 +439,7 @@ ADMIN_PASSWORD=supersecretpassword
 # Optional
 PORT=8000
 NODE_ENV=production
+BOT_TIMEZONE=Africa/Lagos
 SESSION_SECRET=change_this_to_a_random_string
 MESSAGE_DELAY_MS=500
 GROUP_MESSAGE_DELAY_MS=900

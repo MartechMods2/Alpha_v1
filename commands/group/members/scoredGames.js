@@ -1,13 +1,18 @@
 import {
+	claimDailyChallenge,
 	getGameLeaderboard,
 	getGameProfile,
+	getGroupGameStats,
+	getDailyChallengeClaim,
 	recordGameResult,
 } from "../../../db/gameData.js";
 import {
+	createDailyGameRound,
 	createGameRound,
 	gameCategories,
 	isCorrectGameAnswer,
 } from "../../../utils/gameEngine.js";
+import { getGameAchievements, getNextGameAchievement } from "../../../utils/gameAchievements.js";
 import { formatGameRank, getGameRank } from "../../../utils/gameRanks.js";
 
 const activeRounds = new Map();
@@ -16,6 +21,14 @@ const infoCooldowns = new Map();
 const rpsCooldowns = new Map();
 const ROUND_TTL_MS = 2 * 60_000;
 const START_COOLDOWN_MS = 30_000;
+
+const localDateKey = (date = new Date()) => {
+	try {
+		return date.toLocaleDateString("en-CA", { timeZone: process.env.BOT_TIMEZONE || "Africa/Lagos" });
+	} catch {
+		return date.toISOString().slice(0, 10);
+	}
+};
 
 const safeName = (value, senderJid) =>
 	String(value || senderJid?.split("@")[0] || "Player")
@@ -46,12 +59,27 @@ const startRound = async ({ from, msg, command, args, senderJid, sendMessageWTyp
 			{ quoted: msg },
 		);
 	}
+	let roundData;
+	if (command === "dailychallenge" || command === "dailygame") {
+		const dateKey = localDateKey();
+		const claim = await getDailyChallengeClaim(from, dateKey);
+		if (claim) {
+			return sendMessageWTyping(
+				from,
+				{ text: `🌞 Today's challenge was won by *${safeName(claim.name, claim.memberJid)}*. A new one unlocks tomorrow.` },
+				{ quoted: msg },
+			);
+		}
+		roundData = createDailyGameRound(from, dateKey);
+	} else {
+		const option = String(args[0] || "").toLowerCase();
+		roundData = createGameRound(command, option);
+	}
 	if ((startCooldowns.get(from) || 0) > now) return;
 	startCooldowns.set(from, now + START_COOLDOWN_MS);
 
-	const option = String(args[0] || "").toLowerCase();
 	const round = {
-		...createGameRound(command, option),
+		...roundData,
 		startedBy: senderJid,
 		startedAt: now,
 		expires: now + ROUND_TTL_MS,
@@ -92,6 +120,23 @@ const answerRound = async ({ from, msg, args, senderJid, updateName, sendMessage
 	round.attempts.add(senderJid);
 	if (!isCorrectGameAnswer(answer, round.answers)) return;
 
+	if (round.dailyKey) {
+		const claimed = await claimDailyChallenge({
+			groupJid: from,
+			dateKey: round.dailyKey,
+			memberJid: senderJid,
+			name: safeName(updateName, senderJid),
+		});
+		if (!claimed) {
+			activeRounds.delete(from);
+			const winner = await getDailyChallengeClaim(from, round.dailyKey);
+			return sendMessageWTyping(
+				from,
+				{ text: `🌞 Too late—*${safeName(winner?.name, winner?.memberJid)}* claimed today's challenge first.` },
+				{ quoted: msg },
+			);
+		}
+	}
 	activeRounds.delete(from);
 	const profile = await recordGameResult({
 		groupJid: from,
@@ -102,12 +147,13 @@ const answerRound = async ({ from, msg, args, senderJid, updateName, sendMessage
 		won: true,
 		correct: true,
 	});
+	const badges = getGameAchievements(profile);
 	return sendMessageWTyping(
 		from,
 		{
 			text:
 				`✅ *${safeName(updateName, senderJid)}* wins! The answer is *${round.answers[0]}*.\n` +
-				`+${round.points} points · 🔥 ${profile.streak} streak · ${formatGameRank(profile.points)}`,
+				`+${round.points} points · 🔥 ${profile.streak} streak · ${formatGameRank(profile.points)} · 🎖️ ${badges.length} badges`,
 		},
 		{ quoted: msg },
 	);
@@ -156,6 +202,7 @@ const showScore = async ({ from, msg, senderJid, updateName, sendMessageWTyping 
 		name: safeName(updateName, senderJid), points: 0, plays: 0, wins: 0, correct: 0, streak: 0, bestStreak: 0,
 	};
 	const rank = getGameRank(profile.points);
+	const achievements = getGameAchievements(profile);
 	const progress = rank.next ? `${rank.pointsToNext} points to ${rank.next.emoji} ${rank.next.name}` : "Maximum rank reached";
 	return sendMessageWTyping(
 		from,
@@ -163,7 +210,41 @@ const showScore = async ({ from, msg, senderJid, updateName, sendMessageWTyping 
 			text:
 				`🎮 *${safeName(profile.name, senderJid)}'s Game Card*\n\n` +
 				`Rank: *${rank.emoji} ${rank.name}*\nPoints: *${profile.points || 0}*\nWins: *${profile.wins || 0}*\n` +
-				`Games: *${profile.plays || 0}*\nCurrent streak: *${profile.streak || 0}*\nBest streak: *${profile.bestStreak || 0}*\n${progress}`,
+				`Games: *${profile.plays || 0}*\nCurrent streak: *${profile.streak || 0}*\nBest streak: *${profile.bestStreak || 0}*\n` +
+				`Badges: *${achievements.length}*\n${progress}`,
+		},
+		{ quoted: msg },
+	);
+};
+
+const showAchievements = async ({ from, msg, senderJid, updateName, sendMessageWTyping }) => {
+	const profile = (await getGameProfile(from, senderJid)) || { name: safeName(updateName, senderJid) };
+	const earned = getGameAchievements(profile);
+	const next = getNextGameAchievement(profile);
+	const rows = earned.length
+		? earned.map((badge) => `${badge.emoji} *${badge.name}*`).join("\n")
+		: "No badges yet—win your first game to unlock one.";
+	return sendMessageWTyping(
+		from,
+		{
+			text:
+				`🎖️ *${safeName(profile.name, senderJid)}'s Trophy Cabinet*\n\n${rows}\n\n` +
+				(next ? `Next target: ${next.emoji} *${next.name}*` : "Every achievement unlocked!"),
+		},
+		{ quoted: msg },
+	);
+};
+
+const showSeasonStats = async ({ from, msg, sendMessageWTyping }) => {
+	const stats = await getGroupGameStats(from);
+	return sendMessageWTyping(
+		from,
+		{
+			text:
+				"📈 *Arena Season Statistics*\n\n" +
+				`Players: *${stats.players || 0}*\nGames recorded: *${stats.plays || 0}*\n` +
+				`Wins: *${stats.wins || 0}*\nPoints awarded: *${stats.points || 0}*\n` +
+				`Best streak: *${stats.bestStreak || 0}*`,
 		},
 		{ quoted: msg },
 	);
@@ -188,7 +269,10 @@ const showLeaderboard = async ({ from, msg, sendMessageWTyping }) => {
 const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const { command, senderJid, updateName, sendMessageWTyping } = msgInfoObj;
 	try {
-		if (["trivia", "mathgame", "scramble", "emojiguess", "riddle", "fasttype"].includes(command)) {
+		if ([
+			"trivia", "mathgame", "scramble", "emojiguess", "riddle", "fasttype", "oddoneout",
+			"flagguess", "truefalse", "numberguess", "dailychallenge", "dailygame",
+		].includes(command)) {
 			return startRound({ from, msg, command, args, senderJid, sendMessageWTyping });
 		}
 		if (command === "answer") return answerRound({ from, msg, args, senderJid, updateName, sendMessageWTyping });
@@ -204,13 +288,20 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		if (["gameboard", "gameleaderboard", "glb"].includes(command)) {
 			return showLeaderboard({ from, msg, sendMessageWTyping });
 		}
+		if (["badges", "achievements", "trophies"].includes(command)) {
+			return showAchievements({ from, msg, senderJid, updateName, sendMessageWTyping });
+		}
+		if (["seasonstats", "arenastats"].includes(command)) {
+			return showSeasonStats({ from, msg, sendMessageWTyping });
+		}
 		return sendMessageWTyping(
 			from,
 			{
 				text:
 					"🎮 *Alpha Game Arena*\n\n" +
-					"Scored: `trivia [general|science|tech|africa]`, `mathgame`, `scramble`, `emojiguess`, `riddle`, `fasttype`, `rps <choice>`\n" +
-					"Play: `answer <answer>`\nStats: `gamescore`, `gameboard`\n\n" +
+					"Group races: `trivia [category]`, `mathgame`, `scramble`, `emojiguess`, `riddle`, `fasttype`, `oddoneout`, `flagguess`, `truefalse`, `numberguess`\n" +
+					"Special: `dailychallenge`, `rps <choice>`, `battle @member`\n" +
+					"Play: `answer <answer>`\nStats: `gamescore`, `gameboard`, `badges`, `seasonstats`, `battleboard`\n\n" +
 					"One active quiz per group, one attempt per player, and no replies to wrong answers—fun without flooding the chat.",
 			},
 			{ quoted: msg },
@@ -226,7 +317,9 @@ export const clearActiveGame = (groupJid) => activeRounds.delete(groupJid);
 export default () => ({
 	cmd: [
 		"trivia", "mathgame", "scramble", "emojiguess", "riddle", "fasttype", "answer", "rps",
-		"gamescore", "myscore", "gameboard", "gameleaderboard", "glb", "gamehelp",
+		"oddoneout", "flagguess", "truefalse", "numberguess", "dailychallenge", "dailygame",
+		"gamescore", "myscore", "gameboard", "gameleaderboard", "glb", "badges", "achievements",
+		"trophies", "seasonstats", "arenastats", "gamehelp",
 	],
 	desc: "Persistent scored group games, streaks, ranks and leaderboard",
 	usage: "gamehelp | trivia [category] | answer <answer> | gamescore | gameboard",

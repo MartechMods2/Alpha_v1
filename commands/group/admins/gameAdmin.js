@@ -1,5 +1,6 @@
 import { resetGroupGameScores } from "../../../db/gameData.js";
 import { clearActiveGame } from "../members/scoredGames.js";
+import { clearGroupBattle } from "../members/quizBattle.js";
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const { sendMessageWTyping } = msgInfoObj;
@@ -9,6 +10,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	}
 	const result = await resetGroupGameScores(from);
 	clearActiveGame(from);
+	clearGroupBattle(from);
 	return reply(`✅ Game season reset. Cleared *${result.deletedCount || 0}* player records.`);
 };
 

@@ -14,7 +14,10 @@ test("game answers ignore case, punctuation and repeated spaces", () => {
 });
 
 test("every scored round has a prompt, answer and bounded points", () => {
-	for (const game of ["trivia", "mathgame", "scramble", "emojiguess", "riddle", "fasttype"]) {
+	for (const game of [
+		"trivia", "mathgame", "scramble", "emojiguess", "riddle", "fasttype",
+		"oddoneout", "flagguess", "truefalse", "numberguess",
+	]) {
 		const round = createGameRound(game, "science", () => 0.25);
 		assert.equal(round.game, game);
 		assert.ok(round.prompt.length > 0);
@@ -24,8 +27,17 @@ test("every scored round has a prompt, answer and bounded points", () => {
 });
 
 test("unknown trivia categories fall back safely", () => {
-	assert.deepEqual(gameCategories, ["general", "science", "tech", "africa"]);
+	assert.deepEqual(gameCategories, ["general", "science", "tech", "africa", "sports", "naija"]);
 	assert.equal(createGameRound("trivia", "not-a-category", () => 0).category, "general");
+});
+
+test("daily challenge is deterministic for a group and date", async () => {
+	const { createDailyGameRound } = await import("../utils/gameEngine.js");
+	const first = createDailyGameRound("123@g.us", "2026-08-24");
+	const second = createDailyGameRound("123@g.us", "2026-08-24");
+	assert.deepEqual(first, second);
+	assert.equal(first.game, "daily");
+	assert.equal(first.points, 25);
 });
 
 test("unknown game type is rejected", () => {
