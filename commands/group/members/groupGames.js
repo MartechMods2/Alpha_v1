@@ -42,14 +42,6 @@ const compliments = [
 	"Your presence adds something good to this group.",
 ];
 
-const riddles = [
-	{ question: "What has keys but cannot open locks?", answer: "A piano." },
-	{ question: "What gets wetter as it dries?", answer: "A towel." },
-	{ question: "What has a face and two hands but no arms or legs?", answer: "A clock." },
-	{ question: "What can travel around the world while staying in one corner?", answer: "A stamp." },
-	{ question: "What has many teeth but cannot bite?", answer: "A comb." },
-];
-
 const eightBall = [
 	"Yes — go for it.",
 	"Very likely.",
@@ -61,7 +53,6 @@ const eightBall = [
 ];
 
 const cooldowns = new Map();
-const pendingRiddles = new Map();
 const COOLDOWN_MS = 10_000;
 
 const randomItem = (items) => items[Math.floor(Math.random() * items.length)];
@@ -75,12 +66,6 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	if (cooldowns.size > 2000) {
 		for (const [entry, expires] of cooldowns) if (expires <= now) cooldowns.delete(entry);
 	}
-	if (pendingRiddles.size > 2000) {
-		for (const [entry, riddle] of pendingRiddles) {
-			if (riddle.expires <= now) pendingRiddles.delete(entry);
-		}
-	}
-
 	let text;
 	switch (command) {
 		case "truth":
@@ -118,21 +103,6 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 				: "✨ Give me at least two choices separated by `|`.";
 			break;
 		}
-		case "riddle": {
-			const riddle = randomItem(riddles);
-			pendingRiddles.set(`${from}:${senderJid}`, { ...riddle, expires: now + 5 * 60_000 });
-			text = `🧩 *Riddle*\n${riddle.question}\n\nUse the answer command within 5 minutes.`;
-			break;
-		}
-		case "answer": {
-			const riddle = pendingRiddles.get(`${from}:${senderJid}`);
-			if (!riddle || riddle.expires < now) text = "🧩 Start a new riddle first.";
-			else {
-				text = `🧩 *Answer:* ${riddle.answer}`;
-				pendingRiddles.delete(`${from}:${senderJid}`);
-			}
-			break;
-		}
 		default:
 			return;
 	}
@@ -152,10 +122,8 @@ export default () => ({
 		"dice",
 		"8ball",
 		"choose",
-		"riddle",
-		"answer",
 	],
 	desc: "Low-volume group games and icebreakers",
-	usage: "truth | dare | wyr | icebreaker | riddle | answer | dice [sides] | choose a | b",
+	usage: "truth | dare | wyr | icebreaker | dice [sides] | choose a | b",
 	handler,
 });
