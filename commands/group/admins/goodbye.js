@@ -1,10 +1,8 @@
 import { getGroupData, group } from "../../../db/groupData.js";
-import { getGroupSafetySettings } from "../../../utils/groupSafety.js";
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const { sendMessageWTyping } = msgInfoObj;
 	const groupData = await getGroupData(from);
-	const settings = getGroupSafetySettings(groupData);
 	const action = args[0]?.toLowerCase();
 
 	if (!action) {
@@ -12,26 +10,26 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			from,
 			{
 				text:
-					`👋 Auto-welcome: *${settings.isWelcomeOn ? "ON" : "OFF"}*\n` +
-					`Template: ${groupData?.welcome || "(default)"}\n\n` +
+					`👋 Auto-goodbye: *${groupData?.isGoodbyeOn ? "ON" : "OFF"}*\n` +
+					`Template: ${groupData?.goodbye || "(default)"}\n\n` +
 					"Placeholders: {user}, {users}, {group}, {count}",
 			},
 			{ quoted: msg },
 		);
 	}
 	if (action === "on" || action === "off") {
-		await group.updateOne({ _id: from }, { $set: { isWelcomeOn: action === "on" } });
+		await group.updateOne({ _id: from }, { $set: { isGoodbyeOn: action === "on" } });
 		return sendMessageWTyping(
 			from,
-			{ text: `✅ Auto-welcome turned *${action.toUpperCase()}*.` },
+			{ text: `✅ Auto-goodbye turned *${action.toUpperCase()}*.` },
 			{ quoted: msg },
 		);
 	}
 	if (action === "reset") {
-		await group.updateOne({ _id: from }, { $set: { welcome: "", isWelcomeOn: false } });
+		await group.updateOne({ _id: from }, { $set: { goodbye: "", isGoodbyeOn: false } });
 		return sendMessageWTyping(
 			from,
-			{ text: "✅ Welcome template reset and auto-welcome disabled." },
+			{ text: "✅ Goodbye template reset and auto-goodbye disabled." },
 			{ quoted: msg },
 		);
 	}
@@ -42,21 +40,21 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	if (!template) {
 		return sendMessageWTyping(
 			from,
-			{ text: "❌ Add a welcome message after `welcome set`." },
+			{ text: "❌ Add a goodbye message after `goodbye set`." },
 			{ quoted: msg },
 		);
 	}
-	await group.updateOne({ _id: from }, { $set: { welcome: template, isWelcomeOn: true } });
+	await group.updateOne({ _id: from }, { $set: { goodbye: template, isGoodbyeOn: true } });
 	return sendMessageWTyping(
 		from,
-		{ text: `✅ Welcome template saved and enabled:\n${template}` },
+		{ text: `✅ Goodbye template saved and enabled:\n${template}` },
 		{ quoted: msg },
 	);
 };
 
 export default () => ({
-	cmd: ["welcome"],
-	desc: "Configure one-message auto-welcome",
-	usage: "welcome on/off | set <message> | reset",
+	cmd: ["goodbye"],
+	desc: "Configure one-message auto-goodbye",
+	usage: "goodbye on/off | set <message> | reset",
 	handler,
 });

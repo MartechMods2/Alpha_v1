@@ -8,10 +8,17 @@ import { readFileEfficiently } from "../utils/file.js";
 import { getGroupMeta, setGroupMeta, checkRateLimit } from "../cache/redisCache.js";
 
 const prefix = process.env.PREFIX;
-const moderatos = [...process.env.MODERATORS?.split(",")];
+const moderatos = (process.env.MODERATORS || "")
+	.split(",")
+	.map((number) => number.replace(/[^0-9]/g, ""))
+	.filter(Boolean);
 import getGroupAdmins from "../utils/groupAdmins.js";
 import { extractPhoneNumber, getPNFromLID } from "../utils/lid.js";
-import { getBotIdentityJids, isJidGroupAdmin } from "../utils/groupParticipants.js";
+import {
+	getBotIdentityJids,
+	isJidGroupAdmin,
+	isSameGroupUser,
+} from "../utils/groupParticipants.js";
 import { createMembersData, getMemberData, member } from "../db/members.js";
 import { createGroupData, getGroupData, group } from "../db/groupData.js";
 import {
@@ -25,6 +32,7 @@ import {
 import { getBotData } from "../db/botData.js";
 import { saveChatMessage } from "../utils/chatLogger.js";
 import { getRankUp } from "../utils/ranks.js";
+import { handleAutomodMessage } from "../utils/automod.js";
 
 // ── FOOLPROOF REWRITE FOR OWNER/BOT IDENTIFICATION ─────────────────
 const cleanMyNum = (process.env.MY_NUMBER || "").split(",")[0].replace(/[^0-9]/g, "");
@@ -43,6 +51,9 @@ const botNumber = [
 	cleanBotNum
 ];
 // ─────────────────────────────────────────────────────────────────
+
+const tagStickerCooldowns = new Map();
+const TAG_STICKER_COOLDOWN_MS = 60_000;
 
 // Cached tag sticker - loaded once at startup
 let _tagStickerBuffer = null;
@@ -99,13 +110,6 @@ const getCommand = async (sock, msg, cache) => {
 				}
 
 				const doSend = async () => {
-					if (!isGroupChat) {
-						sock.presenceSubscribe(to).catch(() => {});
-						await new Promise((resolve) => setTimeout(resolve, 300));
-						sock.sendPresenceUpdate("composing", to).catch(() => {});
-						await new Promise((resolve) => setTimeout(resolve, 500));
-					}
-
 					try {
 						const sendOptions = {
 							...messageOptions,
@@ -116,10 +120,6 @@ const getCommand = async (sock, msg, cache) => {
 					} catch (err) {
 						console.error("❌ Error sending message:", err.message);
 						throw err;
-					} finally {
-						if (!isGroupChat) {
-							sock.sendPresenceUpdate("paused", to).catch(() => {});
-						}
 					}
 				};
 
@@ -198,7 +198,7 @@ const getCommand = async (sock, msg, cache) => {
 		//-------------------------------------------------------------------------------------------------------------//
 		const isGroup = from.endsWith("@g.us");
 		const senderJid = isGroup ? msg.key.participant : msg.key.remoteJid;
-		const isOwner = myNumber.includes(senderJid) || msg.key.fromMe === true;
+		let isOwner = myNumber.includes(senderJid) || msg.key.fromMe === true;
 		if (!senderJid || !senderJid.includes("@")) return;
 
 		const updateId = msg.key.fromMe ? botNumber[0] : senderJid;
@@ -344,24 +344,10 @@ const getCommand = async (sock, msg, cache) => {
 					]);
 					setGroupMeta(from, groupMetadata); // Redis (async, non-blocking)
 					cache.set(from + ":groupMetadata", groupMetadata, 10 * 60); // NodeCache fallback
-					createGroupData(from, groupMetadata).catch((e) =>
-						console.error("[createGroupData error]", e.message),
-					);
+					await createGroupData(from, groupMetadata);
 				} catch (e) {
 					console.error("Group metadata fetch failed:", e.message);
 					groupMetadata = { participants: [] };
-				}
-			}
-		}
-		if (msg.message.extendedTextMessage) {
-			const rawMentioned = msg.message.extendedTextMessage.contextInfo?.mentionedJid;
-			const mentioned = Array.isArray(rawMentioned) ? rawMentioned : rawMentioned ? [rawMentioned] : [];
-			if (mentioned.includes(botNumber[0]) || mentioned.includes(botNumber[1])) {
-				try {
-					const stickerBuffer = await getTagSticker();
-					sendMessageWTyping(from, { sticker: stickerBuffer }, { quoted: msg });
-				} catch (err) {
-					console.error("Failed to send tag sticker:", err.message);
 				}
 			}
 		}
@@ -381,7 +367,13 @@ const getCommand = async (sock, msg, cache) => {
 			senderData = null;
 			groupDataFetched = null;
 		}
-		if (isGroup) groupData = groupDataFetched;
+		if (isGroup) {
+			groupData = groupDataFetched;
+			if (!groupData && groupMetadata?.subject) {
+				await createGroupData(from, groupMetadata);
+				groupData = await getGroupData(from);
+			}
+		}
 		if (isGroup && type == "imageMessage" && groupData?.isAutoStickerOn) {
 			if (msg.message.imageMessage.caption == "") {
 				commandsPublic["sticker"](sock, msg, from, args, {
@@ -415,6 +407,64 @@ const getCommand = async (sock, msg, cache) => {
 		const isGroupAdmin = isGroup ? isJidGroupAdmin(groupMetadata, senderIdentityJids) : false;
 		const botJids = isGroup ? await getBotIdentityJids(sock, groupMetadata, botNumber) : [];
 		const isBotAdmin = isGroup ? isJidGroupAdmin(groupMetadata, botJids) : false;
+		if (isGroup && !isOwner) {
+			isOwner = myNumber.some((ownerJid) =>
+				isSameGroupUser(groupMetadata, senderJid, ownerJid),
+			);
+		}
+
+		// Conservative automod: group-only, opt-in, non-command messages only,
+		// with admin/owner exemptions and at most one warning action per message.
+		if (isGroup && !isCmd && body && !msg.key.fromMe) {
+			try {
+				const automodResult = await handleAutomodMessage({
+					sock,
+					msg,
+					groupJid: from,
+					senderJid,
+					body,
+					isCommand: isCmd,
+					isOwner,
+					isGroupAdmin,
+					groupData,
+					groupMetadata,
+					botJids,
+					isBotAdmin,
+					sendMessageWTyping,
+				});
+				if (automodResult.handled) return;
+			} catch (error) {
+				console.error("[automod error]", error.message);
+			}
+		}
+
+		if (isGroup && !isCmd && msg.message.extendedTextMessage) {
+			const rawMentioned = msg.message.extendedTextMessage.contextInfo?.mentionedJid;
+			const mentioned = Array.isArray(rawMentioned)
+				? rawMentioned
+				: rawMentioned
+					? [rawMentioned]
+					: [];
+			const cooldownKey = `${from}:${senderJid}`;
+			const maySendTagSticker = (tagStickerCooldowns.get(cooldownKey) || 0) <= Date.now();
+			const botWasMentioned = mentioned.some((jid) =>
+				isSameGroupUser(groupMetadata, jid, botJids),
+			);
+			if (maySendTagSticker && botWasMentioned) {
+				tagStickerCooldowns.set(cooldownKey, Date.now() + TAG_STICKER_COOLDOWN_MS);
+				try {
+					const stickerBuffer = await getTagSticker();
+					sendMessageWTyping(from, { sticker: stickerBuffer }, { quoted: msg });
+				} catch (error) {
+					console.error("Failed to send tag sticker:", error.message);
+				}
+			}
+			if (tagStickerCooldowns.size > 2000) {
+				for (const [key, expires] of tagStickerCooldowns) {
+					if (expires <= Date.now()) tagStickerCooldowns.delete(key);
+				}
+			}
+		}
 
 		//--------------------------------------------CHAT-BOT-FEATURE------------------------------------------------//
 		const isChatBotOn = groupData ? groupData.isChatBotOn : false;
@@ -423,12 +473,12 @@ const getCommand = async (sock, msg, cache) => {
 			let tagMessage = null;
 			if (type == "extendedTextMessage") {
 				let tagMessageSenderJID = msg.message?.extendedTextMessage?.contextInfo?.participant;
-				isTaggedBot = tagMessageSenderJID === botNumber[0] || tagMessageSenderJID === botNumber[1];
+				isTaggedBot = isSameGroupUser(groupMetadata, tagMessageSenderJID, botJids);
 				tagMessage = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
 			}
 			if (
 				body.split(" ")[0].toLowerCase() == "eva" ||
-				(isTaggedBot &&
+				(isTaggedBot && tagMessage &&
 					Object.keys(tagMessage)[0] == "conversation" &&
 					tagMessage?.conversation.startsWith("_*Eva:*_"))
 			) {
@@ -462,12 +512,15 @@ const getCommand = async (sock, msg, cache) => {
 		//---------------------------------------------------NO-CMD----------------------------------------------------//
 		if (!isCmd) return;
 		//-------------------------------------------------------------------------------------------------------------//
-		// Rate limit: 3 calls per 5s per user per command (owners exempt)
-		// if (!isOwner) {
-		// const allowed = await checkRateLimit(senderJid, command);
-		// if (!allowed) return console.log("Rate limit exceeded for", senderJid, "command:", command);
-
-		// }
+		// Keep command bursts from turning into high-volume automated sends.
+		// Owners are exempt so recovery/admin commands remain available.
+		if (!isOwner) {
+			const allowed = await checkRateLimit(senderJid, command, 3);
+			if (!allowed) {
+				console.log("Rate limit exceeded for", senderJid, "command:", command);
+				return;
+			}
+		}
 		sock.readMessages([msg.key]).catch(() => {});
 
 		const msgInfoObj = {
@@ -580,7 +633,7 @@ const getCommand = async (sock, msg, cache) => {
 					{ text: "```❎ This command is only applicable in Groups!```" },
 					{ quoted: msg },
 				);
-			} else if (isGroupAdmin || moderatos.includes(senderNumber) || myNumber.includes(senderJid)) {
+			} else if (isGroupAdmin || moderatos.includes(senderNumber) || isOwner) {
 				result = await commandsAdmins[command](sock, msg, from, args, msgInfoObj);
 			} else {
 				result = await sendMessageWTyping(
@@ -595,7 +648,7 @@ const getCommand = async (sock, msg, cache) => {
 		} else if (commandsOwners[command]) {
 			const t0 = Date.now();
 			let result;
-			if (moderatos.includes(senderNumber) || myNumber.includes(senderJid)) {
+			if (moderatos.includes(senderNumber) || isOwner) {
 				result = await commandsOwners[command](sock, msg, from, args, msgInfoObj);
 			} else {
 				result = await sendMessageWTyping(

@@ -2,6 +2,8 @@ import dotenv from "dotenv";
 dotenv.config();
 import { extractPhoneNumber } from "../../../utils/lid.js";
 import { getGroupData } from "../../../db/groupData.js";
+import { getGroupSafetySettings } from "../../../utils/groupSafety.js";
+import { getGroupWarningCount } from "../../../utils/moderation.js";
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
 	let { senderJid, sendMessageWTyping, extendedMessageOriginal } = msgInfoObj;
@@ -19,23 +21,20 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		}
 	}
 	const groupData = await getGroupData(from);
-	let warnCount;
-	if (groupData && groupData !== -1 && Array.isArray(groupData.memberWarnCount)) {
-		groupData.memberWarnCount.forEach((element, index) => {
-			if (element.member == taggedJid) {
-				warnCount = element.count;
-				return;
-			}
-		});
-	} else {
-		warnCount = 0;
-	}
-	warnCount = warnCount == undefined ? 0 : warnCount;
+	const warnCount = getGroupWarningCount(groupData, taggedJid);
+	const { warningLimit, warningAction } = getGroupSafetySettings(groupData);
 	// Use extractPhoneNumber for LID/PN compatibility
 	let phoneNumber = extractPhoneNumber(taggedJid);
 	let warnMsg;
-	const bars = "🔴".repeat(warnCount) + "⚪".repeat(3 - warnCount);
-	warnMsg = `⚠️ *Warning Status*\n\n@${phoneNumber}\n${bars} *(${warnCount}/3)*\n\n${warnCount === 0 ? "_No warnings — keep it clean!_" : warnCount >= 3 ? "_⛔ At limit — next violation = kick._" : "_Behave or risk removal._"}`;
+	const bars = "🔴".repeat(Math.min(warnCount, warningLimit)) +
+		"⚪".repeat(Math.max(0, warningLimit - warnCount));
+	warnMsg =
+		`⚠️ *Warning Status*\n\n@${phoneNumber}\n${bars} *(${warnCount}/${warningLimit})*\n\n` +
+		(warnCount === 0
+			? "_No warnings — keep it clean!_"
+			: warnCount >= warningLimit
+				? `_Limit reached — policy: ${warningAction}._`
+				: "_Please follow the group rules._");
 	sendMessageWTyping(from, { text: warnMsg, mentions: [taggedJid] }, { quoted: msg });
 };
 

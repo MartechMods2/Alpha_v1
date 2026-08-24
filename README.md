@@ -92,8 +92,9 @@ A feature-rich WhatsApp bot with a modern React/Vite admin dashboard. Supports d
 |      -tagall       | Send an attendance alert to all members |     `-tagall message`     |            ✔            |
 |    -ref_delete     |    Delete a company (Admin only)       |      `-ref_delete Google`  |            ✔            |
 |    -ref_update     |  Update a company name (Admin only)    | `-ref_update Google Alphabet` |         ✔            |
-|   -warning set     |       Set warning limit for group        |     `-warning set 3`      |            ✔            |
-|  -welcome msg      |     Set custom welcome message          | `-welcome msg Welcome!`   |            ✔            |
+|      -automod      | Configure warnings, anti-link and spam   |     `-automod status`     |            ✔            |
+|      -goodbye      |     Set an automatic goodbye message    | `-goodbye set Bye {user}` |            ✔            |
+|       -rules       |          View or set group rules         |         `-rules`          |            ✔            |
 
 <br>
 
@@ -258,6 +259,58 @@ group isBotOn:true
 
 ---
 
+## Group Safety and Fun Pack
+
+All new automatic features are disabled by default. Start with status, enable only what the group needs, and change one setting at a time:
+
+```text
+-automod status
+-welcome set Welcome {users} to *{group}*! Please read -rules.
+-welcome on
+-goodbye set Goodbye {users}. Thanks for being part of *{group}*.
+-goodbye on
+-rules set 1. Be respectful. 2. No spam. 3. Ask before sharing links.
+```
+
+Configure warning-based moderation:
+
+```text
+# Remove a non-admin member when the third warning is reached
+-automod warnings 3 remove
+
+# Only notify admins at the limit; do not remove anyone
+-automod warnings 3 notify
+
+-warn @member repeated spam
+-unwarn @member
+-getwarn @member
+```
+
+Anti-link and anti-spam are opt-in. Admins, the group owner, and the bot are exempt from automatic actions:
+
+```text
+-automod antilink on warn
+-automod allow add youtube.com
+-automod allow list
+
+-automod spam 6 12 3
+-automod antispam on
+```
+
+`antilink on delete` deletes the triggering message when the bot is an admin and also records a warning. Anti-spam warns after either the configured message flood or duplicate-message threshold, then applies a one-minute cooldown so one burst cannot produce repeated bot replies.
+
+Low-volume, on-demand group games include:
+
+```text
+-truth        -dare          -wyr           -icebreaker
+-compliment   -coinflip      -dice 20       -8ball <question>
+-choose tea | coffee         -riddle        -answer
+```
+
+The outbound queue spaces group sends, automated join/leave notices are batched into one message per event, command bursts are rate-limited, and synthetic typing/presence events are disabled. These safeguards reduce unnecessary automation traffic, but no unofficial WhatsApp client can guarantee that an account will not be restricted.
+
+---
+
 # Deploy on Koyeb.com
 
 1. Create an account at [https://app.koyeb.com/auth/signup](https://app.koyeb.com/auth/signup).
@@ -337,6 +390,9 @@ ADMIN_PASSWORD=supersecretpassword
 PORT=8000
 NODE_ENV=production
 SESSION_SECRET=change_this_to_a_random_string
+MESSAGE_DELAY_MS=500
+GROUP_MESSAGE_DELAY_MS=900
+MAX_CONCURRENT_SENDS=2
 
 # Google / Gemini — AI chatbot and image generation
 GOOGLE_API_KEY=your_google_gemini_api_key_here
