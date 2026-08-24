@@ -1,9 +1,9 @@
 import { normalizeJID } from "../../../utils/lid.js";
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
-	const { evv, groupAdmins, sendMessageWTyping, botNumber, extendedMessageOriginal } = msgInfoObj;
+	const { evv, isBotAdmin, sendMessageWTyping, extendedMessageOriginal } = msgInfoObj;
 
-	if (!groupAdmins.includes(botNumber[0]) && !groupAdmins.includes(botNumber[1])) {
+	if (!isBotAdmin) {
 		return sendMessageWTyping(from, { text: "❌ Bot needs to be admin to add members." }, { quoted: msg });
 	}
 	if (!evv && !extendedMessageOriginal && !args[0]) {
@@ -17,7 +17,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	let participant =
 		(extendedMessageOriginal &&
 			(extendedMessageOriginal.participant || extendedMessageOriginal.mentionedJid?.[0])) ||
-		evv.split(" ").join("");
+		(evv || args[0] || "").split(" ").join("");
 	if (participant.startsWith("@")) {
 		return sendMessageWTyping(
 			from,
@@ -26,12 +26,9 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		);
 	}
 
+	participant = participant.replace(/[^0-9@.a-z]/gi, "");
 	// Use normalizeJID for LID/PN support
 	participant = await normalizeJID(sock, participant);
-
-	if (participant.startsWith("+")) {
-		participant = participant.split("+")[1];
-	}
 
 	try {
 		const res = await sock.groupParticipantsUpdate(from, [participant], "add");

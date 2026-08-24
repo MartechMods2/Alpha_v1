@@ -4,6 +4,7 @@ import { fake_quoted } from "../utils/fakeQuoted.js";
 import { getGroupData } from "../db/groupData.js";
 import { extractPhoneNumber, formatJIDForDisplay } from "../utils/lid.js";
 import messageQueue from "../queue/messageQueue.js";
+import { delGroupMeta } from "../cache/redisCache.js";
 
 const getPhone = (p) =>
 	typeof p === "string"
@@ -14,6 +15,7 @@ const getGroupEvent = async (sock, events, cache) => {
 	let jid = events.id;
 	let groupDataDB = await getGroupData(jid);
 	cache.del(jid + ":groupMetadata");
+	await delGroupMeta(jid);
 	// Group doc is only created on first text message (see core/messages.js) — a join
 	// event can fire before that ever happens, so bail instead of crashing on null.
 	if (!groupDataDB) return;

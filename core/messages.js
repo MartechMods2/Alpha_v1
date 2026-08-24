@@ -11,6 +11,7 @@ const prefix = process.env.PREFIX;
 const moderatos = [...process.env.MODERATORS?.split(",")];
 import getGroupAdmins from "../utils/groupAdmins.js";
 import { extractPhoneNumber, getPNFromLID } from "../utils/lid.js";
+import { getBotIdentityJids, isJidGroupAdmin } from "../utils/groupParticipants.js";
 import { createMembersData, getMemberData, member } from "../db/members.js";
 import { createGroupData, getGroupData, group } from "../db/groupData.js";
 import {
@@ -395,8 +396,25 @@ const getCommand = async (sock, msg, cache) => {
 		}
 		//-------------------------------------------------------------------------------------------------------------//
 		if (senderData?.isBlock) return;
-		const groupAdmins = isGroup ? getGroupAdmins(groupMetadata.participants) : "";
-		const isGroupAdmin = groupAdmins?.includes(senderJid) || false;
+		// Admin membership changes must take effect immediately. Refresh metadata
+		// once here instead of making every admin command issue its own request.
+		if (isCmd && isGroup && commandsAdmins[command]) {
+			try {
+				const freshMetadata = await sock.groupMetadata(from);
+				if (freshMetadata?.participants) {
+					groupMetadata = freshMetadata;
+					setGroupMeta(from, freshMetadata);
+					cache.set(from + ":groupMetadata", freshMetadata, 10 * 60);
+				}
+			} catch (error) {
+				console.warn("Could not refresh group metadata for admin command:", error.message);
+			}
+		}
+		const groupAdmins = isGroup ? getGroupAdmins(groupMetadata.participants) : [];
+		const senderIdentityJids = [senderJid, msg.key.participantPn, msg.key.participantAlt].filter(Boolean);
+		const isGroupAdmin = isGroup ? isJidGroupAdmin(groupMetadata, senderIdentityJids) : false;
+		const botJids = isGroup ? await getBotIdentityJids(sock, groupMetadata, botNumber) : [];
+		const isBotAdmin = isGroup ? isJidGroupAdmin(groupMetadata, botJids) : false;
 
 		//--------------------------------------------CHAT-BOT-FEATURE------------------------------------------------//
 		const isChatBotOn = groupData ? groupData.isChatBotOn : false;
@@ -464,6 +482,8 @@ const getCommand = async (sock, msg, cache) => {
 			groupAdmins,
 			isGroupAdmin,
 			botNumber,
+			botJids,
+			isBotAdmin,
 			sendMessageWTyping,
 			notifyOwner,
 			updateName,

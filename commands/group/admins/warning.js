@@ -1,15 +1,24 @@
 import { getGroupData, createGroupData, group } from "../../../db/groupData.js";
 import { createMembersData, getMemberData, member } from "../../../db/members.js";
 import { extractPhoneNumber } from "../../../utils/lid.js";
+import { isJidGroupAdmin, isSameGroupUser } from "../../../utils/groupParticipants.js";
 
 import { config } from "dotenv";
 config();
-const myNumber = [
-	process.env.MY_NUMBER.split(",")[0] + "@s.whatsapp.net",
-	process.env.MY_NUMBER.split(",")[1] + "@lid",
-];
+const myNumber = (process.env.MY_NUMBER || "")
+	.split(",")
+	.map((number) => number.replace(/[^0-9]/g, ""))
+	.filter(Boolean)
+	.map((number) => `${number}@s.whatsapp.net`);
 const handler = async (sock, msg, from, args, msgInfoObj) => {
-	let { command, groupAdmins, sendMessageWTyping, botNumber, extendedMessageOriginal } = msgInfoObj;
+	let {
+		command,
+		groupMetadata,
+		botJids,
+		isBotAdmin,
+		sendMessageWTyping,
+		extendedMessageOriginal,
+	} = msgInfoObj;
 	try {
 		if (!extendedMessageOriginal) {
 			return sendMessageWTyping(from, { text: "❌ Tag someone! or reply to a message" }, { quoted: msg });
@@ -21,11 +30,11 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		}
 		// JID is already in correct format (LID or PN)
 
-		let isGroupAdmin = groupAdmins.includes(taggedJid);
+		let isGroupAdmin = isJidGroupAdmin(groupMetadata, taggedJid);
 		if (command != "unwarn") {
-			if (taggedJid == botNumber[0] || taggedJid == botNumber[1])
+			if (isSameGroupUser(groupMetadata, taggedJid, botJids))
 				return sendMessageWTyping(from, { text: `_How can I warn Myself_` }, { quoted: msg });
-			if (myNumber.includes(taggedJid))
+			if (myNumber.some((ownerJid) => isSameGroupUser(groupMetadata, taggedJid, ownerJid)))
 				return sendMessageWTyping(from, { text: `_Owner or Moderator cannot be warned_` }, { quoted: msg });
 		}
 		const groupData = await getGroupData(from);
@@ -100,7 +109,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 									{ $push: { warning: { group: from, count: warnCount } } }
 								);
 							if (warnCount >= 3) {
-								if (!groupAdmins.includes(botNumber[0]) && !groupAdmins.includes(botNumber[1])) {
+								if (!isBotAdmin) {
 									sendMessageWTyping(from, { text: "❌ I'm not Admin here!" }, { quoted: msg });
 									return;
 								}

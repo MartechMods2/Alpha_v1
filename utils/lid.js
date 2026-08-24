@@ -33,12 +33,12 @@ export function isGroup(jid) {
  */
 export async function getLIDFromPN(sock, phoneNumber) {
 	try {
-		// Remove @s.whatsapp.net if present
-		const cleanNumber = phoneNumber.replace("@s.whatsapp.net", "");
+		const cleanNumber = phoneNumber.replace(/[^0-9]/g, "");
+		const pnJid = cleanNumber + "@s.whatsapp.net";
 
 		// Try to get LID from the mapping repository
 		if (sock?.signalRepository?.lidMapping) {
-			const lid = await sock.signalRepository.lidMapping.getLIDForPN(cleanNumber);
+			const lid = await sock.signalRepository.lidMapping.getLIDForPN(pnJid);
 			if (lid) return lid;
 		}
 
@@ -46,7 +46,7 @@ export async function getLIDFromPN(sock, phoneNumber) {
 		return cleanNumber + "@s.whatsapp.net";
 	} catch (error) {
 		console.error("Error getting LID from PN:", error);
-		const cleanNumber = phoneNumber.replace("@s.whatsapp.net", "");
+		const cleanNumber = phoneNumber.replace(/[^0-9]/g, "");
 		return cleanNumber + "@s.whatsapp.net";
 	}
 }
@@ -57,10 +57,10 @@ export async function getLIDFromPN(sock, phoneNumber) {
  * @param {string} lid - The LID to convert
  * @returns {string|null} The phone number in PN format, or null if not found
  */
-export function getPNFromLID(sock, lid) {
+export async function getPNFromLID(sock, lid) {
 	try {
 		if (sock?.signalRepository?.lidMapping) {
-			return sock.signalRepository.lidMapping.getPNForLID(lid);
+			return await sock.signalRepository.lidMapping.getPNForLID(lid);
 		}
 		return null;
 	} catch (error) {
@@ -102,10 +102,13 @@ export async function normalizeJID(sock, identifier) {
 		return identifier;
 	}
 
+	const cleanNumber = identifier.replace(/[^0-9]/g, "");
+	const pnJid = cleanNumber + "@s.whatsapp.net";
+
 	// Try to get LID (preferred format)
 	try {
 		if (sock?.signalRepository?.lidMapping) {
-			const lid = await sock.signalRepository.lidMapping.getLIDForPN(identifier);
+			const lid = await sock.signalRepository.lidMapping.getLIDForPN(pnJid);
 			if (lid) return lid;
 		}
 	} catch (error) {
@@ -113,7 +116,7 @@ export async function normalizeJID(sock, identifier) {
 	}
 
 	// Fallback to PN format
-	return identifier + "@s.whatsapp.net";
+	return pnJid;
 }
 
 /**

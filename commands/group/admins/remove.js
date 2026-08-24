@@ -1,19 +1,25 @@
 import { config } from "dotenv";
+import {
+	isGroupOwner,
+	isJidGroupAdmin,
+	isSameGroupUser,
+} from "../../../utils/groupParticipants.js";
 config();
-const myNumbers = [
-	process.env.MY_NUMBER.split(",")[0] + "@s.whatsapp.net",
-	process.env.MY_NUMBER.split(",")[1] + "@lid",
-];
+const myNumbers = (process.env.MY_NUMBER || "")
+	.split(",")
+	.map((number) => number.replace(/[^0-9]/g, ""))
+	.filter(Boolean)
+	.map((number) => `${number}@s.whatsapp.net`);
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
-	const { groupAdmins, sendMessageWTyping, groupMetadata, botNumber, extendedMessageOriginal } = msgInfoObj;
+	const { sendMessageWTyping, groupMetadata, botJids, isBotAdmin, extendedMessageOriginal } = msgInfoObj;
 	// return sendMessageWTyping(
 	//     from,
 	//     { text: "```❌ The admin commands are blocked for sometime to avoid ban on whatsapp!```" },
 	//     { quoted: msg }
 	// );
 
-	if (!groupAdmins.includes(botNumber[0]) && !groupAdmins.includes(botNumber[1])) {
+	if (!isBotAdmin) {
 		return sendMessageWTyping(from, { text: `❌ I'm not admin here` }, { quoted: msg });
 	}
 
@@ -26,7 +32,12 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		return sendMessageWTyping(from, { text: `*Mention or tag member.*` }, { quoted: msg });
 	}
 
-	if (taggedJid === groupMetadata.owner || myNumbers.includes(taggedJid) || groupAdmins.includes(taggedJid)) {
+	if (
+		isGroupOwner(groupMetadata, taggedJid) ||
+		myNumbers.some((ownerJid) => isSameGroupUser(groupMetadata, taggedJid, ownerJid)) ||
+		isSameGroupUser(groupMetadata, taggedJid, botJids) ||
+		isJidGroupAdmin(groupMetadata, taggedJid)
+	) {
 		return sendMessageWTyping(from, { text: `❌ *Can't remove Bot/Owner/admin*` }, { quoted: msg });
 	}
 
