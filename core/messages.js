@@ -35,6 +35,7 @@ import { getRankUp } from "../utils/ranks.js";
 import { handleAutomodMessage } from "../utils/automod.js";
 import {
 	buildAlphaPrompt,
+	canUseAlphaMention,
 	isAlphaQuiet,
 	normalizeAlphaSettings,
 	stripBotMention,
@@ -464,6 +465,13 @@ const getCommand = async (sock, msg, cache) => {
 		const botWasMentioned = alphaMentioned.some((jid) => isSameGroupUser(groupMetadata, jid, botJids));
 		if (isGroup && isChatBotOn && !isCmd && botWasMentioned) {
 			const settings = normalizeAlphaSettings(groupData);
+			if (!canUseAlphaMention({
+				settings,
+				senderJid,
+				isAdmin: isGroupAdmin,
+				isOwner,
+				matches: (left, right) => isSameGroupUser(groupMetadata, left, right),
+			})) return;
 			const cooldownKey = `${from}:${senderJid}`;
 			const now = Date.now();
 			if (settings.alphaMode === "off" || isAlphaQuiet(settings) || (tagStickerCooldowns.get(cooldownKey) || 0) > now) return;
@@ -542,6 +550,14 @@ const getCommand = async (sock, msg, cache) => {
 				"i",
 			).test(quotedText.trim());
 			if (body.split(" ")[0].toLowerCase() == "eva" || isAlphaReply) {
+				const settings = normalizeAlphaSettings(groupData);
+				if (!canUseAlphaMention({
+					settings,
+					senderJid,
+					isAdmin: isGroupAdmin,
+					isOwner,
+					matches: (left, right) => isSameGroupUser(groupMetadata, left, right),
+				})) return;
 				commandsPublic["eva"](sock, msg, from, args, {
 					sendMessageWTyping,
 					command,
