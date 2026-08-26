@@ -13,9 +13,10 @@ const call = async (method, path, body) => {
 }
 
 export const api = {
-  get:   (path)        => call('GET',   path),
-  post:  (path, body)  => call('POST',  path, body),
-  patch: (path, body)  => call('PATCH', path, body),
+	get:   (path)        => call('GET',   path),
+	post:  (path, body)  => call('POST',  path, body),
+	patch: (path, body)  => call('PATCH', path, body),
+	delete: (path)       => call('DELETE', path),
 }
 
 // Auth
@@ -89,6 +90,18 @@ export const sendDirect      = (jid, message) => api.post('/api/admin/dm', { jid
 // YT Cookies
 export const getYtCookies  = ()        => api.get('/api/admin/yt-cookies')
 export const saveYtCookies = (content) => api.post('/api/admin/yt-cookies', { content })
+
+// Media Studio
+export const getMediaStudio = () => api.get('/api/admin/media-studio')
+export const updateMediaStudio = (settings) => api.patch('/api/admin/media-studio', settings)
+export const retryMediaJob = (id) => api.post(`/api/admin/media-studio/jobs/${encodeURIComponent(id)}/retry`)
+export const getSavedStickers = (group = '') => api.get(`/api/admin/media-studio/stickers${group ? `?group=${encodeURIComponent(group)}` : ''}`)
+export const deleteSavedSticker = (id) => api.delete(`/api/admin/media-studio/stickers/${encodeURIComponent(id)}`)
+export const getMemeTemplates = () => api.get('/api/admin/media-studio/templates')
+export const saveMemeTemplate = (name, templateId) => api.post('/api/admin/media-studio/templates', { name, templateId })
+export const deleteMemeTemplate = (id) => api.delete(`/api/admin/media-studio/templates/${encodeURIComponent(id)}`)
+export const exportGroupConfig = (jid) => api.get(`/api/admin/groups/${encodeURIComponent(jid)}/export`)
+export const importGroupConfig = (jid, payload) => api.post(`/api/admin/groups/${encodeURIComponent(jid)}/import`, payload)
 
 // Helpers
 export function fmtUptime(secs) {

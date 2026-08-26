@@ -12,6 +12,7 @@ import Health from './pages/Health.jsx'
 import Logs from './pages/Logs.jsx'
 import DirectMessage from './pages/DirectMessage.jsx'
 import Settings from './pages/Settings.jsx'
+import MediaStudio from './pages/MediaStudio.jsx'
 
 // ── Contexts ───────────────────────────────────────────────────────────────────
 export const ToastCtx = createContext(null)
@@ -90,7 +91,8 @@ export default function App() {
                     <Route path="health" element={<Health />} />
                     <Route path="logs" element={<Logs />} />
                     <Route path="dm" element={<DirectMessage />} />
-                    <Route path="settings" element={<Settings />} />
+					<Route path="settings" element={<Settings />} />
+					<Route path="media-studio" element={<MediaStudio />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Layout>

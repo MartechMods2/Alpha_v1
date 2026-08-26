@@ -2,7 +2,17 @@ import mdClient from "./client.js";
 
 const groupTools = mdClient.db("MyBotDataDB").collection("GroupTools");
 
-const blankData = (groupJid) => ({ _id: groupJid, notes: [], todos: [], birthdays: [] });
+const blankData = (groupJid) => ({
+	_id: groupJid,
+	notes: [],
+	todos: [],
+	birthdays: [],
+	events: [],
+	decisions: [],
+	bookmarks: [],
+	minutes: [],
+	activeMeeting: null,
+});
 
 export const getGroupTools = async (groupJid) => (await groupTools.findOne({ _id: groupJid })) || blankData(groupJid);
 
@@ -72,8 +82,47 @@ export const removeGroupBirthday = (groupJid, memberJid) =>
 export const resetGroupTools = (groupJid) =>
 	groupTools.updateOne(
 		{ _id: groupJid },
-		{ $set: { notes: [], todos: [], birthdays: [], updatedAt: new Date() } },
+		{ $set: { notes: [], todos: [], birthdays: [], events: [], decisions: [], bookmarks: [], minutes: [], activeMeeting: null, updatedAt: new Date() } },
 		{ upsert: true },
 	);
+
+export const addGroupEvent = (groupJid, event) => groupTools.updateOne(
+	{ _id: groupJid },
+	{ $push: { events: { $each: [event], $slice: -50 } }, $set: { updatedAt: new Date() } },
+	{ upsert: true },
+);
+export const removeGroupEvent = (groupJid, eventId) => groupTools.updateOne({ _id: groupJid }, { $pull: { events: { id: eventId } }, $set: { updatedAt: new Date() } });
+
+export const addGroupDecision = (groupJid, decision) => groupTools.updateOne(
+	{ _id: groupJid },
+	{ $push: { decisions: { $each: [decision], $slice: -50 } }, $set: { updatedAt: new Date() } },
+	{ upsert: true },
+);
+export const removeGroupDecision = (groupJid, decisionId) => groupTools.updateOne({ _id: groupJid }, { $pull: { decisions: { id: decisionId } }, $set: { updatedAt: new Date() } });
+
+export const addGroupBookmark = (groupJid, bookmark) => groupTools.updateOne(
+	{ _id: groupJid },
+	{ $push: { bookmarks: { $each: [bookmark], $slice: -50 } }, $set: { updatedAt: new Date() } },
+	{ upsert: true },
+);
+export const removeGroupBookmark = (groupJid, bookmarkId) => groupTools.updateOne({ _id: groupJid }, { $pull: { bookmarks: { id: bookmarkId } }, $set: { updatedAt: new Date() } });
+
+export const startGroupMeeting = (groupJid, meeting) => groupTools.updateOne(
+	{ _id: groupJid },
+	{ $set: { activeMeeting: meeting, updatedAt: new Date() } },
+	{ upsert: true },
+);
+export const addMeetingEntry = (groupJid, entry) => groupTools.updateOne(
+	{ _id: groupJid, activeMeeting: { $ne: null } },
+	{ $push: { "activeMeeting.entries": { $each: [entry], $slice: -100 } }, $set: { updatedAt: new Date() } },
+);
+export const finishGroupMeeting = async (groupJid, minutes) => {
+	await groupTools.updateOne(
+		{ _id: groupJid },
+		{ $push: { minutes: { $each: [minutes], $slice: -20 } }, $set: { activeMeeting: null, updatedAt: new Date() } },
+		{ upsert: true },
+	);
+	return minutes;
+};
 
 export { groupTools };

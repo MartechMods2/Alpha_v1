@@ -5,6 +5,8 @@ import { normalizeJID } from "./utils/lid.js";
 import adminRouter from "./routes/admin.js";
 import messageQueue from "./queue/messageQueue.js";
 import { pushLog, subscribe as subscribeAdminEvents, getLogs, getActivity } from "./notify/adminEvents.js";
+import { getBotData } from "./db/botData.js";
+import { setMediaRuntimeConfig } from "./utils/mediaJobs.js";
 
 // ── Console interceptor — feeds log ring buffer + deduplication ──────────────
 const _log   = console.log.bind(console);
@@ -257,6 +259,14 @@ wss.on("connection", (ws) => {
 
 // ── Bot start ─────────────────────────────────────────────────────────────────
 async function startServer() {
+	try {
+		const botData = await getBotData();
+		if (botData && typeof botData === "object" && botData.mediaConfig) {
+			setMediaRuntimeConfig(botData.mediaConfig);
+		}
+	} catch (error) {
+		console.warn("Could not load the saved Media Studio configuration:", error.message);
+	}
 	await startSock("start");
 	startReminderScheduler();
 	// handleNewSock() is called by the onNewSock hook inside connection.js,

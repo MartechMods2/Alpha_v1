@@ -45,6 +45,15 @@ const mdClient = new MongoClient(uri, {
 			{ updatedAt: -1 },
 			{ background: true },
 		);
+		await Promise.all([
+			db.collection("StickerVault").createIndex({ groupJid: 1, createdAt: -1 }, { background: true }),
+			db.collection("MediaContests").createIndex({ groupJid: 1, status: 1 }, { background: true }),
+			db.collection("MemeTemplates").createIndex({ nameKey: 1 }, { background: true, unique: true }),
+			db.collection("GameTeams").createIndex({ groupJid: 1, nameKey: 1 }, { background: true, unique: true }),
+			db.collection("GameTeams").createIndex({ groupJid: 1, "members.jid": 1 }, { background: true }),
+			db.collection("GroupTrophies").createIndex({ groupJid: 1, awardedAt: -1 }, { background: true }),
+			db.collection("WeeklyMissions").createIndex({ groupJid: 1, memberJid: 1, week: 1 }, { background: true }),
+		]);
 	} catch (err) {
 		console.error("Error connecting to MongoDB:", err);
 	}

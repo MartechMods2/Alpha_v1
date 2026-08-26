@@ -3,8 +3,7 @@ import { insertReminder, getUserReminders, deleteReminder } from "../../db/remin
 const MAX_MS = 7 * 24 * 60 * 60 * 1000;
 const UNITS = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 };
 const REPEATS = ["daily", "weekly"];
-
-const pad = (n) => String(n).padStart(2, "0");
+const BOT_TIMEZONE = process.env.BOT_TIMEZONE || "Africa/Lagos";
 
 // "30m", "2h", "3d", "1w" → ms, or null
 const parseRelative = (str) => {
@@ -14,7 +13,41 @@ const parseRelative = (str) => {
 	return ms > 0 && ms <= MAX_MS ? ms : null;
 };
 
-// "1:30PM", "9AM", "13:30" → Date in IST, or null
+const zonedParts = (date) => {
+	const parts = new Intl.DateTimeFormat("en-CA", {
+		timeZone: BOT_TIMEZONE,
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+		hourCycle: "h23",
+	}).formatToParts(date);
+	return Object.fromEntries(
+		parts.filter((part) => part.type !== "literal").map((part) => [part.type, Number(part.value)]),
+	);
+};
+
+const localTimeToDate = (year, month, day, hour, minute) => {
+	const desiredUtc = Date.UTC(year, month - 1, day, hour, minute, 0);
+	let guess = desiredUtc;
+	for (let i = 0; i < 3; i += 1) {
+		const actual = zonedParts(new Date(guess));
+		const representedUtc = Date.UTC(
+			actual.year,
+			actual.month - 1,
+			actual.day,
+			actual.hour,
+			actual.minute,
+			actual.second || 0,
+		);
+		guess += desiredUtc - representedUtc;
+	}
+	return new Date(guess);
+};
+
+// "1:30PM", "9AM", "13:30" → Date in BOT_TIMEZONE, or null
 const parseSpecificTime = (str) => {
 	const m12 = str?.match(/^(\d{1,2})(?::(\d{2}))?(am|pm)$/i);
 	const m24 = str?.match(/^(\d{1,2}):(\d{2})$/);
@@ -33,18 +66,24 @@ const parseSpecificTime = (str) => {
 	if (h > 23 || min > 59) return null;
 
 	const now = new Date();
-	// today's date in IST as YYYY-MM-DD
-	const istDate = now.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-	// build ISO with explicit IST offset so JS parses correctly
-	let target = new Date(`${istDate}T${pad(h)}:${pad(min)}:00+05:30`);
-	// if that time already passed today, move to tomorrow
-	if (target <= now) target = new Date(target.getTime() + 86_400_000);
+	const today = zonedParts(now);
+	let target = localTimeToDate(today.year, today.month, today.day, h, min);
+	if (target <= now) {
+		const tomorrow = new Date(Date.UTC(today.year, today.month - 1, today.day) + 86_400_000);
+		target = localTimeToDate(
+			tomorrow.getUTCFullYear(),
+			tomorrow.getUTCMonth() + 1,
+			tomorrow.getUTCDate(),
+			h,
+			min,
+		);
+	}
 	return target;
 };
 
-const formatIST = (date) =>
+const formatBotTime = (date) =>
 	new Intl.DateTimeFormat("en-IN", {
-		timeZone: "Asia/Kolkata",
+		timeZone: BOT_TIMEZONE,
 		day: "2-digit",
 		month: "short",
 		year: "numeric",
@@ -56,13 +95,13 @@ const formatIST = (date) =>
 const HELP_TEXT =
 	`*Reminder Command*\n\n` +
 	`*Relative:* \`remind <time> <message>\`\n` +
-	`*Specific:* \`remind 1:30PM <message>\`\n` +
+	`*Specific:* \`remind 1:30PM <message>\` _(${BOT_TIMEZONE})_\n` +
 	`*Repeat:* add \`repeat daily\` or \`repeat weekly\`\n` +
 	`*List:* \`remind list\`\n` +
 	`*Cancel:* \`remind cancel <number>\`\n\n` +
 	`*Time formats:*\n` +
 	`• \`10m\` \`2h\` \`3d\` \`1w\` _(max 7 days)_\n` +
-	`• \`1:30PM\` \`9AM\` \`13:30\` _(IST, today or tomorrow)_\n\n` +
+	`• \`1:30PM\` \`9AM\` \`13:30\` _(${BOT_TIMEZONE}, today or tomorrow)_\n\n` +
 	`*Examples:*\n` +
 	`\`remind 30m call mom\`\n` +
 	`\`remind 9:00AM standup repeat daily\`\n` +
@@ -80,7 +119,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		const lines = pending
 			.map((r, i) => {
 				const repeatNote = r.repeat ? ` _(repeats ${r.repeat})_` : "";
-				return `*${i + 1}.* ${r.text}${repeatNote}\n    ⏰ ${formatIST(r.remindAt)} IST`;
+				return `*${i + 1}.* ${r.text}${repeatNote}\n    ⏰ ${formatBotTime(r.remindAt)} (${BOT_TIMEZONE})`;
 			})
 			.join("\n\n");
 		return sendMessageWTyping(from, { text: `*Your pending reminders:*\n\n${lines}` }, { quoted: msg });
@@ -153,7 +192,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	return sendMessageWTyping(
 		from,
 		{
-			text: `✅ *Reminder set!*\n\n📝 _${text}_\n⏰ ${formatIST(remindAt)} IST${repeatNote}`,
+			text: `✅ *Reminder set!*\n\n📝 _${text}_\n⏰ ${formatBotTime(remindAt)} (${BOT_TIMEZONE})${repeatNote}`,
 		},
 		{ quoted: msg },
 	);
