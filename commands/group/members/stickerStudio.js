@@ -1,36 +1,33 @@
-import { downloadMediaMessage } from "baileys";
 import {
 	createTextStickerImage,
 	imageBufferToSticker,
 	removeImageBackground,
 } from "../../../utils/mediaStudio.js";
+import { downloadResolvedMedia, quotedText } from "../../../utils/mediaInput.js";
+import { runMediaJob } from "../../../utils/mediaJobs.js";
 
 const aiCooldowns = new Map();
 const textCooldowns = new Map();
 
-const getImageEnvelope = (msg, extendedMessageOriginal) => {
-	if (msg.message?.imageMessage) return msg;
-	if (extendedMessageOriginal?.quotedMessage?.imageMessage) {
-		return { ...msg, message: extendedMessageOriginal.quotedMessage };
-	}
-	return null;
-};
-
 const handler = async (sock, msg, from, args, msgInfoObj) => {
-	const { command, senderJid, sendMessageWTyping, extendedMessageOriginal } = msgInfoObj;
+	const { command, senderJid, sendMessageWTyping } = msgInfoObj;
 	const reply = (text) => sendMessageWTyping(from, { text }, { quoted: msg });
 	const now = Date.now();
 
 	try {
-		if (command === "textsticker" || command === "ts") {
+		if (["textsticker", "ts", "reactionsticker"].includes(command)) {
 			if ((textCooldowns.get(senderJid) || 0) > now) return;
 			textCooldowns.set(senderJid, now + 10_000);
-			const text = args.join(" ").trim();
+			const text = command === "reactionsticker" ? quotedText(msg) : args.join(" ").trim();
 			if (!text) return reply("❌ Usage: `textsticker your text here`");
-			const png = createTextStickerImage(text);
-			const sticker = await imageBufferToSticker(png, {
-				pack: "Alpha Text",
-				author: "MartechMods2",
+			const sticker = await runMediaJob({
+				feature: command,
+				groupJid: from,
+				senderJid,
+				task: async () => imageBufferToSticker(createTextStickerImage(text), {
+					pack: command === "reactionsticker" ? "Alpha Reactions" : "Alpha Text",
+					author: "MartechMods2",
+				}),
 			});
 			return sendMessageWTyping(from, { sticker }, { quoted: msg });
 		}
@@ -38,18 +35,25 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		if ((aiCooldowns.get(senderJid) || 0) > now) {
 			return reply("⏳ AI sticker cooldown: wait one minute before another request.");
 		}
-		const imageEnvelope = getImageEnvelope(msg, extendedMessageOriginal);
-		if (!imageEnvelope) return reply("❌ Send or reply to an image with `aisticker`.");
+		let imageMedia;
+		try {
+			imageMedia = await downloadResolvedMedia(sock, msg, { allowedKinds: ["image"], maxBytes: 10 * 1024 * 1024 });
+		} catch (error) {
+			return reply(`❌ ${error.message}.`);
+		}
 		if (!process.env.REMOVE_BG_KEY) {
 			return reply("❌ AI stickers require `REMOVE_BG_KEY` in the Render environment.");
 		}
 		aiCooldowns.set(senderJid, now + 60_000);
-		const source = await downloadMediaMessage(imageEnvelope, "buffer", {});
-		const cutout = await removeImageBackground(source);
-		const sticker = await imageBufferToSticker(cutout, {
-			pack: args.join(" ").trim().slice(0, 64) || "Alpha AI Cutouts",
-			author: "MartechMods2",
-			quality: 86,
+		const sticker = await runMediaJob({
+			feature: "aisticker",
+			groupJid: from,
+			senderJid,
+			task: async () => imageBufferToSticker(await removeImageBackground(imageMedia.buffer), {
+				pack: args.join(" ").trim().slice(0, 64) || "Alpha AI Cutouts",
+				author: "MartechMods2",
+				quality: 86,
+			}),
 		});
 		return sendMessageWTyping(from, { sticker }, { quoted: msg });
 	} catch (error) {
@@ -60,7 +64,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 };
 
 export default () => ({
-	cmd: ["aisticker", "cutoutsticker", "textsticker", "ts"],
+	cmd: ["aisticker", "cutoutsticker", "textsticker", "ts", "reactionsticker"],
 	desc: "Create AI background-removed or text stickers",
 	usage: "aisticker [pack name] (reply to image) | textsticker <text>",
 	handler,

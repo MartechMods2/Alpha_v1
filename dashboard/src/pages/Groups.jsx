@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
-import { getGroups, updateGroup, getGroupChatHistory } from '../lib/api.js'
+import { exportGroupConfig, getGroups, importGroupConfig, updateGroup, getGroupChatHistory } from '../lib/api.js'
 import { useToast } from '../App.jsx'
 
 const SORTS = [
@@ -21,6 +21,10 @@ const TOGGLES = [
   { field: 'isGoodbyeOn',     label: 'Auto-Goodbye' },
   { field: 'isAntiLinkOn',    label: 'Anti-Link' },
   { field: 'isAntiSpamOn',    label: 'Anti-Spam' },
+  { field: 'alphaImageOn',    label: 'Alpha Images' },
+  { field: 'alphaVoiceOn',    label: 'Alpha Voice' },
+  { field: 'alphaDocOn',      label: 'Alpha Documents' },
+  { field: 'alphaStickerOn',  label: 'Alpha Stickers' },
 ]
 
 const HOUR_TABS = [1, 6, 12, 24]
@@ -177,8 +181,39 @@ function ChatHistoryModal({ grp, onClose }) {
 }
 
 function GroupCard({ grp, onUpdate, onAddBlock, onRemoveBlock }) {
+  const toast = useToast()
   const addRef = useRef()
+  const importRef = useRef()
   const [showHistory, setShowHistory] = useState(false)
+
+  async function downloadConfig() {
+    try {
+      const data = await exportGroupConfig(grp._id)
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `alpha-group-${(grp.grpName || 'config').replace(/[^a-z0-9_-]/gi, '_')}.json`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      toast(error.message || 'Export failed', false)
+    }
+  }
+
+  async function uploadConfig(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const payload = JSON.parse(await file.text())
+      await importGroupConfig(grp._id, payload)
+      toast('Group configuration imported')
+    } catch (error) {
+      toast(error.message || 'Import failed', false)
+    } finally {
+      event.target.value = ''
+    }
+  }
 
   return (
     <>
@@ -240,6 +275,9 @@ function GroupCard({ grp, onUpdate, onAddBlock, onRemoveBlock }) {
           >
             📋 Chat History
           </button>
+          <button className="btn-sm" onClick={downloadConfig}>⬇ Export</button>
+          <button className="btn-sm" onClick={() => importRef.current?.click()}>⬆ Import</button>
+          <input ref={importRef} type="file" accept="application/json" onChange={uploadConfig} style={{ display: 'none' }} />
         </div>
       </div>
 

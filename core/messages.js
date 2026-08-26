@@ -33,6 +33,14 @@ import { getBotData } from "../db/botData.js";
 import { saveChatMessage } from "../utils/chatLogger.js";
 import { getRankUp } from "../utils/ranks.js";
 import { handleAutomodMessage } from "../utils/automod.js";
+import {
+	buildAlphaPrompt,
+	isAlphaQuiet,
+	normalizeAlphaSettings,
+	stripBotMention,
+	useAlphaQuota,
+} from "../utils/alphaMention.js";
+import { getMediaRuntimeConfig } from "../utils/mediaJobs.js";
 
 // ── FOOLPROOF REWRITE FOR OWNER/BOT IDENTIFICATION ─────────────────
 const cleanMyNum = (process.env.MY_NUMBER || "").split(",")[0].replace(/[^0-9]/g, "");
@@ -53,7 +61,7 @@ const botNumber = [
 // ─────────────────────────────────────────────────────────────────
 
 const tagStickerCooldowns = new Map();
-const TAG_STICKER_COOLDOWN_MS = 60_000;
+const ALPHA_MENTION_COOLDOWN_MS = 20_000;
 
 // Cached tag sticker - loaded once at startup
 let _tagStickerBuffer = null;
@@ -125,10 +133,7 @@ const getCommand = async (sock, msg, cache) => {
 
 				if (isGroupChat) {
 					const priority = mediaTypes.includes(messageType) ? 2 : 1;
-					messageQueue
-						.enqueue(to, doSend, priority)
-						.catch((e) => console.error("[queue enqueue error]", e.message));
-					return;
+					await messageQueue.enqueue(to, doSend, priority);
 				} else {
 					await messageQueue.enqueue(to, doSend, 0);
 				}
@@ -153,6 +158,8 @@ const getCommand = async (sock, msg, cache) => {
 			buttonsResponseMessage: m.buttonsResponseMessage?.selectedDisplayText,
 			templateButtonReplyMessage: m.templateButtonReplyMessage?.selectedDisplayText,
 			listResponseMessage: m.listResponseMessage?.title,
+			documentMessage: m.documentMessage?.caption,
+			audioMessage: m.audioMessage?.caption,
 		};
 
 		let body = bodyMap[type] ?? ""; // handles null + undefined
@@ -168,6 +175,7 @@ const getCommand = async (sock, msg, cache) => {
 			"listResponseMessage",
 			"stickerMessage",
 			"documentMessage",
+			"audioMessage",
 		];
 
 		const extendedMessageOriginal =
@@ -325,8 +333,9 @@ const getCommand = async (sock, msg, cache) => {
 			});
 		}
 
-		// Return early for non-command sticker and document messages (no further processing needed)
-		if (!isCmd && (type == "stickerMessage" || type == "documentMessage")) return;
+		// Plain stickers need no further processing. Documents continue so a captioned
+		// @Alpha mention can reach the opt-in document-understanding path.
+		if (!isCmd && type == "stickerMessage") return;
 		//-------------------------------------------------------------------------------------------------------------//
 
 		let groupMetadata = "";
@@ -438,36 +447,83 @@ const getCommand = async (sock, msg, cache) => {
 			}
 		}
 
-		if (isGroup && !isCmd && msg.message.extendedTextMessage) {
-			const rawMentioned = msg.message.extendedTextMessage.contextInfo?.mentionedJid;
-			const mentioned = Array.isArray(rawMentioned)
-				? rawMentioned
-				: rawMentioned
-					? [rawMentioned]
-					: [];
-			const cooldownKey = `${from}:${senderJid}`;
-			const maySendTagSticker = (tagStickerCooldowns.get(cooldownKey) || 0) <= Date.now();
-			const botWasMentioned = mentioned.some((jid) =>
-				isSameGroupUser(groupMetadata, jid, botJids),
-			);
-			if (maySendTagSticker && botWasMentioned) {
-				tagStickerCooldowns.set(cooldownKey, Date.now() + TAG_STICKER_COOLDOWN_MS);
-				try {
-					const stickerBuffer = await getTagSticker();
-					sendMessageWTyping(from, { sticker: stickerBuffer }, { quoted: msg });
-				} catch (error) {
-					console.error("Failed to send tag sticker:", error.message);
-				}
-			}
-			if (tagStickerCooldowns.size > 2000) {
-				for (const [key, expires] of tagStickerCooldowns) {
-					if (expires <= Date.now()) tagStickerCooldowns.delete(key);
-				}
-			}
-		}
-
 		//--------------------------------------------CHAT-BOT-FEATURE------------------------------------------------//
 		const isChatBotOn = groupData ? groupData.isChatBotOn : false;
+		const alphaContext =
+			m.extendedTextMessage?.contextInfo ||
+			m.imageMessage?.contextInfo ||
+			m.videoMessage?.contextInfo ||
+			m.documentMessage?.contextInfo ||
+			m.audioMessage?.contextInfo ||
+			{};
+		const alphaMentioned = Array.isArray(alphaContext.mentionedJid)
+			? alphaContext.mentionedJid
+			: alphaContext.mentionedJid
+				? [alphaContext.mentionedJid]
+				: [];
+		const botWasMentioned = alphaMentioned.some((jid) => isSameGroupUser(groupMetadata, jid, botJids));
+		if (isGroup && isChatBotOn && !isCmd && botWasMentioned) {
+			const settings = normalizeAlphaSettings(groupData);
+			const cooldownKey = `${from}:${senderJid}`;
+			const now = Date.now();
+			if (settings.alphaMode === "off" || isAlphaQuiet(settings) || (tagStickerCooldowns.get(cooldownKey) || 0) > now) return;
+			if (!useAlphaQuota(from, senderJid, settings.alphaDailyQuota)) return;
+			tagStickerCooldowns.set(cooldownKey, now + ALPHA_MENTION_COOLDOWN_MS);
+			const cleanMentionText = stripBotMention(body, alphaMentioned);
+			if (settings.alphaMode === "sticker" || (settings.alphaMode === "mixed" && !cleanMentionText)) {
+				if (settings.alphaStickerOn) {
+					try {
+						await sendMessageWTyping(from, { sticker: await getTagSticker() }, { quoted: msg });
+					} catch (error) {
+						console.error("Failed to send Alpha tag sticker:", error.message);
+					}
+				}
+				return;
+			}
+			try {
+				const pollText = cleanMentionText.replace(/^create\s+(?:a\s+)?poll\s*/i, "");
+				if (/^create\s+(?:a\s+)?poll\b/i.test(cleanMentionText)) {
+					const [question, ...options] = pollText.split("|").map((part) => part.trim()).filter(Boolean);
+					if (question && options.length >= 2) {
+						await sendMessageWTyping(from, { poll: { name: question.slice(0, 180), values: options.slice(0, 12).map((value) => value.slice(0, 100)), selectableCount: 1 } }, { quoted: msg });
+						return;
+					}
+				}
+				const reminderMatch = cleanMentionText.match(
+					/^remind(?:\s+us)?(?:\s+(?:in|at))?\s+(\d+[mhdw]|\d{1,2}(?::\d{2})?(?:am|pm)|\d{1,2}:\d{2})\s+(?:to\s+)?(.+)$/i,
+				);
+				if (reminderMatch && commandsPublic.remind) {
+					const reminderArgs = [reminderMatch[1], ...reminderMatch[2].trim().split(/\s+/)];
+					await commandsPublic.remind(sock, msg, from, reminderArgs, {
+						sendMessageWTyping,
+						senderJid,
+						isGroup,
+						command: "remind",
+						evv: reminderArgs.join(" "),
+					});
+					return;
+				}
+				const alphaPrompt = await buildAlphaPrompt({ sock, msg, body, mentionedJids: alphaMentioned, settings });
+				const alphaCommand = /^summari[sz]e\b/i.test(cleanMentionText) ? "gemini" : "alpha";
+				await commandsPublic["alpha"](sock, msg, from, alphaPrompt.split(/\s+/), {
+					sendMessageWTyping,
+					command: alphaCommand,
+					updateName: updateName || senderData?.username,
+					updateId,
+					senderJid,
+					groupMetadata,
+					groupAdmins,
+					isGroup,
+					evv: alphaPrompt,
+					isOwner,
+					extendedMessageOriginal: alphaContext,
+				});
+			} catch (error) {
+				console.error("Alpha mention failed:", error.message);
+				await sendMessageWTyping(from, { text: `⚡ Alpha could not process that mention: ${error.message}` }, { quoted: msg });
+			}
+			return;
+		}
 		if (isGroup && isChatBotOn && (type == "conversation" || type == "extendedTextMessage")) {
 			let isTaggedBot = false;
 			let tagMessage = null;
@@ -476,12 +532,16 @@ const getCommand = async (sock, msg, cache) => {
 				isTaggedBot = isSameGroupUser(groupMetadata, tagMessageSenderJID, botJids);
 				tagMessage = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
 			}
-			if (
-				body.split(" ")[0].toLowerCase() == "eva" ||
-				(isTaggedBot && tagMessage &&
-					Object.keys(tagMessage)[0] == "conversation" &&
-					tagMessage?.conversation.startsWith("_*Eva:*_"))
-			) {
+			const quotedText =
+				tagMessage?.conversation ||
+				tagMessage?.extendedTextMessage?.text ||
+				"";
+			const assistantName = getMediaRuntimeConfig().alphaName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+			const isAlphaReply = isTaggedBot && new RegExp(
+				`^(?:(?:⚡\\s*)?${assistantName}(?:⚡)?\\b|_\\*eva:\\*_?)`,
+				"i",
+			).test(quotedText.trim());
+			if (body.split(" ")[0].toLowerCase() == "eva" || isAlphaReply) {
 				commandsPublic["eva"](sock, msg, from, args, {
 					sendMessageWTyping,
 					command,

@@ -55,15 +55,31 @@ class MessageQueue {
 		}
 
 		const queue = this.queues.get(chatId);
-		queue.push({ sendFunction, priority, timestamp: Date.now() });
+		let resolveEntry;
+		let rejectEntry;
+		const completion = new Promise((resolve, reject) => {
+			resolveEntry = resolve;
+			rejectEntry = reject;
+		});
+		queue.push({
+			sendFunction,
+			priority,
+			timestamp: Date.now(),
+			resolve: resolveEntry,
+			reject: rejectEntry,
+		});
 
 		// Sort by priority (lower number = higher priority)
 		queue.sort((a, b) => a.priority - b.priority);
 
 		// Start processing if not already processing
 		if (!this.processing.get(chatId)) {
-			this.processQueue(chatId);
+			this.processQueue(chatId).catch((error) => {
+				console.error(`Queue processing error for ${chatId}:`, error.message);
+			});
 		}
+
+		return completion;
 	}
 
 	/**
@@ -113,8 +129,10 @@ class MessageQueue {
 					}
 					await message.sendFunction();
 					this.lastSentAt.set(chatId, Date.now());
+					message.resolve?.();
 				} catch (err) {
 					console.error(`Queue send error for ${chatId}:`, err.message);
+					message.reject?.(err);
 				} finally {
 					this.activeSends--;
 				}
@@ -156,7 +174,11 @@ class MessageQueue {
 	 */
 	clearQueue(chatId) {
 		if (this.queues.has(chatId)) {
-			this.queues.get(chatId).length = 0;
+			const queue = this.queues.get(chatId);
+			for (const message of queue) {
+				message.reject?.(new Error("Message queue was cleared"));
+			}
+			queue.length = 0;
 		}
 	}
 }

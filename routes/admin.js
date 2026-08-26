@@ -9,6 +9,21 @@ import { normalizeJID } from "../utils/lid.js";
 import messageQueue from "../queue/messageQueue.js";
 import { pushActivity, getLogs, getActivity, cmdUsage } from "../notify/adminEvents.js";
 import { getCookiesContent, saveCookies } from "../functions/cookieManager.js";
+import {
+	checkFfmpegHealth,
+	getMediaRuntimeStatus,
+	retryMediaJob,
+	setMediaRuntimeConfig,
+} from "../utils/mediaJobs.js";
+import { getFfmpegPath } from "../utils/mediaStudio.js";
+import {
+	addMemeTemplate,
+	deleteMemeTemplate,
+	getMediaCollectionStats,
+	listMemeTemplates,
+	stickerVault,
+} from "../db/mediaData.js";
+import { getGroupTools, groupTools } from "../db/groupTools.js";
 
 const router = Router();
 
@@ -423,6 +438,17 @@ router.patch("/api/admin/groups/:jid", requireAdmin, async (req, res) => {
 		"isAntiLinkOn",
 		"isAntiSpamOn",
 		"cmdBlocked",
+		"alphaMode",
+		"alphaMemoryLimit",
+		"alphaDailyQuota",
+		"alphaImageOn",
+		"alphaVoiceOn",
+		"alphaDocOn",
+		"alphaStickerOn",
+		"alphaPersonality",
+		"alphaResponseLength",
+		"alphaQuietStart",
+		"alphaQuietEnd",
 	];
 	const update = {};
 	for (const key of allowed) {
@@ -543,6 +569,125 @@ router.post("/api/admin/yt-cookies", requireAdmin, async (req, res) => {
 		res.json({ ok: true });
 	} catch (err) {
 		res.status(500).json({ error: err.message });
+	}
+});
+
+// ── API: Media Studio operations, quotas, provider health and safe mode ───────
+router.get("/api/admin/media-studio", requireAdmin, async (_req, res) => {
+	try {
+		const [ffmpeg, collections, botData] = await Promise.all([
+			checkFfmpegHealth(getFfmpegPath()),
+			getMediaCollectionStats(),
+			getBotData(),
+		]);
+		if (botData?.mediaConfig) setMediaRuntimeConfig(botData.mediaConfig);
+		res.json({ ...getMediaRuntimeStatus(), ffmpeg, collections });
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
+
+router.patch("/api/admin/media-studio", requireAdmin, async (req, res) => {
+	try {
+		const config = setMediaRuntimeConfig(req.body || {});
+		await bot.updateOne({ _id: "bot" }, { $set: { mediaConfig: config } }, { upsert: true });
+		pushActivity("media_settings_updated", { safeMode: config.safeMode, disabled: config.disabledFeatures.length });
+		res.json({ ok: true, config });
+	} catch (err) {
+		res.status(400).json({ error: err.message });
+	}
+});
+
+router.post("/api/admin/media-studio/jobs/:id/retry", requireAdmin, async (req, res) => {
+	try {
+		await retryMediaJob(req.params.id);
+		res.json({ ok: true });
+	} catch (err) {
+		res.status(400).json({ error: err.message });
+	}
+});
+
+router.get("/api/admin/media-studio/stickers", requireAdmin, async (req, res) => {
+	try {
+		const query = req.query.group ? { groupJid: String(req.query.group) } : {};
+		const stickers = await stickerVault.find(query, { projection: { data: 0 } }).sort({ createdAt: -1 }).limit(200).toArray();
+		res.json({ stickers });
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
+
+router.delete("/api/admin/media-studio/stickers/:id", requireAdmin, async (req, res) => {
+	try {
+		const result = await stickerVault.deleteOne({ _id: req.params.id });
+		res.json({ ok: true, deleted: result.deletedCount });
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
+
+router.get("/api/admin/media-studio/templates", requireAdmin, async (_req, res) => {
+	try {
+		res.json({ templates: await listMemeTemplates() });
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
+
+router.post("/api/admin/media-studio/templates", requireAdmin, async (req, res) => {
+	try {
+		res.json({ ok: true, template: await addMemeTemplate(req.body || {}) });
+	} catch (err) {
+		res.status(400).json({ error: err.message });
+	}
+});
+
+router.delete("/api/admin/media-studio/templates/:id", requireAdmin, async (req, res) => {
+	try {
+		const result = await deleteMemeTemplate(req.params.id);
+		res.json({ ok: true, deleted: result.deletedCount });
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
+
+router.get("/api/admin/groups/:jid/export", requireAdmin, async (req, res) => {
+	const jid = decodeURIComponent(req.params.jid);
+	try {
+		const [settings, tools] = await Promise.all([
+			group.findOne({ _id: jid }, { projection: { chatHistory: 0, members: 0, memberWarnCount: 0 } }),
+			getGroupTools(jid),
+		]);
+		if (!settings) return res.status(404).json({ error: "Group not found" });
+		res.json({ version: 1, exportedAt: new Date().toISOString(), group: settings, tools: { events: tools.events || [], decisions: tools.decisions || [], bookmarks: tools.bookmarks || [] } });
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
+
+router.post("/api/admin/groups/:jid/import", requireAdmin, async (req, res) => {
+	const jid = decodeURIComponent(req.params.jid);
+	const allowedGroupFields = [
+		"isChatBotOn", "isImgOn", "isAutoStickerOn", "isRankNotifOn", "isWelcomeOn", "isGoodbyeOn",
+		"isAntiLinkOn", "isAntiSpamOn", "cmdBlocked", "alphaMode", "alphaMemoryLimit", "alphaDailyQuota",
+		"alphaImageOn", "alphaVoiceOn", "alphaDocOn", "alphaStickerOn", "alphaPersonality", "alphaResponseLength",
+		"alphaQuietStart", "alphaQuietEnd", "welcome", "goodbye", "rules", "allowedDomains",
+	];
+	try {
+		const source = req.body?.group || {};
+		const update = Object.fromEntries(allowedGroupFields.filter((key) => key in source).map((key) => [key, source[key]]));
+		await group.updateOne({ _id: jid }, { $set: update });
+		if (req.body?.tools) {
+			await groupTools.updateOne({ _id: jid }, { $set: {
+				events: Array.isArray(req.body.tools.events) ? req.body.tools.events.slice(-50) : [],
+				decisions: Array.isArray(req.body.tools.decisions) ? req.body.tools.decisions.slice(-50) : [],
+				bookmarks: Array.isArray(req.body.tools.bookmarks) ? req.body.tools.bookmarks.slice(-50) : [],
+				updatedAt: new Date(),
+			} }, { upsert: true });
+		}
+		res.json({ ok: true });
+	} catch (err) {
+		res.status(400).json({ error: err.message });
 	}
 });
 

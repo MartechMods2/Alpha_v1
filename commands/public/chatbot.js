@@ -8,6 +8,7 @@ import { getGroupData, group } from "../../db/groupData.js";
 import { getMemberData } from "../../db/members.js";
 import { extractPhoneNumber } from "../../utils/lid.js";
 import { getChatMessages } from "../../utils/chatLogger.js";
+import { getMediaRuntimeConfig } from "../../utils/mediaJobs.js";
 
 // -------------------------------------------------------------------------------------------------------------
 // NVIDIA AI CONFIGURATION
@@ -320,9 +321,13 @@ async function chat(
 		let conversationHistory = [];
 
 		if (isGroup && data?.chatHistory) {
-			conversationHistory =
+			const requestedMemory = Number(data.alphaMemoryLimit);
+			const memoryLimit = Number.isFinite(requestedMemory)
+				? Math.min(MAX_HISTORY_MESSAGES, Math.max(0, requestedMemory))
+				: 5;
+			conversationHistory = memoryLimit === 0 ? [] :
 				data.chatHistory
-					.slice(-10)
+					.slice(-(memoryLimit * 2))
 					.map((historyMessage) => ({
 						role: historyMessage.role,
 						parts: historyMessage.parts,
@@ -341,10 +346,12 @@ async function chat(
 		const isGroupAssistant =
 			command === "gemini";
 
-		const systemPrompt =
+		const mediaConfig = getMediaRuntimeConfig();
+		const baseSystemPrompt =
 			isGroupAssistant
 				? groupAssistantSystemPrompt
 				: alphaSystemPrompt;
+		const systemPrompt = `${baseSystemPrompt}\nThe assistant display name is ${mediaConfig.alphaName}.\n${mediaConfig.alphaSystemPrompt || ""}`.trim();
 
 		// -----------------------------------------------------------------------------------------
 		// Build user's prompt
@@ -507,6 +514,10 @@ ${chatContext}
 		// -----------------------------------------------------------------------------------------
 
 		if (isGroup && data) {
+			const requestedMemory = Number(data.alphaMemoryLimit);
+			const memoryLimit = Number.isFinite(requestedMemory)
+				? Math.min(MAX_HISTORY_MESSAGES, Math.max(0, requestedMemory))
+				: 5;
 			const newHistory = [
 				...(data?.chatHistory || []),
 
@@ -531,16 +542,13 @@ ${chatContext}
 							text: text.trim(),
 						},
 					],
-					senderName: "⚡Alpha⚡",
+					senderName: `⚡${mediaConfig.alphaName}⚡`,
 					timestamp:
 						new Date().toISOString(),
 				},
 			];
 
-			const trimmedHistory =
-				newHistory.slice(
-					-MAX_HISTORY_MESSAGES
-				);
+			const trimmedHistory = memoryLimit === 0 ? [] : newHistory.slice(-(memoryLimit * 2));
 
 			await group.updateOne(
 				{ _id: from },
@@ -561,7 +569,7 @@ ${chatContext}
 			from,
 			{
 				text:
-					"⚡Alpha⚡\n" +
+					`⚡${mediaConfig.alphaName}⚡\n` +
 					text.trim(),
 			},
 			{
@@ -569,6 +577,7 @@ ${chatContext}
 			}
 		);
 	} catch (err) {
+		const assistantName = getMediaRuntimeConfig().alphaName;
 		console.error(
 			"⚡Alpha⚡ NVIDIA error:",
 			err
@@ -578,7 +587,7 @@ ${chatContext}
 			from,
 			{
 				text:
-					"⚡Alpha⚡ is having trouble connecting to the AI right now. Try again in a moment.",
+					`⚡${assistantName}⚡ is having trouble connecting to the AI right now. Try again in a moment.`,
 			},
 			{
 				quoted: msg,
@@ -604,6 +613,9 @@ const handler = async (
 		evv,
 		extendedMessageOriginal,
 	} = msgInfoObj;
+	if (!getMediaRuntimeConfig().alphaGlobalEnabled) {
+		return sendMessageWTyping(from, { text: "⚡ Alpha is temporarily disabled by the administrator." }, { quoted: msg });
+	}
 
 	// ---------------------------------------------------------------------------------------------
 	// NVIDIA API KEY CHECK

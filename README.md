@@ -73,7 +73,7 @@ A feature-rich WhatsApp bot with a modern React/Vite admin dashboard. Supports d
 |      -gamehelp      |     Show scored games, ranks and leaderboard commands       |             `-gamehelp`                |            ✔            |
 |       -poll         |                 Create a native group poll                  | `-poll Food? \| Rice \| Pizza`         |            ✔            |
 |        -nsfw        |            Get the NSFW percentage of an image            |                `-nsfw`                 |           ❌            |
-|        -tts         |                 Change text to a sticker                  |              `-tts text`               |            ✔            |
+|        -tts         |                  Convert text to speech                   |              `-tts text`               |            ✔            |
 |        -text        |            Add a header and footer to an image            |       `-text TopText;BottomText`       |            ✔            |
 |         -ud         |                Show the meaning of a name                 |              `-ud Mahesh`              |            ✔            |
 |        -dic         |      Get the definition of a word from a dictionary       |              `-dic Love`               |            ✔            |
@@ -356,6 +356,62 @@ The group toolkit stores useful shared information in MongoDB and only responds 
 
 Media Studio commands are deliberately request-driven: `-meme top | bottom` creates a local captioned meme from a sent or replied image, `-textsticker` creates a sticker locally, and `-aisticker` uses remove.bg to produce a transparent cut-out sticker. `-song` sends one playable MP3 result, while `-songdoc` sends the same result as a downloadable document. Only download media you are permitted to use.
 
+## Hyper Features Pack
+
+See the [complete Hyper Features command guide](docs/HYPER_FEATURE_COMMANDS.md) for usage and copy-ready examples.
+
+The extended Media Studio uses one queued conversion job at a time by default. Direct and replied media share the same validated downloader, temporary files are cleaned up, and failed WhatsApp sends are surfaced to the command instead of disappearing in the outbound queue.
+
+```text
+# Image studio
+-upscale                 -replacebg #ffffff      -passport [#background]
+-thumbnail Title | subtitle                     -photogrid start|add|done|cancel
+-signature               -scan                   -profilecard
+-rankcard
+
+# Audio and video studio
+-audiocut <start> <duration>    -denoise          -normalize
+-waveform                       -videocut <start> <duration>
+-videocaption <text>            -videothumbnail [second]
+
+# Sticker packs and media contests
+-avatarsticker                  -reactionsticker
+-stickersave Name | tag1 tag2   -stickerpack [list|delete 1]
+-stickerfind <name/tag>         -stickerrandom [tag]
+-memebattle start|submit|vote|end
+-captionbattle start|submit|vote|end
+-stickerbattle start|submit|vote|end
+
+# Competitive Plus
+-songguess / -songanswer <title>
+-spellingbee / -spellanswer <word>
+-team create|join|leave|list    -teambattle / -teamanswer <answer>
+-bossbattle / -bossanswer <answer>
+-weeklymission                 -teamboard         -trophyroom
+
+# Persistent group organiser
+-event add YYYY-MM-DD | title   -calendar
+-meeting start|add|end          -minutes list|read 1
+-decision add|list|delete       -bookmark          -bookmarks
+```
+
+Smart Alpha mentions are enabled only when the group's chatbot switch is on. A direct `@Alpha` mention can answer text, understand a quoted message, create a native poll, schedule a real group reminder (`@Alpha remind us in 30m to start the meeting`), summarize recent group context, and optionally inspect an attached/replied image, voice note or document. It never sends both the old tag sticker and an AI reply for the same mention.
+
+```text
+-alphastatus
+-alphamode smart|text|mixed|sticker|off
+-alphastyle friendly|funny|professional
+-alphalength short|normal|detailed
+-alphamemory 0-20
+-alphaquota 1-50
+-alphaquiet 22:00 07:00 | -alphaquiet off
+-alphaimage on|off      -alphavoice on|off
+-alphadoc on|off        -alphasticker on|off
+-alphaclear
+```
+
+The admin dashboard's **Media Studio** page exposes job progress, failure logs, retries, FFmpeg/API health, daily member/group quotas, temporary storage usage, meme-template and sticker-pack management, Alpha instructions, feature toggles, provider circuit breakers and a global safe-mode switch. Group cards can export and import non-sensitive group configuration.
+
 The outbound queue spaces group sends, automated join/leave notices are batched into one message per event, command bursts are rate-limited, and synthetic typing/presence events are disabled. These safeguards reduce unnecessary automation traffic, but no unofficial WhatsApp client can guarantee that an account will not be restricted.
 
 ---
@@ -397,9 +453,11 @@ Create a `.env` file in the project root with the following keys.
 | ----------------------- | ---------------------------------------------------------------------------------------- |
 | `PORT`                  | Server port (default: `8000`)                                                            |
 | `NODE_ENV`              | `development` or `production`                                                            |
-| `BOT_TIMEZONE`          | Time zone used for daily challenges. Default: `Africa/Lagos`                             |
+| `BOT_TIMEZONE`          | Time zone used for challenges, events and reminders. Default: `Africa/Lagos`             |
 | `SESSION_SECRET`        | Secret used to sign the session cookie. Set a strong random string in production.        |
-| `GOOGLE_API_KEY`        | Google/Gemini API key — used by the AI chatbot (`-chat`) and image generation commands   |
+| `NVIDIA_API_KEY`        | NVIDIA API key used by the Alpha text assistant                                            |
+| `GOOGLE_API_KEY`        | Google/Gemini API key used only for optional tagged image/audio/document understanding     |
+| `GEMINI_MEDIA_MODEL`    | Optional Gemini model for media understanding; defaults to `gemini-2.0-flash`              |
 | `GOOGLE_API_KEY_SEARCH` | Google API key for the Custom Search API — used by the `-img` image search command       |
 | `SEARCH_ENGINE_KEY`     | Google Custom Search Engine ID — required alongside `GOOGLE_API_KEY_SEARCH` for `-img`   |
 | `GENIUS_ACCESS_SECRET`  | Genius API token — used by the `-l` lyrics command                                       |
@@ -445,8 +503,10 @@ MESSAGE_DELAY_MS=500
 GROUP_MESSAGE_DELAY_MS=900
 MAX_CONCURRENT_SENDS=2
 
-# Google / Gemini — AI chatbot and image generation
+# Alpha text AI and optional Gemini media understanding
+NVIDIA_API_KEY=your_nvidia_api_key_here
 GOOGLE_API_KEY=your_google_gemini_api_key_here
+GEMINI_MEDIA_MODEL=gemini-2.0-flash
 
 # Google Custom Search — required for -img image search command
 GOOGLE_API_KEY_SEARCH=your_google_api_key_here

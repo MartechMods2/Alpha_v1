@@ -1,57 +1,37 @@
-import { createCanvas, loadImage } from "@napi-rs/canvas";
-import { Sticker } from "wa-sticker-formatter";
-import fs from "fs";
-
-const getRandom = (ext) => `${Math.floor(Math.random() * 10000)}${ext}`;
+import { createTextStickerImage, convertMediaToSticker } from "../../utils/mediaStudio.js";
+import { runMediaJob } from "../../utils/mediaJobs.js";
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
-	const { sendMessageWTyping, evv, extendedMessageOriginal } = msgInfoObj;
-
-	if (!args[0] && !extendedMessageOriginal) {
-		return sendMessageWTyping(from, { text: `❌ *Enter some text*` }, { quoted: msg });
+	const { sendMessageWTyping, evv, extendedMessageOriginal, senderJid } = msgInfoObj;
+	const quotedText =
+		extendedMessageOriginal?.quotedMessage?.conversation ||
+		extendedMessageOriginal?.quotedMessage?.extendedTextMessage?.text ||
+		"";
+	const message = String(evv || quotedText).trim().slice(0, 180);
+	if (!message) {
+		return sendMessageWTyping(from, { text: "❌ Enter text or reply to a text message: `attp your text`." }, { quoted: msg });
 	}
 
-	let message = evv || extendedMessageOriginal?.quotedMessage?.conversation;
-	if (!message) return sendMessageWTyping(from, { text: `❌ *Enter some text*` }, { quoted: msg });
-	message = message.split(":").join("\n");
-
-	const canvas = createCanvas(512, 512);
-	const ctx = canvas.getContext("2d");
-
-	ctx.fillStyle = "#ffffff"; // Background color
-	ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-	ctx.font = "80px Arial";
-	ctx.fillStyle = "#ff0000"; // Font color
-	ctx.textAlign = "center";
-	ctx.textBaseline = "middle";
-	ctx.fillText(message, canvas.width / 2, canvas.height / 2);
-
-	const filename = getRandom(".png");
-	const out = fs.createWriteStream(`./${filename}`);
-	const stream = canvas.createPNGStream();
-	stream.pipe(out);
-
-	out.on("error", (err) => {
-		console.error("[TTS ERR] write stream:", err.message);
-		sendMessageWTyping(from, { text: `❌ *Failed to create sticker*` }, { quoted: msg });
-	});
-
-	out.on("finish", async () => {
-		const sticker = new Sticker(`./${filename}`, {
-			pack: "Bot",
-			author: "eva",
+	try {
+		const sticker = await runMediaJob({
+			feature: "textsticker",
+			groupJid: from,
+			senderJid,
+			task: async () => {
+				const png = await createTextStickerImage(message.replaceAll(":", "\n"));
+				return convertMediaToSticker(png, { inputExtension: "png", pack: "Alpha", author: "Text Sticker" });
+			},
 		});
-		await sticker.build();
-		const stickerBuffer = await sticker.get();
-		await sendMessageWTyping(from, { sticker: Buffer.from(stickerBuffer) }, { quoted: msg });
-		fs.unlinkSync(filename); // Clean up after sending
-	});
+		return sendMessageWTyping(from, { sticker }, { quoted: msg });
+	} catch (error) {
+		console.error("Text sticker failed:", error.message);
+		return sendMessageWTyping(from, { text: `❌ Text sticker failed: ${error.message}` }, { quoted: msg });
+	}
 };
 
 export default () => ({
-	cmd: ["tts", "attp"],
-	desc: "Convert text to sticker",
-	usage: "tts <text>",
+	cmd: ["attp"],
+	desc: "Convert text into a WhatsApp sticker",
+	usage: "attp <text>",
 	handler,
 });

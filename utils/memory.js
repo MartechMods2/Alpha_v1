@@ -18,9 +18,10 @@ class MemoryManager {
 			this.destroy();
 		}
 		this.tempFiles.add(filePath);
-		setTimeout(() => {
+		const expiryTimer = setTimeout(() => {
 			this.tempFiles.delete(filePath);
 		}, 900000);
+		expiryTimer.unref?.();
 	}
 
 	registerStream(stream) {
@@ -62,7 +63,8 @@ class MemoryManager {
 		this.registerStream(stream);
 		stream.on("end", () => {
 			if (options.autoDelete) {
-				setTimeout(() => this.safeUnlink(filePath), 1000);
+				const cleanupTimer = setTimeout(() => this.safeUnlink(filePath), 1000);
+				cleanupTimer.unref?.();
 			}
 		});
 		return stream;
