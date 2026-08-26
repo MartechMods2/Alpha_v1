@@ -161,6 +161,15 @@ Image understanding is on by default. Voice and document understanding are off b
 | `alphalength <length>` | **Admin:** `short`, `normal`, or `detailed`. | `-alphalength short` |
 | `alphamemory <0–20>` | **Admin:** number of conversational turns to keep; `0` disables memory. | `-alphamemory 8` |
 | `alphaquota <1–50>` | **Admin:** daily mention requests allowed per member. | `-alphaquota 10` |
+| `alphafilter status` | **Admin:** show the current member-access mode and list sizes. | `-alphafilter status` |
+| `alphafilter everyone` | **Admin:** let every member use Alpha mentions. | `-alphafilter everyone` |
+| `alphafilter admins` | **Admin:** answer only group admins and the bot owner. | `-alphafilter admins` |
+| `alphafilter allowlist` | **Admin:** answer only members added to the allowlist, plus admins/owner. | `-alphafilter allowlist` |
+| `alphafilter denylist` | **Admin:** answer everyone except denied members; admins/owner remain allowed. | `-alphafilter denylist` |
+| `alphafilter allow @member` | **Admin:** add mentioned/replied members and switch to allowlist mode. | `-alphafilter allow @Ada` |
+| `alphafilter deny @member` | **Admin:** add mentioned/replied members and switch to denylist mode. | `-alphafilter deny @Tunde` |
+| `alphafilter remove @member` | **Admin:** remove mentioned/replied members from both lists. | `-alphafilter remove @Ada` |
+| `alphafilter clear` | **Admin:** clear both member lists without changing the current mode. | `-alphafilter clear` |
 | `alphaquiet <HH:MM> <HH:MM>` | **Admin:** quiet hours in `BOT_TIMEZONE`. | `-alphaquiet 22:00 07:00` |
 | `alphaquiet off` | **Admin:** disable quiet hours. | `-alphaquiet off` |
 | `alphaimage on\|off` | **Admin:** allow or block tagged image understanding. | `-alphaimage on` |
@@ -168,6 +177,8 @@ Image understanding is on by default. Voice and document understanding are off b
 | `alphadoc on\|off` | **Admin:** allow or block tagged document understanding. | `-alphadoc on` |
 | `alphasticker on\|off` | **Admin:** allow or block tag stickers in sticker/mixed mode. | `-alphasticker off` |
 | `alphaclear` | **Admin:** clear the group’s Alpha conversation memory. | `-alphaclear` |
+
+The member filter applies to direct bot mentions and replies to Alpha's messages. Blocked members are ignored silently to avoid unnecessary group traffic. Group admins and the configured bot owner always retain access. You can use `-alphaaccess` as an alias for `-alphafilter`.
 
 ## Dashboard-Only Controls
 

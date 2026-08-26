@@ -404,6 +404,10 @@ Smart Alpha mentions are enabled only when the group's chatbot switch is on. A d
 -alphalength short|normal|detailed
 -alphamemory 0-20
 -alphaquota 1-50
+-alphafilter status
+-alphafilter everyone|admins|allowlist|denylist
+-alphafilter allow|deny|remove @member
+-alphafilter clear
 -alphaquiet 22:00 07:00 | -alphaquiet off
 -alphaimage on|off      -alphavoice on|off
 -alphadoc on|off        -alphasticker on|off
@@ -412,7 +416,7 @@ Smart Alpha mentions are enabled only when the group's chatbot switch is on. A d
 
 The admin dashboard's **Media Studio** page exposes job progress, failure logs, retries, FFmpeg/API health, daily member/group quotas, temporary storage usage, meme-template and sticker-pack management, Alpha instructions, feature toggles, provider circuit breakers and a global safe-mode switch. Group cards can export and import non-sensitive group configuration.
 
-The outbound queue spaces group sends, automated join/leave notices are batched into one message per event, command bursts are rate-limited, and synthetic typing/presence events are disabled. These safeguards reduce unnecessary automation traffic, but no unofficial WhatsApp client can guarantee that an account will not be restricted.
+The outbound queue spaces group sends, automated join/leave notices are batched into one message per event, command bursts are rate-limited, Alpha mentions can be restricted by member, and synthetic typing/presence events are disabled. These safeguards reduce unnecessary automation traffic, but no unofficial WhatsApp client can guarantee that an account will not be restricted.
 
 ---
 

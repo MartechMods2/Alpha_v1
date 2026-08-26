@@ -449,6 +449,9 @@ router.patch("/api/admin/groups/:jid", requireAdmin, async (req, res) => {
 		"alphaResponseLength",
 		"alphaQuietStart",
 		"alphaQuietEnd",
+		"alphaAccessMode",
+		"alphaAllowedMembers",
+		"alphaDeniedMembers",
 	];
 	const update = {};
 	for (const key of allowed) {
@@ -671,7 +674,8 @@ router.post("/api/admin/groups/:jid/import", requireAdmin, async (req, res) => {
 		"isChatBotOn", "isImgOn", "isAutoStickerOn", "isRankNotifOn", "isWelcomeOn", "isGoodbyeOn",
 		"isAntiLinkOn", "isAntiSpamOn", "cmdBlocked", "alphaMode", "alphaMemoryLimit", "alphaDailyQuota",
 		"alphaImageOn", "alphaVoiceOn", "alphaDocOn", "alphaStickerOn", "alphaPersonality", "alphaResponseLength",
-		"alphaQuietStart", "alphaQuietEnd", "welcome", "goodbye", "rules", "allowedDomains",
+		"alphaQuietStart", "alphaQuietEnd", "alphaAccessMode", "alphaAllowedMembers", "alphaDeniedMembers",
+		"welcome", "goodbye", "rules", "allowedDomains",
 	];
 	try {
 		const source = req.body?.group || {};

@@ -15,7 +15,14 @@ export const DEFAULT_ALPHA_SETTINGS = Object.freeze({
 	alphaResponseLength: "short",
 	alphaQuietStart: "",
 	alphaQuietEnd: "",
+	alphaAccessMode: "everyone",
+	alphaAllowedMembers: [],
+	alphaDeniedMembers: [],
 });
+
+const normalizeMemberList = (value) => Array.isArray(value)
+	? [...new Set(value.map((jid) => String(jid || "").trim()).filter((jid) => jid.includes("@")))].slice(0, 100)
+	: [];
 
 export const normalizeAlphaSettings = (data = {}) => ({
 	alphaMode: ["smart", "text", "mixed", "sticker", "off"].includes(data.alphaMode) ? data.alphaMode : DEFAULT_ALPHA_SETTINGS.alphaMode,
@@ -33,7 +40,28 @@ export const normalizeAlphaSettings = (data = {}) => ({
 	alphaResponseLength: ["short", "normal", "detailed"].includes(data.alphaResponseLength) ? data.alphaResponseLength : "short",
 	alphaQuietStart: /^\d{2}:\d{2}$/.test(data.alphaQuietStart || "") ? data.alphaQuietStart : "",
 	alphaQuietEnd: /^\d{2}:\d{2}$/.test(data.alphaQuietEnd || "") ? data.alphaQuietEnd : "",
+	alphaAccessMode: ["everyone", "admins", "allowlist", "denylist"].includes(data.alphaAccessMode)
+		? data.alphaAccessMode
+		: DEFAULT_ALPHA_SETTINGS.alphaAccessMode,
+	alphaAllowedMembers: normalizeMemberList(data.alphaAllowedMembers),
+	alphaDeniedMembers: normalizeMemberList(data.alphaDeniedMembers),
 });
+
+export const canUseAlphaMention = ({
+	settings,
+	senderJid,
+	isAdmin = false,
+	isOwner = false,
+	matches = (left, right) => left === right,
+}) => {
+	if (isAdmin || isOwner) return true;
+	const mode = settings?.alphaAccessMode || "everyone";
+	if (mode === "everyone") return true;
+	if (mode === "admins") return false;
+	const isListed = (mode === "allowlist" ? settings.alphaAllowedMembers : settings.alphaDeniedMembers)
+		.some((jid) => matches(senderJid, jid));
+	return mode === "allowlist" ? isListed : !isListed;
+};
 
 const localMinutes = () => {
 	const parts = new Intl.DateTimeFormat("en-GB", {
