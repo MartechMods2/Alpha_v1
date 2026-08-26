@@ -98,6 +98,10 @@ A feature-rich WhatsApp bot with a modern React/Vite admin dashboard. Supports d
 |    -ref_delete     |    Delete a company (Admin only)       |      `-ref_delete Google`  |            ✔            |
 |    -ref_update     |  Update a company name (Admin only)    | `-ref_update Google Alphabet` |         ✔            |
 |      -automod      | Configure warnings, anti-link and spam   |     `-automod status`     |            ✔            |
+|    -antistatus     | Stop members mentioning group in Status  |     `-antistatus on`      |            ✔            |
+|       -mute        | Silently delete one member's messages     |   `-mute @user 2h`        |            ✔            |
+|      -unmute       | Restore a muted member's messages         |    `-unmute @user`        |            ✔            |
+|     -mutelist      | Show active group mutes                    |       `-mutelist`         |            ✔            |
 |      -goodbye      |     Set an automatic goodbye message    | `-goodbye set Bye {user}` |            ✔            |
 |       -rules       |          View or set group rules         |         `-rules`          |            ✔            |
 |    -gamereset      |       Reset the group's game season       | `-gamereset confirm`      |            ✔            |
@@ -304,6 +308,31 @@ Anti-link and anti-spam are opt-in. Admins, the group owner, and the bot are exe
 ```
 
 `antilink on delete` deletes the triggering message when the bot is an admin and also records a warning. Anti-spam warns after either the configured message flood or duplicate-message threshold, then applies a one-minute cooldown so one burst cannot produce repeated bot replies.
+
+Control WhatsApp Status mentions and individual member posting access:
+
+```text
+# Delete group Status mentions and remove an offender on the third strike
+-antistatus on
+-antistatus status
+-antistatus list
+-antistatus clear @member
+-statuswarns @member
+
+# Permanent mute (messages are silently deleted until unmuted)
+-mute @member forever repeated disruption
+
+# Timed mute: m=minutes, h=hours, d=days, w=weeks; maximum 30 days
+-mute @member 30m cool down
+-mute @member 2h flooding the chat
+-mute @member 1d
+
+-muteinfo @member
+-mutelist
+-unmute @member
+```
+
+You may reply to a member's message instead of tagging them. The bot must be a group admin to delete messages or remove an offender. Group admins, the group owner and the bot cannot be muted or receive automatic status-mention strikes.
 
 Low-volume, on-demand social games include:
 

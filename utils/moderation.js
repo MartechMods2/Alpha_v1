@@ -7,7 +7,7 @@ import {
 	isJidGroupAdmin,
 	isSameGroupUser,
 } from "./groupParticipants.js";
-import { getGroupSafetySettings } from "./groupSafety.js";
+import { findMutedMember, getGroupSafetySettings } from "./groupSafety.js";
 
 config();
 
@@ -103,6 +103,126 @@ export const clearGroupWarnings = async (groupJid, memberJid) => {
 			{ $pull: { warning: { group: groupJid } } },
 		),
 	]);
+};
+
+export const addStatusMentionWarning = async ({ groupJid, memberJid, matches }) =>
+	withWarningLock(`status:${groupJid}`, async () => {
+		const groupData = await group.findOne(
+			{ _id: groupJid },
+			{ projection: { statusMentionWarnCount: 1 } },
+		);
+		const entries = Array.isArray(groupData?.statusMentionWarnCount) ? groupData.statusMentionWarnCount : [];
+		const existing = entries.find((entry) => matches(memberJid, entry.member));
+		const count = Math.min(3, Number(existing?.count || 0) + 1);
+		if (existing) {
+			await group.updateOne(
+				{ _id: groupJid, "statusMentionWarnCount.member": existing.member },
+				{ $set: { "statusMentionWarnCount.$.count": count, "statusMentionWarnCount.$.updatedAt": new Date() } },
+			);
+		} else {
+			await group.updateOne(
+				{ _id: groupJid },
+				{
+					$push: {
+						statusMentionWarnCount: {
+							$each: [{ member: memberJid, count, updatedAt: new Date() }],
+							$slice: -200,
+						},
+					},
+				},
+			);
+		}
+		return count;
+	});
+
+export const clearStatusMentionWarnings = async (groupJid, memberJid, matches = (left, right) => left === right) => {
+	const groupData = await group.findOne(
+		{ _id: groupJid },
+		{ projection: { statusMentionWarnCount: 1 } },
+	);
+	const members = (Array.isArray(groupData?.statusMentionWarnCount) ? groupData.statusMentionWarnCount : [])
+		.filter((entry) => matches(memberJid, entry.member))
+		.map((entry) => entry.member);
+	if (members.length) {
+		await group.updateOne({ _id: groupJid }, { $pull: { statusMentionWarnCount: { member: { $in: members } } } });
+	}
+};
+
+export const enforceMemberMute = async ({
+	sock,
+	msg,
+	groupJid,
+	memberJid,
+	groupData,
+	groupMetadata,
+	botJids,
+	isBotAdmin,
+}) => {
+	if (isProtectedGroupMember(groupMetadata, memberJid, botJids)) return { handled: false };
+	const matches = (left, right) => isSameGroupUser(groupMetadata, left, right);
+	const muted = findMutedMember(groupData, memberJid, matches);
+	if (muted.expiredMembers.length) {
+		await group.updateOne(
+			{ _id: groupJid },
+			{ $pull: { mutedMembers: { member: { $in: muted.expiredMembers } } } },
+		);
+	}
+	if (!muted.entry) return { handled: false };
+	if (isBotAdmin) {
+		await sock.sendMessage(groupJid, { delete: msg.key }).catch((error) =>
+			console.warn("Could not delete a muted member's message:", error.message),
+		);
+	}
+	return { handled: true, muted: true };
+};
+
+export const warnStatusMentionMember = async ({
+	sock,
+	msg,
+	groupJid,
+	memberJid,
+	groupData,
+	groupMetadata,
+	botJids,
+	isBotAdmin,
+	sendMessageWTyping,
+}) => {
+	const settings = getGroupSafetySettings(groupData);
+	if (!settings.isAntiStatusMentionOn || isProtectedGroupMember(groupMetadata, memberJid, botJids)) {
+		return { handled: false };
+	}
+	const matches = (left, right) => isSameGroupUser(groupMetadata, left, right);
+	if (isBotAdmin) {
+		await sock.sendMessage(groupJid, { delete: msg.key }).catch((error) =>
+			console.warn("Could not delete group status mention:", error.message),
+		);
+	}
+	const count = await addStatusMentionWarning({ groupJid, memberJid, matches });
+	let removed = false;
+	let action = "Do not mention this group in your WhatsApp Status.";
+	if (count >= 3) {
+		if (!isBotAdmin) {
+			action = "Third strike reached, but the bot must be an admin to remove this member.";
+		} else {
+			try {
+				await sock.groupParticipantsUpdate(groupJid, [memberJid], "remove");
+				await clearStatusMentionWarnings(groupJid, memberJid, matches);
+				removed = true;
+				action = "Removed after the third status-mention strike.";
+			} catch (error) {
+				console.warn("Could not remove status-mention offender:", error.message);
+				action = "Third strike reached; removal failed, so an admin should review this member.";
+			}
+		}
+	}
+	await sendMessageWTyping(
+		groupJid,
+		{
+			text: `🚫 *Status Mention Warning ${count}/3*\n@${extractPhoneNumber(memberJid)}\n\n${action}`,
+			mentions: [memberJid],
+		},
+	);
+	return { handled: true, count, limit: 3, removed };
 };
 
 export const isProtectedGroupMember = (metadata, memberJid, botJids = []) =>
