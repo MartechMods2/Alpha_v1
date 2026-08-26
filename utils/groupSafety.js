@@ -5,11 +5,14 @@ export const GROUP_SAFETY_DEFAULTS = Object.freeze({
 	antiLinkAction: "warn",
 	allowedDomains: [],
 	isAntiSpamOn: false,
+	isAntiStatusMentionOn: false,
 	spamLimit: 6,
 	spamWindowSeconds: 12,
 	duplicateLimit: 3,
 	warningLimit: 3,
 	warningAction: "remove",
+	statusMentionWarningLimit: 3,
+	mutedMembers: [],
 });
 
 const clampInteger = (value, fallback, min, max) => {
@@ -44,6 +47,7 @@ export const getGroupSafetySettings = (groupData = {}) => {
 			),
 		],
 		isAntiSpamOn: Boolean(data.isAntiSpamOn),
+		isAntiStatusMentionOn: Boolean(data.isAntiStatusMentionOn),
 		spamLimit: clampInteger(data.spamLimit, GROUP_SAFETY_DEFAULTS.spamLimit, 4, 12),
 		spamWindowSeconds: clampInteger(
 			data.spamWindowSeconds,
@@ -61,7 +65,60 @@ export const getGroupSafetySettings = (groupData = {}) => {
 		warningAction: ["remove", "notify"].includes(data.warningAction)
 			? data.warningAction
 			: GROUP_SAFETY_DEFAULTS.warningAction,
+		statusMentionWarningLimit: 3,
+		mutedMembers: normalizeMutedMembers(data.mutedMembers),
 	};
+};
+
+export const normalizeMutedMembers = (value) => (Array.isArray(value) ? value : [])
+	.map((entry) => ({
+		member: String(entry?.member || "").trim(),
+		mutedBy: String(entry?.mutedBy || "").trim(),
+		reason: String(entry?.reason || "").trim().slice(0, 200),
+		mutedAt: entry?.mutedAt ? new Date(entry.mutedAt) : new Date(0),
+		mutedUntil: entry?.mutedUntil ? new Date(entry.mutedUntil) : null,
+	}))
+	.filter((entry) => entry.member.includes("@") && (!entry.mutedUntil || !Number.isNaN(entry.mutedUntil.getTime())))
+	.slice(-100);
+
+export const parseMuteDuration = (value = "") => {
+	const input = String(value || "").trim().toLowerCase();
+	if (!input || ["forever", "permanent", "perm"].includes(input)) {
+		return { valid: true, milliseconds: null, label: "until manually unmuted" };
+	}
+	const match = input.match(/^(\d{1,3})(m|h|d|w)$/);
+	if (!match) return { valid: false, milliseconds: null, label: "" };
+	const unitMs = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }[match[2]];
+	const milliseconds = Number(match[1]) * unitMs;
+	if (milliseconds < 60_000 || milliseconds > 30 * 86_400_000) {
+		return { valid: false, milliseconds: null, label: "" };
+	}
+	return { valid: true, milliseconds, label: `for ${input}` };
+};
+
+export const findMutedMember = (groupData, memberJid, matches = (left, right) => left === right, now = Date.now()) => {
+	const matching = normalizeMutedMembers(groupData?.mutedMembers).filter((entry) => matches(memberJid, entry.member));
+	const active = matching.find((entry) => !entry.mutedUntil || entry.mutedUntil.getTime() > now);
+	return {
+		entry: active || null,
+		expiredMembers: active ? [] : matching.map((entry) => entry.member),
+	};
+};
+
+export const isGroupStatusMentionMessage = (msg) => {
+	if (msg?.statusMentionMessageInfo?.quotedStatus) return true;
+	let content = msg?.message;
+	for (let depth = 0; content && depth < 6; depth += 1) {
+		if (content.groupStatusMentionMessage) return true;
+		content = content.ephemeralMessage?.message ||
+			content.viewOnceMessage?.message ||
+			content.viewOnceMessageV2?.message ||
+			content.viewOnceMessageV2Extension?.message ||
+			content.associatedChildMessage?.message ||
+			content.groupStatusMessage?.message ||
+			null;
+	}
+	return false;
 };
 
 const LINK_PATTERN = /(?:https?:\/\/|www\.)[^\s<>()]+|\b(?:chat\.whatsapp\.com|wa\.me)\/[^\s<>()]+/gi;

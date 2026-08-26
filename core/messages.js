@@ -42,6 +42,7 @@ import {
 	useAlphaQuota,
 } from "../utils/alphaMention.js";
 import { getMediaRuntimeConfig } from "../utils/mediaJobs.js";
+import { isGroupStatusMentionMessage } from "../utils/groupSafety.js";
 
 // ── FOOLPROOF REWRITE FOR OWNER/BOT IDENTIFICATION ─────────────────
 const cleanMyNum = (process.env.MY_NUMBER || "").split(",")[0].replace(/[^0-9]/g, "");
@@ -183,8 +184,6 @@ const getCommand = async (sock, msg, cache) => {
 			type === "extendedTextMessage" ? msg.message.extendedTextMessage.contextInfo : null;
 		// console.log("extendedMessageOriginal:", JSON.stringify(extendedMessageOriginal, null, 2));
 
-		if (!types.includes(type)) return;
-
 		if (type == "buttonsResponseMessage") {
 			if (msg.message.buttonsResponseMessage.selectedButtonId == "eva")
 				body = body.startsWith(prefix) ? body : prefix + body;
@@ -206,12 +205,108 @@ const getCommand = async (sock, msg, cache) => {
 		const args = body.trim().split(/ +/).slice(1);
 		//-------------------------------------------------------------------------------------------------------------//
 		const isGroup = from.endsWith("@g.us");
-		const senderJid = isGroup ? msg.key.participant : msg.key.remoteJid;
+		const senderJid = isGroup
+			? msg.key.participant || msg.key.participantPn || msg.key.participantAlt
+			: msg.key.remoteJid;
 		let isOwner = myNumber.includes(senderJid) || msg.key.fromMe === true;
 		if (!senderJid || !senderJid.includes("@")) return;
 
 		const updateId = msg.key.fromMe ? botNumber[0] : senderJid;
 		const updateName = msg.key.fromMe ? sock.user.name : msg.pushName;
+
+		let groupMetadata = "";
+		let groupData = "";
+		if (isGroup) {
+			groupMetadata = (await getGroupMeta(from)) || cache.get(from + ":groupMetadata");
+			if (!groupMetadata) {
+				try {
+					groupMetadata = await Promise.race([
+						sock.groupMetadata(from),
+						new Promise((_, reject) =>
+							setTimeout(() => reject(new Error("Group metadata fetch timeout")), 2000),
+						),
+					]);
+					setGroupMeta(from, groupMetadata);
+					cache.set(from + ":groupMetadata", groupMetadata, 10 * 60);
+					await createGroupData(from, groupMetadata);
+				} catch (error) {
+					console.error("Group metadata fetch failed:", error.message);
+					groupMetadata = { participants: [] };
+				}
+			}
+		}
+		const senderNumber = senderJid.includes(":") ? senderJid.split(":")[0] : senderJid.split("@")[0];
+		if (senderJid !== updateId) createMembersData(senderJid, msg.pushName);
+		let senderData = null;
+		let groupDataFetched = null;
+		try {
+			[senderData, groupDataFetched] = await Promise.all([
+				getMemberData(senderJid),
+				isGroup ? getGroupData(from) : Promise.resolve(""),
+			]);
+		} catch {
+			senderData = null;
+			groupDataFetched = null;
+		}
+		if (isGroup) {
+			groupData = groupDataFetched;
+			if (!groupData && groupMetadata?.subject) {
+				await createGroupData(from, groupMetadata);
+				groupData = await getGroupData(from);
+			}
+		}
+		if (senderData?.isBlock) return;
+
+		// Refresh group roles before administrator commands so promotions and
+		// demotions take effect immediately.
+		if (isCmd && isGroup && commandsAdmins[command]) {
+			try {
+				const freshMetadata = await sock.groupMetadata(from);
+				if (freshMetadata?.participants) {
+					groupMetadata = freshMetadata;
+					setGroupMeta(from, freshMetadata);
+					cache.set(from + ":groupMetadata", freshMetadata, 10 * 60);
+				}
+			} catch (error) {
+				console.warn("Could not refresh group metadata for admin command:", error.message);
+			}
+		}
+		const groupAdmins = isGroup ? getGroupAdmins(groupMetadata.participants) : [];
+		const senderIdentityJids = [senderJid, msg.key.participantPn, msg.key.participantAlt].filter(Boolean);
+		const isGroupAdmin = isGroup ? isJidGroupAdmin(groupMetadata, senderIdentityJids) : false;
+		const botJids = isGroup ? await getBotIdentityJids(sock, groupMetadata, botNumber) : [];
+		const isBotAdmin = isGroup ? isJidGroupAdmin(groupMetadata, botJids) : false;
+		if (isGroup && !isOwner) {
+			isOwner = myNumber.some((ownerJid) => isSameGroupUser(groupMetadata, senderJid, ownerJid));
+		}
+
+		if (isGroup && !msg.key.fromMe) {
+			try {
+				const automodResult = await handleAutomodMessage({
+					sock,
+					msg,
+					groupJid: from,
+					senderJid,
+					body,
+					isCommand: isCmd,
+					isOwner,
+					isGroupAdmin,
+					groupData,
+					groupMetadata,
+					botJids,
+					isBotAdmin,
+					isGroupStatusMention: isGroupStatusMentionMessage(msg),
+					sendMessageWTyping,
+				});
+				if (automodResult.handled) return;
+			} catch (error) {
+				console.error("[automod error]", error.message);
+			}
+		}
+
+		// Unknown service messages have now passed moderation and need no command processing.
+		if (!types.includes(type)) return;
+		if (!isCmd && type === "stickerMessage") return;
 
 		// Determine media type field for counting
 		const mediaTypeField =
@@ -334,56 +429,6 @@ const getCommand = async (sock, msg, cache) => {
 			});
 		}
 
-		// Plain stickers need no further processing. Documents continue so a captioned
-		// @Alpha mention can reach the opt-in document-understanding path.
-		if (!isCmd && type == "stickerMessage") return;
-		//-------------------------------------------------------------------------------------------------------------//
-
-		let groupMetadata = "";
-		let groupData = "";
-		if (isGroup) {
-			// Redis first, NodeCache fallback, then live fetch
-			groupMetadata = (await getGroupMeta(from)) || cache.get(from + ":groupMetadata");
-			if (!groupMetadata) {
-				try {
-					groupMetadata = await Promise.race([
-						sock.groupMetadata(from),
-						new Promise((_, reject) =>
-							setTimeout(() => reject(new Error("Group metadata fetch timeout")), 2000),
-						),
-					]);
-					setGroupMeta(from, groupMetadata); // Redis (async, non-blocking)
-					cache.set(from + ":groupMetadata", groupMetadata, 10 * 60); // NodeCache fallback
-					await createGroupData(from, groupMetadata);
-				} catch (e) {
-					console.error("Group metadata fetch failed:", e.message);
-					groupMetadata = { participants: [] };
-				}
-			}
-		}
-		const senderNumber = senderJid.includes(":") ? senderJid.split(":")[0] : senderJid.split("@")[0];
-		if (senderJid !== updateId) {
-			createMembersData(senderJid, msg.pushName);
-		}
-		// Parallelize member and group data fetch, but don't block main thread
-		let senderData = null;
-		let groupDataFetched = null;
-		try {
-			[senderData, groupDataFetched] = await Promise.all([
-				getMemberData(senderJid),
-				isGroup ? getGroupData(from) : Promise.resolve(""),
-			]);
-		} catch (e) {
-			senderData = null;
-			groupDataFetched = null;
-		}
-		if (isGroup) {
-			groupData = groupDataFetched;
-			if (!groupData && groupMetadata?.subject) {
-				await createGroupData(from, groupMetadata);
-				groupData = await getGroupData(from);
-			}
-		}
 		if (isGroup && type == "imageMessage" && groupData?.isAutoStickerOn) {
 			if (msg.message.imageMessage.caption == "") {
 				commandsPublic["sticker"](sock, msg, from, args, {
@@ -394,57 +439,6 @@ const getCommand = async (sock, msg, cache) => {
 					sendMessageWTyping,
 					evv,
 				});
-			}
-		}
-		//-------------------------------------------------------------------------------------------------------------//
-		if (senderData?.isBlock) return;
-		// Admin membership changes must take effect immediately. Refresh metadata
-		// once here instead of making every admin command issue its own request.
-		if (isCmd && isGroup && commandsAdmins[command]) {
-			try {
-				const freshMetadata = await sock.groupMetadata(from);
-				if (freshMetadata?.participants) {
-					groupMetadata = freshMetadata;
-					setGroupMeta(from, freshMetadata);
-					cache.set(from + ":groupMetadata", freshMetadata, 10 * 60);
-				}
-			} catch (error) {
-				console.warn("Could not refresh group metadata for admin command:", error.message);
-			}
-		}
-		const groupAdmins = isGroup ? getGroupAdmins(groupMetadata.participants) : [];
-		const senderIdentityJids = [senderJid, msg.key.participantPn, msg.key.participantAlt].filter(Boolean);
-		const isGroupAdmin = isGroup ? isJidGroupAdmin(groupMetadata, senderIdentityJids) : false;
-		const botJids = isGroup ? await getBotIdentityJids(sock, groupMetadata, botNumber) : [];
-		const isBotAdmin = isGroup ? isJidGroupAdmin(groupMetadata, botJids) : false;
-		if (isGroup && !isOwner) {
-			isOwner = myNumber.some((ownerJid) =>
-				isSameGroupUser(groupMetadata, senderJid, ownerJid),
-			);
-		}
-
-		// Conservative automod: group-only, opt-in, non-command messages only,
-		// with admin/owner exemptions and at most one warning action per message.
-		if (isGroup && !isCmd && body && !msg.key.fromMe) {
-			try {
-				const automodResult = await handleAutomodMessage({
-					sock,
-					msg,
-					groupJid: from,
-					senderJid,
-					body,
-					isCommand: isCmd,
-					isOwner,
-					isGroupAdmin,
-					groupData,
-					groupMetadata,
-					botJids,
-					isBotAdmin,
-					sendMessageWTyping,
-				});
-				if (automodResult.handled) return;
-			} catch (error) {
-				console.error("[automod error]", error.message);
 			}
 		}
 

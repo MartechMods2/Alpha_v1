@@ -2,6 +2,24 @@
 
 The examples below use `-` as the command prefix. If `PREFIX` is different in Render, replace `-` with that prefix. Commands marked **Admin** can be used only by a group admin, moderator, or bot owner.
 
+## Member Moderation Controls
+
+The bot must be a group admin to delete muted messages or remove a status-mention offender. You can tag a member or reply directly to their message.
+
+| Command | Usage | Example |
+|---|---|---|
+| `antistatus on\|off` | **Admin:** enable or disable protection against members mentioning the group in WhatsApp Status. | `-antistatus on` |
+| `antistatus status` | **Admin:** show whether protection is enabled and its fixed three-strike policy. | `-antistatus status` |
+| `antistatus list` | **Admin:** list members with status-mention strikes. | `-antistatus list` |
+| `antistatus clear @member` | **Admin:** clear one member's status-mention strikes. | `-antistatus clear @Ada` |
+| `statuswarns @member` | **Admin:** show one member's status-mention strikes. | `-statuswarns @Ada` |
+| `mute @member [duration] [reason]` | **Admin:** silently delete the member's new messages. Without a duration, the mute is permanent. | `-mute @Tunde 2h repeated flooding` |
+| `unmute @member` | **Admin:** stop deleting that member's messages. | `-unmute @Tunde` |
+| `muteinfo @member` | **Admin:** show the duration and reason for a mute. | `-muteinfo @Tunde` |
+| `mutelist` | **Admin:** list active permanent and timed mutes. | `-mutelist` |
+
+Mute durations accept `m` (minutes), `h` (hours), `d` (days), and `w` (weeks), up to 30 days; use `forever` for a permanent mute. Muted messages are deleted silently to avoid bot-message floods. Admins, the group owner and the bot are protected from both features. Anti status mention is opt-in and removes a non-admin member when the third strike is recorded.
+
 ## Stickers
 
 | Command | Usage | Example |

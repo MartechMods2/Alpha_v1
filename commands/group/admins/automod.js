@@ -12,6 +12,8 @@ const statusText = (groupData) => {
 		`Anti-link: *${boolLabel(settings.isAntiLinkOn)}* (${settings.antiLinkAction})\n` +
 		`Allowed domains: *${settings.allowedDomains.join(", ") || "none"}*\n` +
 		`Anti-spam: *${boolLabel(settings.isAntiSpamOn)}*\n` +
+		`Anti status mention: *${boolLabel(settings.isAntiStatusMentionOn)}* (3 strikes → removal)\n` +
+		`Muted members: *${settings.mutedMembers.filter((entry) => !entry.mutedUntil || entry.mutedUntil.getTime() > Date.now()).length}*\n` +
 		`Spam rule: *${settings.spamLimit} messages/${settings.spamWindowSeconds}s*, ` +
 		`${settings.duplicateLimit} duplicates\n` +
 		`Warnings: *${settings.warningLimit}* → *${settings.warningAction}*\n\n` +
@@ -20,7 +22,7 @@ const statusText = (groupData) => {
 };
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
-	const { sendMessageWTyping } = msgInfoObj;
+	const { isBotAdmin, sendMessageWTyping } = msgInfoObj;
 	const feature = args[0]?.toLowerCase() || "status";
 	const value = args[1]?.toLowerCase();
 	const groupData = await getGroupData(from);
@@ -28,13 +30,17 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 	if (feature === "status") return reply(statusText(groupData));
 
-	if (["welcome", "goodbye", "antilink", "antispam"].includes(feature)) {
+	if (["welcome", "goodbye", "antilink", "antispam", "antistatus"].includes(feature)) {
 		if (!["on", "off"].includes(value)) return reply(`❌ Usage: automod ${feature} on/off`);
+		if (feature === "antistatus" && value === "on" && !isBotAdmin) {
+			return reply("❌ Make the bot a group admin before enabling anti status mention.");
+		}
 		const fields = {
 			welcome: "isWelcomeOn",
 			goodbye: "isGoodbyeOn",
 			antilink: "isAntiLinkOn",
 			antispam: "isAntiSpamOn",
+			antistatus: "isAntiStatusMentionOn",
 		};
 		const update = { [fields[feature]]: value === "on" };
 		if (feature === "antilink" && ["warn", "delete"].includes(args[2]?.toLowerCase())) {
@@ -116,11 +122,14 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 					antiLinkAction: "warn",
 					allowedDomains: [],
 					isAntiSpamOn: false,
+					isAntiStatusMentionOn: false,
 					spamLimit: 6,
 					spamWindowSeconds: 12,
 					duplicateLimit: 3,
 					warningLimit: 3,
 					warningAction: "remove",
+					statusMentionWarnCount: [],
+					mutedMembers: [],
 				},
 			},
 		);
@@ -129,7 +138,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 	return reply(
 		"❌ Try: automod status | welcome on/off | goodbye on/off | antilink on/off [warn|delete] | " +
-			"antispam on/off | spam <limit> <seconds> <duplicates> | warnings <limit> [remove|notify] | " +
+			"antispam on/off | antistatus on/off | spam <limit> <seconds> <duplicates> | warnings <limit> [remove|notify] | " +
 			"allow add/remove/list [domain] | reset",
 	);
 };

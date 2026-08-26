@@ -437,6 +437,7 @@ router.patch("/api/admin/groups/:jid", requireAdmin, async (req, res) => {
 		"isGoodbyeOn",
 		"isAntiLinkOn",
 		"isAntiSpamOn",
+		"isAntiStatusMentionOn",
 		"cmdBlocked",
 		"alphaMode",
 		"alphaMemoryLimit",
@@ -658,7 +659,7 @@ router.get("/api/admin/groups/:jid/export", requireAdmin, async (req, res) => {
 	const jid = decodeURIComponent(req.params.jid);
 	try {
 		const [settings, tools] = await Promise.all([
-			group.findOne({ _id: jid }, { projection: { chatHistory: 0, members: 0, memberWarnCount: 0 } }),
+			group.findOne({ _id: jid }, { projection: { chatHistory: 0, members: 0, memberWarnCount: 0, statusMentionWarnCount: 0, mutedMembers: 0 } }),
 			getGroupTools(jid),
 		]);
 		if (!settings) return res.status(404).json({ error: "Group not found" });
@@ -672,7 +673,7 @@ router.post("/api/admin/groups/:jid/import", requireAdmin, async (req, res) => {
 	const jid = decodeURIComponent(req.params.jid);
 	const allowedGroupFields = [
 		"isChatBotOn", "isImgOn", "isAutoStickerOn", "isRankNotifOn", "isWelcomeOn", "isGoodbyeOn",
-		"isAntiLinkOn", "isAntiSpamOn", "cmdBlocked", "alphaMode", "alphaMemoryLimit", "alphaDailyQuota",
+		"isAntiLinkOn", "isAntiSpamOn", "isAntiStatusMentionOn", "cmdBlocked", "alphaMode", "alphaMemoryLimit", "alphaDailyQuota",
 		"alphaImageOn", "alphaVoiceOn", "alphaDocOn", "alphaStickerOn", "alphaPersonality", "alphaResponseLength",
 		"alphaQuietStart", "alphaQuietEnd", "alphaAccessMode", "alphaAllowedMembers", "alphaDeniedMembers",
 		"welcome", "goodbye", "rules", "allowedDomains",
