@@ -7,6 +7,7 @@ export const ACTIONS = Object.freeze({
 	beat: { verb: "BEATS", emoji: "🥊", tone: "rough", asset: "punch.webp" },
 	punch: { verb: "PUNCHES", emoji: "🥊", tone: "rough", asset: "punch.webp" },
 	kick: { verb: "KICKS", emoji: "💥", tone: "rough", asset: "kick.webp" },
+	playkick: { verb: "KICKS", emoji: "💥", tone: "rough", asset: "kick.webp" },
 	bonk: { verb: "BONKS", emoji: "🔨", tone: "rough", asset: "punch.webp" },
 	bite: { verb: "BITES", emoji: "😬", tone: "rough", asset: "chase.webp" },
 	chase: { verb: "CHASES", emoji: "🏃", tone: "rough", asset: "chase.webp" },
@@ -29,7 +30,9 @@ export const ACTIONS = Object.freeze({
 	boop: { verb: "BOOPS", emoji: "👉", tone: "friendly", asset: "pat.webp" },
 });
 
-export const ACTION_COMMANDS = Object.freeze(Object.keys(ACTIONS));
+// `kick` remains available through `action kick`; the direct alias is
+// `playkick` so it cannot shadow the administrator removal command.
+export const ACTION_COMMANDS = Object.freeze(Object.keys(ACTIONS).filter((name) => name !== "kick"));
 export const FRIENDLY_ACTIONS = Object.freeze(ACTION_COMMANDS.filter((name) => ACTIONS[name].tone === "friendly"));
 
 const ACTION_ASSET_DIR = fileURLToPath(new URL("../media/actions/", import.meta.url));

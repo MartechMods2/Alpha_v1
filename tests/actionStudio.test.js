@@ -11,10 +11,11 @@ import {
 import { convertMediaToSticker } from "../utils/mediaStudio.js";
 
 test("action catalog includes requested play-fight and friendly commands", () => {
-	for (const command of ["slap", "beat", "laugh", "hug", "highfive", "tickle"]) {
+	for (const command of ["slap", "beat", "playkick", "laugh", "hug", "highfive", "tickle"]) {
 		assert.ok(ACTION_COMMANDS.includes(command));
 	}
 	assert.equal(ACTIONS.slap.tone, "rough");
+	assert.equal(ACTION_COMMANDS.includes("kick"), false);
 	assert.ok(FRIENDLY_ACTIONS.includes("laugh"));
 });
 

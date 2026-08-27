@@ -1,7 +1,5 @@
 import mdClient from "./client.js";
 
-mdClient.connect();
-
 const bot = mdClient.db("MyBotDataDB").collection("AuthTable");
 
 const createBotData = async () => {

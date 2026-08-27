@@ -1,7 +1,5 @@
 import mdClient from "./client.js";
 
-mdClient.connect();
-
 const group = mdClient.db("MyBotDataDB").collection("Groups");
 
 const createGroupData = async (groupJid, groupMetadata) => {
