@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import test from "node:test";
 import {
 	ACTION_COMMANDS,
 	ACTIONS,
 	FRIENDLY_ACTIONS,
 	createActionStickerImage,
+	getActionAssetPath,
 } from "../utils/actionStudio.js";
 import { convertMediaToSticker } from "../utils/mediaStudio.js";
 
@@ -14,6 +16,14 @@ test("action catalog includes requested play-fight and friendly commands", () =>
 	}
 	assert.equal(ACTIONS.slap.tone, "rough");
 	assert.ok(FRIENDLY_ACTIONS.includes("laugh"));
+});
+
+test("every action resolves to a bundled premium artwork asset", () => {
+	for (const command of ACTION_COMMANDS) {
+		const assetPath = getActionAssetPath(command);
+		assert.ok(assetPath.endsWith(".webp"), `${command} should resolve to WebP artwork`);
+		assert.ok(existsSync(assetPath), `${command} artwork should be bundled locally`);
+	}
 });
 
 test("action renderer creates a PNG and converts it to WhatsApp WebP", async () => {
