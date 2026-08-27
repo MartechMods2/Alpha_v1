@@ -1,5 +1,6 @@
 import startSock, { onNewSock } from "./connection.js";
 import { startReminderScheduler } from "./utils/reminderScheduler.js";
+import { startGroupAutomationScheduler } from "./utils/groupAutomationScheduler.js";
 import getDate from "./utils/date.js";
 import { normalizeJID } from "./utils/lid.js";
 import adminRouter from "./routes/admin.js";
@@ -269,6 +270,7 @@ async function startServer() {
 	}
 	await startSock("start");
 	startReminderScheduler();
+	startGroupAutomationScheduler();
 	// handleNewSock() is called by the onNewSock hook inside connection.js,
 	// so app.locals.sock and connection.update listener are both set up there.
 
