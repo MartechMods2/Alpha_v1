@@ -1,9 +1,12 @@
 import { getDueReminders, markReminded, scheduleNextRepeat } from "../db/reminders.js";
 import { getSock } from "../core/socketRef.js";
+import messageQueue from "../queue/messageQueue.js";
 
-const formatIST = (date) =>
-	new Intl.DateTimeFormat("en-IN", {
-		timeZone: "Asia/Kolkata",
+const botTimezone = process.env.BOT_TIMEZONE || "Africa/Lagos";
+
+const formatBotTime = (date) =>
+	new Intl.DateTimeFormat("en-GB", {
+		timeZone: botTimezone,
 		day: "2-digit",
 		month: "short",
 		year: "numeric",
@@ -27,15 +30,15 @@ const checkReminders = async () => {
 	for (const reminder of due) {
 		try {
 			const isGroup = reminder.from !== reminder.jid;
-			const text = `⏰ *Reminder!*\n\n📝 ${reminder.text}\n\n_Set for ${formatIST(reminder.remindAt)} IST_`;
+			const text = `⏰ *Reminder!*\n\n📝 ${reminder.text}\n\n_Set for ${formatBotTime(reminder.remindAt)} (${botTimezone})_`;
 
 			if (isGroup) {
-				await sock.sendMessage(reminder.from, {
+				await messageQueue.enqueue(reminder.from, () => sock.sendMessage(reminder.from, {
 					text,
 					mentions: [reminder.jid],
-				});
+				}), 1);
 			} else {
-				await sock.sendMessage(reminder.from, { text });
+				await messageQueue.enqueue(reminder.from, () => sock.sendMessage(reminder.from, { text }), 1);
 			}
 
 			if (reminder.repeat) {

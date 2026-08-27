@@ -1,6 +1,6 @@
 const getDate = () => {
 	const date = new Date().toLocaleString("en-US", {
-		timeZone: "Asia/Kolkata",
+		timeZone: process.env.BOT_TIMEZONE || "Africa/Lagos",
 	});
 	return new Date(date);
 };

@@ -2,6 +2,73 @@
 
 The examples below use `-` as the command prefix. If `PREFIX` is different in Render, replace `-` with that prefix. Commands marked **Admin** can be used only by a group admin, moderator, or bot owner.
 
+## Action Sticker Studio
+
+Tag a member or reply to their message. Alpha builds a WhatsApp sticker from both members' profile photos; when a profile photo is private, it uses a coloured initials avatar instead.
+
+| Command | Sticker action | Example |
+|---|---|---|
+| `slap @member` | Cartoon slap | `-slap @Tunde` |
+| `beat @member` | Cartoon boxing action | `-beat @Tunde` |
+| `punch @member` | Cartoon punch | `-punch @Tunde` |
+| `kick @member` | Cartoon kick | `-kick @Tunde` |
+| `bonk @member` | Funny bonk | `-bonk @Tunde` |
+| `bite @member` | Funny bite/chase scene | `-bite @Tunde` |
+| `chase @member` | Chasing scene | `-chase @Tunde` |
+| `roast @member` | Fiery roast reaction | `-roast @Tunde` |
+| `hug @member` | Hug | `-hug @Ada` |
+| `kiss @member` | Kiss | `-kiss @Ada` |
+| `pat @member` | Pat on the head | `-pat @Ada` |
+| `poke @member` | Poke | `-poke @Ada` |
+| `wave @member` | Wave | `-wave @Ada` |
+| `highfive @member` | High-five | `-highfive @Ada` |
+| `cheer @member` | Cheer for someone | `-cheer @Ada` |
+| `cuddle @member` | Cuddle | `-cuddle @Ada` |
+| `dance @member` | Dance together | `-dance @Ada` |
+| `laugh @member` | Laugh together | `-laugh @Ada` |
+| `cry @member` | Cry to a friend | `-cry @Ada` |
+| `wink @member` | Wink | `-wink @Ada` |
+| `feed @member` | Give food | `-feed @Ada` |
+| `salute @member` | Salute | `-salute @Ada` |
+| `tickle @member` | Tickle | `-tickle @Ada` |
+| `boop @member` | Boop | `-boop @Ada` |
+| `action random @member` | Pick an allowed action randomly | `-action random @Ada` |
+| `actions` (`actionhelp`) | Show the action list | `-actions` |
+| `actionstats [@member]` | Show actions sent, received and favourites | `-actionstats @Ada` |
+| `topactions` | Show the group's most active action users | `-topactions` |
+| `actionoptout` | Prevent members from targeting you | `-actionoptout` |
+| `actionoptin` | Allow members to target you again | `-actionoptin` |
+
+You can reply directly instead of tagging. For example, reply to Ada's message with `-slap`. Action stickers have a per-member cooldown and count against the existing Media Studio daily quota.
+
+### Action administration
+
+| Command | Usage | Example |
+|---|---|---|
+| `actionmode all` | **Admin:** enable friendly and play-fight actions. | `-actionmode all` |
+| `actionmode friendly` | **Admin:** allow only positive actions such as hugs, cheers and high-fives. | `-actionmode friendly` |
+| `actionmode off` | **Admin:** disable all action stickers. | `-actionmode off` |
+| `actionmode status` | **Admin:** show mode, cooldown and opt-out count. | `-actionmode status` |
+| `actioncooldown <5–120>` | **Admin:** set seconds between actions for each member. | `-actioncooldown 20` |
+| `actionreset @member confirm` | **Admin:** reset one member's action statistics. | `-actionreset @Ada confirm` |
+| `actionreset all confirm` | **Admin:** reset all action statistics in the group. | `-actionreset all confirm` |
+
+## Group Automation Pack
+
+These features are disabled by default and must be enabled by a group admin. They share one delivery time and timezone.
+
+| Command | Usage | Example |
+|---|---|---|
+| `birthdayauto on\|off` | **Admin:** send one combined birthday greeting when one or more saved birthdays fall on the same day. | `-birthdayauto on` |
+| `eventalerts on\|off` | **Admin:** remind the group 30 days, 7 days, 1 day and on the day of each saved event. | `-eventalerts on` |
+| `actionauto on\|off` | **Admin:** send one daily friendly action sticker using two eligible members. | `-actionauto on` |
+| `groupauto status` | **Admin:** show all automation settings. | `-groupauto status` |
+| `groupauto time HH:MM` | **Admin:** set the 24-hour delivery time. | `-groupauto time 08:00` |
+| `groupauto timezone Area/City` | **Admin:** set the IANA timezone. | `-groupauto timezone Africa/Lagos` |
+| `groupauto off` | **Admin:** disable all three group automations. | `-groupauto off` |
+
+Birthday automation uses birthdays saved with `-birthday set DD-MM`. Event alerts use events saved with `-event add YYYY-MM-DD | title`. Daily actions never select the bot or a member who used `-actionoptout`. Duplicate-delivery records prevent restart loops from sending the same greeting, milestone or daily action twice.
+
 ## Member Moderation Controls
 
 The bot must be a group admin to delete muted messages or remove a status-mention offender. You can tag a member or reply directly to their message.

@@ -53,6 +53,9 @@ const mdClient = new MongoClient(uri, {
 			db.collection("GameTeams").createIndex({ groupJid: 1, "members.jid": 1 }, { background: true }),
 			db.collection("GroupTrophies").createIndex({ groupJid: 1, awardedAt: -1 }, { background: true }),
 			db.collection("WeeklyMissions").createIndex({ groupJid: 1, memberJid: 1, week: 1 }, { background: true }),
+			db.collection("ActionStats").createIndex({ groupJid: 1, sent: -1, received: -1 }, { background: true }),
+			db.collection("GroupAutomations").createIndex({ updatedAt: -1 }, { background: true }),
+			db.collection("AutomationDeliveries").createIndex({ createdAt: 1 }, { background: true, expireAfterSeconds: 400 * 24 * 60 * 60 }),
 		]);
 	} catch (err) {
 		console.error("Error connecting to MongoDB:", err);
