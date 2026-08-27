@@ -1,5 +1,7 @@
 # Alpha Hyper Features: Commands and Examples
 
+For the later community, productivity, Arcade Plus, Text Lab and smart auto-reply additions, see [`ULTIMATE_FEATURE_PACK.md`](./ULTIMATE_FEATURE_PACK.md).
+
 The examples below use `-` as the command prefix. If `PREFIX` is different in Render, replace `-` with that prefix. Commands marked **Admin** can be used only by a group admin, moderator, or bot owner.
 
 ## Action Sticker Studio
@@ -8,10 +10,10 @@ Tag a member or reply to their message. Alpha creates a premium anime-style acti
 
 | Command | Sticker action | Example |
 |---|---|---|
-| `slap @member` | Cartoon slap | `-slap @Tunde` |
-| `beat @member` | Cartoon boxing action | `-beat @Tunde` |
-| `punch @member` | Cartoon punch | `-punch @Tunde` |
-| `kick @member` | Cartoon kick | `-kick @Tunde` |
+| `slap @member` | Premium anime slap scene | `-slap @Tunde` |
+| `beat @member` | Premium anime boxing scene | `-beat @Tunde` |
+| `punch @member` | Premium anime punch scene | `-punch @Tunde` |
+| `playkick @member` | Premium anime kick | `-playkick @Tunde` |
 | `bonk @member` | Funny bonk | `-bonk @Tunde` |
 | `bite @member` | Funny bite/chase scene | `-bite @Tunde` |
 | `chase @member` | Chasing scene | `-chase @Tunde` |

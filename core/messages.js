@@ -43,6 +43,7 @@ import {
 } from "../utils/alphaMention.js";
 import { getMediaRuntimeConfig } from "../utils/mediaJobs.js";
 import { isGroupStatusMentionMessage } from "../utils/groupSafety.js";
+import { handleAdvancedAutomation } from "../utils/advancedAutomation.js";
 
 // ── FOOLPROOF REWRITE FOR OWNER/BOT IDENTIFICATION ─────────────────
 const cleanMyNum = (process.env.MY_NUMBER || "").split(",")[0].replace(/[^0-9]/g, "");
@@ -577,6 +578,24 @@ const getCommand = async (sock, msg, cache) => {
 						`💬 <b>In:</b> ${escapeHtml(groupMetadata.subject)}`,
 					msg,
 				);
+			}
+		}
+		if (!isCmd && !isEvaTrigger && isGroup && (type === "conversation" || type === "extendedTextMessage")) {
+			try {
+				const automationResult = await handleAdvancedAutomation({
+					msg,
+					groupJid: from,
+					senderJid,
+					senderName: updateName || senderData?.username,
+					body,
+					isGroup,
+					isCommand: isCmd,
+					isFromBot: Boolean(msg.key.fromMe),
+					sendMessageWTyping,
+				});
+				if (automationResult.handled) return;
+			} catch (error) {
+				console.error("[advanced automation error]", error.message);
 			}
 		}
 		//---------------------------------------------------NO-CMD----------------------------------------------------//

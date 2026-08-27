@@ -38,8 +38,8 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 };
 
 export default () => ({
-	cmd: ["delete"],
+	cmd: ["admindelete"],
 	desc: "Delete a message",
-	usage: "delete | reply to message to delete",
+	usage: "admindelete | reply to message to delete",
 	handler,
 });
