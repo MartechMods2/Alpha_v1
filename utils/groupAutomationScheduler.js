@@ -1,4 +1,3 @@
-import axios from "axios";
 import { getActionSettings, recordAction } from "../db/actionData.js";
 import {
 	claimAutomationDelivery,
@@ -25,16 +24,6 @@ const safeName = (value, jid) => String(value || jid?.split("@")[0] || "Member")
 const memberName = async (jid) => {
 	const data = await getMemberData(jid).catch(() => null);
 	return safeName(data && data !== -1 ? data.username : "", jid);
-};
-
-const fetchAvatar = async (sock, jid) => {
-	try {
-		const url = await sock.profilePictureUrl(jid, "image");
-		const response = await axios.get(url, { responseType: "arraybuffer", timeout: 8_000, maxContentLength: 5 * 1024 * 1024 });
-		return Buffer.from(response.data);
-	} catch {
-		return null;
-	}
 };
 
 const sendQueued = (sock, jid, content) =>
@@ -106,11 +95,9 @@ const sendDailyAction = async (sock, automation, clock) => {
 		const actorJid = candidates[actorIndex];
 		const targetJid = candidates[targetIndex];
 		const action = FRIENDLY_ACTIONS[Math.floor(Math.random() * FRIENDLY_ACTIONS.length)];
-		const [actorName, targetName, actorAvatar, targetAvatar] = await Promise.all([
+		const [actorName, targetName] = await Promise.all([
 			memberName(actorJid),
 			memberName(targetJid),
-			fetchAvatar(sock, actorJid),
-			fetchAvatar(sock, targetJid),
 		]);
 		const sticker = await runMediaJob({
 			feature: "daily-action",
@@ -118,7 +105,7 @@ const sendDailyAction = async (sock, automation, clock) => {
 			senderJid: `automation:${automation._id}`,
 			retryable: false,
 			task: async () => imageBufferToSticker(await createActionStickerImage({
-				action, actorName, targetName, actorAvatar, targetAvatar,
+				action, actorName, targetName,
 			}), { pack: "Alpha Daily Action", author: "MartechMods2", quality: 84 }),
 		});
 		await sendQueued(sock, automation._id, { sticker, mentions: [actorJid, targetJid] });

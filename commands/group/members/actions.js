@@ -1,4 +1,3 @@
-import axios from "axios";
 import {
 	getActionLeaderboard,
 	getActionSettings,
@@ -25,20 +24,6 @@ const safeName = (value, jid) => String(value || jid?.split("@")[0] || "Member")
 
 const targetFromContext = (context) =>
 	(Array.isArray(context?.mentionedJid) ? context.mentionedJid[0] : context?.mentionedJid) || context?.participant || "";
-
-const fetchAvatar = async (sock, jid) => {
-	try {
-		const url = await sock.profilePictureUrl(jid, "image");
-		const response = await axios.get(url, {
-			responseType: "arraybuffer",
-			timeout: 8_000,
-			maxContentLength: 5 * 1024 * 1024,
-		});
-		return Buffer.from(response.data);
-	} catch {
-		return null;
-	}
-};
 
 const memberName = async (jid, fallback = "") => {
 	const data = await getMemberData(jid).catch(() => null);
@@ -121,11 +106,9 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		if (readyAt > now) return reply(`⏳ Wait ${Math.ceil((readyAt - now) / 1000)} seconds before another action.`);
 		cooldowns.set(cooldownKey, now + settings.cooldownSeconds * 1000);
 
-		const [actorName, targetName, actorAvatar, targetAvatar] = await Promise.all([
+		const [actorName, targetName] = await Promise.all([
 			memberName(senderJid, updateName),
 			memberName(target),
-			fetchAvatar(sock, senderJid),
-			fetchAvatar(sock, target),
 		]);
 		const sticker = await runMediaJob({
 			feature: `action-${action}`,
@@ -135,8 +118,6 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 				action,
 				actorName,
 				targetName,
-				actorAvatar,
-				targetAvatar,
 			}), { pack: "Alpha Action Studio", author: "MartechMods2", quality: 86 }),
 		});
 		await sendMessageWTyping(from, { sticker, mentions: [senderJid, target] }, { quoted: msg });
@@ -149,7 +130,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 export default () => ({
 	cmd: [...ACTION_COMMANDS, ...CONTROL_COMMANDS],
-	desc: "Create profile-photo action stickers with opt-out protection and group statistics",
+	desc: "Create premium anime action stickers with opt-out protection and group statistics",
 	usage: "slap @member | hug @member | action random @member | actionstats | topactions",
 	handler,
 });

@@ -4,7 +4,7 @@ The examples below use `-` as the command prefix. If `PREFIX` is different in Re
 
 ## Action Sticker Studio
 
-Tag a member or reply to their message. Alpha builds a WhatsApp sticker from both members' profile photos; when a profile photo is private, it uses a coloured initials avatar instead.
+Tag a member or reply to their message. Alpha creates a premium anime-style action sticker with detailed characters, realistic anatomy, expressive faces, impact lighting and both members' names. The original artwork is bundled locally, so no external image API or extra key is required.
 
 | Command | Sticker action | Example |
 |---|---|---|
