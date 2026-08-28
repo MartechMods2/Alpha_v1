@@ -133,7 +133,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 export default () => ({
 	cmd: [...ACTION_COMMANDS, ...CONTROL_COMMANDS],
-	desc: "Create premium anime action stickers with opt-out protection and group statistics",
+	desc: "Create premium realistic-human or anime action stickers with opt-out protection and group statistics",
 	usage: "slap @member | hug @member | action random @member | actionstats | topactions",
 	handler,
 });

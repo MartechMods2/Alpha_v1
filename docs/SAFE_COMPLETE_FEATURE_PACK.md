@@ -111,6 +111,8 @@ Human action mode includes local premium assets for slap, punch/beat, kick,
 hug, laugh and dance. Related action commands reuse the closest appropriate
 scene, add the two tagged names and produce a WhatsApp WebP sticker. The people
 are fictional adults and the comedic conflict scenes show no injury.
+Human mode is the default for new and previously unconfigured groups. Admins can
+switch to the original drawings with `-actionstyle anime` at any time.
 
 ## Strategy games and seasons
 
