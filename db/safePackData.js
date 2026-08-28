@@ -28,7 +28,7 @@ export const DEFAULT_SAFE_SETTINGS = Object.freeze({
 	aiPiiRedaction: true,
 	aiWebEnabled: false,
 	aiModerationEnabled: false,
-	actionStyle: "anime",
+	actionStyle: "human",
 	gameNightEnabled: false,
 	gameNightDay: "Friday",
 	gameNightTime: "20:00",
