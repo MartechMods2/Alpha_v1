@@ -17,6 +17,7 @@ import {
 } from "./groupParticipants.js";
 import { runMediaJob } from "./mediaJobs.js";
 import { imageBufferToSticker } from "./mediaStudio.js";
+import { getSafeSettings } from "../db/safePackData.js";
 
 const safeName = (value, jid) => String(value || jid?.split("@")[0] || "Member")
 	.replace(/[\r\n\t*_~`]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
@@ -74,8 +75,9 @@ const sendEventAlerts = async (sock, automation, tools, clock) => {
 const sendDailyAction = async (sock, automation, clock) => {
 	if (!automation.actionDailyEnabled) return;
 	const metadata = await sock.groupMetadata(automation._id);
-	const [settings, botJids] = await Promise.all([
+	const [settings, safeSettings, botJids] = await Promise.all([
 		getActionSettings(automation._id),
+		getSafeSettings(automation._id),
 		getBotIdentityJids(sock, metadata),
 	]);
 	if (settings.mode === "off") return;
@@ -105,7 +107,7 @@ const sendDailyAction = async (sock, automation, clock) => {
 			senderJid: `automation:${automation._id}`,
 			retryable: false,
 			task: async () => imageBufferToSticker(await createActionStickerImage({
-				action, actorName, targetName,
+				action, actorName, targetName, style: safeSettings.actionStyle,
 			}), { pack: "Alpha Daily Action", author: "MartechMods2", quality: 84 }),
 		});
 		await sendQueued(sock, automation._id, { sticker, mentions: [actorJid, targetJid] });

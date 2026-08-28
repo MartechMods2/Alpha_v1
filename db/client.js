@@ -60,6 +60,12 @@ const mdClient = new MongoClient(uri, {
 			db.collection("EnhancementItems").createIndex({ groupJid: 1, type: 1, memberJid: 1, createdAt: -1 }, { background: true }),
 			db.collection("EnhancementProfiles").createIndex({ groupJid: 1, memberJid: 1 }, { background: true, unique: true }),
 			db.collection("EnhancementProfiles").createIndex({ groupJid: 1, reputation: -1 }, { background: true }),
+			db.collection("SafePackItems").createIndex({ groupJid: 1, type: 1, status: 1, createdAt: -1 }, { background: true }),
+			db.collection("SafePackItems").createIndex({ groupJid: 1, type: 1, memberJid: 1, createdAt: -1 }, { background: true }),
+			db.collection("SafePackWallets").createIndex({ groupJid: 1, coins: -1 }, { background: true }),
+			db.collection("SafePackAudit").createIndex({ groupJid: 1, createdAt: -1 }, { background: true }),
+			db.collection("SafePackDeliveries").createIndex({ expiresAt: 1 }, { background: true, expireAfterSeconds: 0 }),
+			db.collection("SafeQueueFailures").createIndex({ createdAt: 1 }, { background: true, expireAfterSeconds: 30 * 24 * 60 * 60 }),
 		]);
 	} catch (err) {
 		console.error("Error connecting to MongoDB:", err);

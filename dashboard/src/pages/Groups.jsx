@@ -15,7 +15,7 @@ const TOGGLES = [
   { field: 'isChatBotOn',     label: 'Chatbot' },
   { field: 'isImgOn',         label: 'Image Search' },
   { field: 'isAutoStickerOn', label: 'Auto-Sticker' },
-  { field: 'is91Only',        label: 'India-Only (+91)' },
+  { field: 'is91Only',        label: 'Outside +91 Admin Alert' },
   { field: 'isRankNotifOn',   label: 'Rank Notifications' },
   { field: 'isWelcomeOn',     label: 'Auto-Welcome' },
   { field: 'isGoodbyeOn',     label: 'Auto-Goodbye' },

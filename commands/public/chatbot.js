@@ -9,6 +9,7 @@ import { getMemberData } from "../../db/members.js";
 import { extractPhoneNumber } from "../../utils/lid.js";
 import { getChatMessages } from "../../utils/chatLogger.js";
 import { getMediaRuntimeConfig } from "../../utils/mediaJobs.js";
+import { askSafeAi } from "../../utils/safeAi.js";
 
 // -------------------------------------------------------------------------------------------------------------
 // NVIDIA AI CONFIGURATION
@@ -487,10 +488,7 @@ ${chatContext}
 			},
 		];
 
-		const text = await askNvidia(
-			systemPrompt,
-			messages
-		);
+		const { text } = await askSafeAi({ groupJid: isGroup ? from : "direct", systemPrompt, messages });
 
 		// -----------------------------------------------------------------------------------------
 		// Empty response protection
@@ -618,15 +616,16 @@ const handler = async (
 	}
 
 	// ---------------------------------------------------------------------------------------------
-	// NVIDIA API KEY CHECK
+	// At least one AI provider must be configured. Requests automatically fall
+	// back from NVIDIA to Gemini when the first provider is unavailable.
 	// ---------------------------------------------------------------------------------------------
 
-	if (!NVIDIA_API_KEY) {
+	if (!NVIDIA_API_KEY && !process.env.GOOGLE_API_KEY) {
 		return sendMessageWTyping(
 			from,
 			{
 				text:
-					"⚡Alpha⚡ AI is not configured yet. NVIDIA_API_KEY is missing.",
+					"⚡Alpha⚡ AI is not configured yet. Add NVIDIA_API_KEY or GOOGLE_API_KEY.",
 			},
 			{
 				quoted: msg,
@@ -927,7 +926,7 @@ export default () => ({
 	// system does not suddenly break.
 	cmd: ["alpha", "eva", "gemini"],
 
-	desc: "Chat with ⚡Alpha⚡ using NVIDIA AI",
+	desc: "Chat with ⚡Alpha⚡ using automatic NVIDIA/Gemini failover",
 
 	usage: "alpha <text>",
 

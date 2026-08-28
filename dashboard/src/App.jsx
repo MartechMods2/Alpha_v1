@@ -13,6 +13,7 @@ import Logs from './pages/Logs.jsx'
 import DirectMessage from './pages/DirectMessage.jsx'
 import Settings from './pages/Settings.jsx'
 import MediaStudio from './pages/MediaStudio.jsx'
+import SafePack from './pages/SafePack.jsx'
 
 // ── Contexts ───────────────────────────────────────────────────────────────────
 export const ToastCtx = createContext(null)
@@ -93,6 +94,7 @@ export default function App() {
                     <Route path="dm" element={<DirectMessage />} />
 					<Route path="settings" element={<Settings />} />
 					<Route path="media-studio" element={<MediaStudio />} />
+					<Route path="safe-pack" element={<SafePack />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Layout>

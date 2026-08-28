@@ -1,30 +1,13 @@
-import { delay } from "baileys";
-
 const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const { sendMessageWTyping } = msgInfoObj;
-
-	if (!args[0]) return sendMessageWTyping(from, { text: "Please provide a message to broadcast" }, { quoted: msg });
-
-	const groups = await sock.groupFetchAllParticipating();
-	const res = Object.keys(groups);
-
-	let message = `📢 *Broadcast*\n\n${args.join(" ")}`;
-
-	try {
-		for (let i = 0; i < res.length; i++) {
-			await sendMessageWTyping(res[i], { text: message });
-			await delay(2000);
-			if (i == res.length - 1)
-				return sendMessageWTyping(from, { text: `✅ Broadcast sent to *${res.length}* groups.` }, { quoted: msg });
-		}
-	} catch (err) {
-		console.log(err);
-	}
+	return sendMessageWTyping(from, {
+		text: "🛡️ All-group broadcast is disabled for account safety. Use the admin dashboard's custom broadcast picker (maximum three explicitly selected groups per hour), or use `schedulepost` inside one group.",
+	}, { quoted: msg });
 };
 
 export default () => ({
 	cmd: ["bb", "broadcast"],
-	desc: "Broadcast message to all groups",
-	usage: "broadcast <message>",
+	desc: "Explain the account-safe alternatives to all-group broadcasting",
+	usage: "broadcast",
 	handler,
 });

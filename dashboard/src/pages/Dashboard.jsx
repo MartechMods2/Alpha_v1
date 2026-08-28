@@ -203,7 +203,7 @@ export default function Dashboard() {
           { to: '/groups',    icon: '👥', label: 'Manage Groups',    sub: `${analytics?.activeGroups ?? '—'} active` },
           { to: '/members',   icon: '👤', label: 'View Members',     sub: `${analytics?.blockedMembers ?? '—'} blocked` },
           { to: '/dm',        icon: '✉️', label: 'Direct Message',   sub: 'Message any user' },
-          { to: '/broadcast', icon: '📢', label: 'Broadcast',        sub: 'Send to all groups' },
+          { to: '/broadcast', icon: '📢', label: 'Safe Broadcast',   sub: 'Choose up to three groups' },
           { to: '/logs',      icon: '📋', label: 'Logs',             sub: 'Live bot output' },
         ].map(({ to, icon, label, sub }) => (
           <Link key={to} to={to} style={{ textDecoration: 'none' }}>

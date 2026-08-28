@@ -15,6 +15,7 @@ import {
 import { isSameGroupUser } from "../../../utils/groupParticipants.js";
 import { runMediaJob } from "../../../utils/mediaJobs.js";
 import { imageBufferToSticker } from "../../../utils/mediaStudio.js";
+import { getSafeSettings } from "../../../db/safePackData.js";
 
 const cooldowns = new Map();
 const CONTROL_COMMANDS = ["action", "actions", "actionhelp", "actionstats", "topactions", "actionoptout", "actionoptin"];
@@ -83,6 +84,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		}
 
 		const settings = await getActionSettings(from);
+		const safeSettings = await getSafeSettings(from);
 		if (settings.mode === "off") return reply("🎬 Action stickers are disabled in this group.");
 		let action = command === "action" ? String(args[0] || "").toLowerCase() : command;
 		if (action === "random") {
@@ -118,6 +120,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 				action,
 				actorName,
 				targetName,
+				style: safeSettings.actionStyle,
 			}), { pack: "Alpha Action Studio", author: "MartechMods2", quality: 86 }),
 		});
 		await sendMessageWTyping(from, { sticker, mentions: [senderJid, target] }, { quoted: msg });

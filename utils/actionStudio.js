@@ -36,7 +36,15 @@ export const ACTION_COMMANDS = Object.freeze(Object.keys(ACTIONS).filter((name) 
 export const FRIENDLY_ACTIONS = Object.freeze(ACTION_COMMANDS.filter((name) => ACTIONS[name].tone === "friendly"));
 
 const ACTION_ASSET_DIR = fileURLToPath(new URL("../media/actions/", import.meta.url));
+const HUMAN_ACTION_ASSET_DIR = fileURLToPath(new URL("../media/actions-human/", import.meta.url));
 const templateCache = new Map();
+const HUMAN_ASSETS = Object.freeze({
+	slap: "slap.webp", beat: "punch.webp", punch: "punch.webp", bonk: "punch.webp", bite: "punch.webp", roast: "laugh.webp",
+	kick: "kick.webp", playkick: "kick.webp", chase: "kick.webp",
+	hug: "hug.webp", kiss: "hug.webp", pat: "hug.webp", poke: "hug.webp", cuddle: "hug.webp", feed: "hug.webp", boop: "hug.webp",
+	laugh: "laugh.webp", cry: "laugh.webp", wink: "laugh.webp", tickle: "laugh.webp",
+	dance: "dance.webp", wave: "dance.webp", highfive: "dance.webp", cheer: "dance.webp", salute: "dance.webp",
+});
 
 const cleanName = (value) => String(value || "Member")
 	.replace(/[\u0000-\u001f*_~`]/g, " ")
@@ -51,9 +59,11 @@ const drawContain = (ctx, image, size, padding = 0) => {
 	ctx.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
 };
 
-const loadTemplate = (asset) => {
-	if (!templateCache.has(asset)) templateCache.set(asset, loadImage(path.join(ACTION_ASSET_DIR, asset)));
-	return templateCache.get(asset);
+const loadTemplate = (asset, style = "anime") => {
+	const directory = style === "human" ? HUMAN_ACTION_ASSET_DIR : ACTION_ASSET_DIR;
+	const key = `${style}:${asset}`;
+	if (!templateCache.has(key)) templateCache.set(key, loadImage(path.join(directory, asset)));
+	return templateCache.get(key);
 };
 
 export const getActionDefinition = (name) => ACTIONS[String(name || "").toLowerCase()] || null;
@@ -61,13 +71,18 @@ export const getActionAssetPath = (name) => {
 	const definition = getActionDefinition(name);
 	return definition ? path.join(ACTION_ASSET_DIR, definition.asset) : "";
 };
+export const getHumanActionAssetPath = (name) => getActionDefinition(name)
+	? path.join(HUMAN_ACTION_ASSET_DIR, HUMAN_ASSETS[name] || "hug.webp")
+	: "";
 
-export const createActionStickerImage = async ({ action, actorName, targetName }) => {
+export const createActionStickerImage = async ({ action, actorName, targetName, style = "anime" }) => {
 	const definition = getActionDefinition(action);
 	if (!definition) throw new Error("Unknown action");
 	const actor = cleanName(actorName);
 	const target = cleanName(targetName);
-	const image = await loadTemplate(definition.asset);
+	const selectedStyle = style === "human" ? "human" : "anime";
+	const asset = selectedStyle === "human" ? (HUMAN_ASSETS[action] || "hug.webp") : definition.asset;
+	const image = await loadTemplate(asset, selectedStyle);
 	const canvas = createCanvas(512, 512);
 	const ctx = canvas.getContext("2d");
 
@@ -102,8 +117,9 @@ export const createActionStickerImage = async ({ action, actorName, targetName }
 	ctx.font = "700 13px sans-serif";
 	ctx.strokeStyle = "rgba(0,0,0,0.88)";
 	ctx.lineWidth = 4;
-	ctx.strokeText("ALPHA ACTION STUDIO", 256, 493);
+	const footer = `ALPHA ${selectedStyle.toUpperCase()} ACTION STUDIO`;
+	ctx.strokeText(footer, 256, 493);
 	ctx.fillStyle = "#facc15";
-	ctx.fillText("ALPHA ACTION STUDIO", 256, 493);
+	ctx.fillText(footer, 256, 493);
 	return canvas.toBuffer("image/png");
 };

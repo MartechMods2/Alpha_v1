@@ -575,6 +575,15 @@ FORCE_DISABLE_YTDLP=false
 
 # References
 
+## Safe Complete Feature Pack
+
+The account-safe moderation, automation, games, document tools, AI failover,
+encrypted backups and privacy commands are documented in
+[docs/SAFE_COMPLETE_FEATURE_PACK.md](docs/SAFE_COMPLETE_FEATURE_PACK.md).
+
+The pack deliberately excludes bulk/private outreach, status automation,
+anti-delete/view-once recovery, uncontrolled plugins and automatic mass removals.
+
 - [@Baileys](https://github.com/WhiskeySockets/Baileys)
 
 If you enjoyed using this project, please consider giving it a :star: on GitHub. Your support is greatly appreciated! ❤️

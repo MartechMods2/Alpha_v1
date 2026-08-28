@@ -6,7 +6,6 @@ export default function Broadcast() {
   const toast   = useToast()
   const [groups,   setGroups]   = useState([])
   const [message,  setMessage]  = useState('')
-  const [mode,     setMode]     = useState('active') // 'active' | 'all' | 'custom'
   const [selected, setSelected] = useState(new Set())
   const [grpSearch,setGrpSearch]= useState('')
   const [loading,  setLoading]  = useState(false)
@@ -25,14 +24,12 @@ export default function Broadcast() {
   function toggleSelect(jid) {
     setSelected(prev => {
       const next = new Set(prev)
-      if (next.has(jid)) next.delete(jid); else next.add(jid)
+	  if (next.has(jid)) next.delete(jid); else if (next.size < 3) next.add(jid)
       return next
     })
   }
 
   function targetCount() {
-    if (mode === 'active') return activeGroups.length
-    if (mode === 'all')    return groups.length
     return selected.size
   }
 
@@ -40,9 +37,7 @@ export default function Broadcast() {
     if (!message.trim()) return toast('Message cannot be empty.', false)
     if (targetCount() === 0) return toast('No target groups selected.', false)
 
-    const targetJids = mode === 'active' ? activeGroups.map(g => g._id)
-                     : mode === 'all'    ? groups.map(g => g._id)
-                     : [...selected]
+	const targetJids = [...selected]
 
     setLoading(true)
     setResult(null)
@@ -64,7 +59,7 @@ export default function Broadcast() {
       <div className="page-header">
         <div>
           <h2>Broadcast</h2>
-          <p className="sub">Send a message to multiple groups at once.</p>
+		  <p className="sub">Send to up to three explicitly selected groups, with a one-hour safety cooldown.</p>
         </div>
       </div>
 
@@ -75,7 +70,7 @@ export default function Broadcast() {
             <div className="card-header">
               <div>
                 <p className="card-title">Message</p>
-                <p className="card-sub">This text will be sent as-is to all selected groups.</p>
+			  <p className="card-sub">This text will be sent as-is to your selected groups.</p>
               </div>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{message.length} / 4096</span>
             </div>
@@ -135,24 +130,8 @@ export default function Broadcast() {
         <div className="card" style={{ position: 'sticky', top: 0 }}>
           <p className="card-title" style={{ marginBottom: 12 }}>Target Groups</p>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
-            {[
-              { key: 'active', label: `Active groups (${activeGroups.length})`, sub: 'Only groups where bot is ON' },
-              { key: 'all',    label: `All groups (${groups.length})`,          sub: 'Every group in the database' },
-              { key: 'custom', label: 'Custom selection',                        sub: 'Pick specific groups below' },
-            ].map(({ key, label, sub }) => (
-              <label key={key} style={{ display: 'flex', gap: 10, padding: '10px 12px', background: mode === key ? 'var(--accent-dim)' : 'var(--surface-2)', borderRadius: 'var(--r-sm)', border: `1px solid ${mode === key ? 'var(--accent-bdr)' : 'var(--border)'}`, cursor: 'pointer', transition: 'all 0.12s' }}>
-                <input type="radio" name="mode" value={key} checked={mode === key} onChange={() => { setMode(key); setSelected(new Set()) }} style={{ accentColor: 'var(--accent)', marginTop: 2, flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>{label}</div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>
-                </div>
-              </label>
-            ))}
-          </div>
-
-          {mode === 'custom' && (
-            <>
+		  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 10 }}>Choose 1–3 groups. There is no “all groups” option.</p>
+		  <>
               <input
                 className="search-input"
                 style={{ width: '100%', borderRadius: 'var(--r-sm)', marginBottom: 8 }}
@@ -180,8 +159,7 @@ export default function Broadcast() {
                   {selected.size} group{selected.size !== 1 ? 's' : ''} selected
                 </p>
               )}
-            </>
-          )}
+			</>
         </div>
       </div>
     </div>

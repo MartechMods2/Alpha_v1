@@ -24,8 +24,15 @@ import {
 	stickerVault,
 } from "../db/mediaData.js";
 import { getGroupTools, groupTools } from "../db/groupTools.js";
+import { safePackItems, safePackSettings, listQueueFailures } from "../db/safePackData.js";
+import { getAiRuntimeStatus } from "../utils/safeAi.js";
+import { getBackupStatus } from "../utils/backupManager.js";
+import { objectStorageConfigured } from "../utils/objectStorage.js";
+import { safeModerationRuntimeStatus } from "../utils/safeModeration.js";
+import { webhookConfigured } from "../utils/signedWebhooks.js";
 
 const router = Router();
+let lastSafeBroadcastAt = 0;
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
 function requireAdmin(req, res, next) {
@@ -263,6 +270,38 @@ router.get("/api/admin/bot/health", requireAdmin, (req, res) => {
 	}
 });
 
+// Read-only status for the safe feature pack. Secrets and message contents are
+// intentionally excluded from this response.
+router.get("/api/admin/safe-pack", requireAdmin, async (_req, res) => {
+	try {
+		const [configuredGroups, activeAutomations, failures, backup] = await Promise.all([
+			safePackSettings.countDocuments(),
+			safePackItems.aggregate([
+				{ $match: { status: "active", type: { $in: ["scheduled-post", "scheduled-poll", "reminder", "recurring-event", "duty-rota"] } } },
+				{ $group: { _id: "$type", count: { $sum: 1 } } },
+			]).toArray(),
+			listQueueFailures(20),
+			getBackupStatus(),
+		]);
+		res.json({
+			configuredGroups,
+			automations: Object.fromEntries(activeAutomations.map((row) => [row._id, row.count])),
+			ai: getAiRuntimeStatus(),
+			backup,
+			integrations: {
+				objectStorage: objectStorageConfigured(),
+				signedWebhook: webhookConfigured(),
+				factCheck: Boolean(process.env.FACTCHECK_API_URL),
+			},
+			queue: messageQueue.getStats(),
+			queueFailures: failures.map(({ _id, chatId, error, createdAt, status }) => ({ _id, chatId, error, createdAt, status })),
+			moderation: safeModerationRuntimeStatus(),
+		});
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
+
 // ── API: Broadcast (new) ───────────────────────────────────────────────────────
 router.post("/api/admin/broadcast", requireAdmin, async (req, res) => {
 	const { message, targetJids } = req.body;
@@ -273,11 +312,11 @@ router.post("/api/admin/broadcast", requireAdmin, async (req, res) => {
 
 	try {
 		// Resolve target JIDs
-		let jids = targetJids;
-		if (!Array.isArray(jids) || jids.length === 0) {
-			const activeGroups = await group.find({ isBotOn: true }, { projection: { _id: 1 } }).toArray();
-			jids = activeGroups.map(g => g._id);
-		}
+		const jids = [...new Set(Array.isArray(targetJids) ? targetJids.filter((jid) => typeof jid === "string" && jid.endsWith("@g.us")) : [])];
+		if (!jids.length) return res.status(400).json({ error: "Select at least one group explicitly." });
+		if (jids.length > 3) return res.status(400).json({ error: "Account safety limit: maximum three selected groups per broadcast." });
+		if (Date.now() - lastSafeBroadcastAt < 60 * 60_000) return res.status(429).json({ error: "Account safety cooldown: wait one hour between multi-group broadcasts." });
+		lastSafeBroadcastAt = Date.now();
 
 		let sent = 0, failed = 0;
 		for (const jid of jids) {

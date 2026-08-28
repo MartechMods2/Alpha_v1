@@ -132,6 +132,7 @@ class MessageQueue {
 					message.resolve?.();
 				} catch (err) {
 					console.error(`Queue send error for ${chatId}:`, err.message);
+					import("../db/safePackData.js").then(({ recordQueueFailure }) => recordQueueFailure(chatId, err)).catch(() => {});
 					message.reject?.(err);
 				} finally {
 					this.activeSends--;
