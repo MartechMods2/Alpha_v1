@@ -18,6 +18,7 @@ import {
 	shortId,
 } from "../../../utils/featureSuite.js";
 import { COMMUNITY_COMMANDS } from "../../../utils/ultimateFeatureCatalog.js";
+import { listSafeItems, updateSafeItem } from "../../../db/safePackData.js";
 
 const cooldowns = new Map();
 const allowWrite = (key, milliseconds = 10_000) => {
@@ -197,8 +198,14 @@ const handleFaq = async ({ msg, from, args, sendMessageWTyping }) => {
 };
 
 const handleAttendance = async (context) => {
-	const { msg, from, senderJid, updateName, sendMessageWTyping, command } = context;
+	const { msg, from, args, senderJid, updateName, sendMessageWTyping, command } = context;
 	const reply = (text) => sendMessageWTyping(from, { text }, { quoted: msg });
+	if (command === "attendance" && String(args[0] || "").toLowerCase() === "check") {
+		const sessions = await listSafeItems(from, "attendance-session", { status: "open" }, 5);
+		const session = sessions[0]; if (!session) return reply("❌ No attendance session is open.");
+		const attendees = [...(session.payload.attendees || []).filter((x) => x.jid !== senderJid), { jid: senderJid, name: safeMemberName(updateName, senderJid), checkedAt: new Date() }].slice(-500);
+		await updateSafeItem(from, "attendance-session", session._id, { payload: { ...session.payload, attendees } }); return reply(`✅ Checked into *${session.text}*.`);
+	}
 	const today = dateKey();
 	if (command === "checkin") {
 		const existing = await listEnhancementItems(from, "checkin", { memberJid: senderJid, "payload.date": today }, 1);

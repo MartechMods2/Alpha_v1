@@ -6,6 +6,8 @@ import { extractPhoneNumber } from "../utils/lid.js";
 import messageQueue from "../queue/messageQueue.js";
 import { delGroupMeta } from "../cache/redisCache.js";
 import { getGroupSafetySettings, renderTemplate } from "../utils/groupSafety.js";
+import { handleSafeJoinEvent } from "../utils/safeModeration.js";
+import { recordSafeAudit } from "../db/safePackData.js";
 
 const getPhone = (p) =>
 	typeof p === "string"
@@ -42,6 +44,12 @@ const getGroupEvent = async (sock, events, cache) => {
 	};
 
 	if (events.action == "add") {
+		const raid = await handleSafeJoinEvent({ sock, groupJid: jid, participantJids });
+		if (raid.locked) {
+			await messageQueue.enqueue(jid, () => sock.sendMessage(jid, {
+				text: `🚨 *Anti-Raid Safety Lock*\n\n${raid.count} joins were detected in a short period. The group was switched to admin-only mode for review. Nobody was automatically removed.`,
+			}), 0).catch(() => {});
+		}
 		if (settings.isWelcomeOn && participantJids.length > 0) {
 			const welcomeText = renderTemplate(
 				groupDataDB.welcome || "Welcome {users} to *{group}*! Please check the group rules.",
@@ -58,25 +66,20 @@ const getGroupEvent = async (sock, events, cache) => {
 				1,
 			);
 		}
-		//91Only Working
+		// Country filtering is advisory-only. Automated removals can produce a
+		// burst of high-risk group operations, so admins review the join instead.
 		if (groupDataDB.is91Only == true) {
 			let filteredParticipants = events.participants.filter((p) => {
 				const phoneNumber = getPhone(p);
 				return phoneNumber && !phoneNumber.startsWith("91");
 			});
 			if (filteredParticipants.length > 0) {
-				await sock.groupParticipantsUpdate(
-					jid,
-					filteredParticipants.map(getParticipantJid).filter(Boolean),
-					"remove",
-				);
-				await messageQueue.enqueue(jid, () => sock.sendMessage(
-					jid,
-					{
-						text: "```Only Indian Number Allowed In This Group.\n```",
-					},
-					{ quoted: fake_quoted(events, "Only Indian Number Allowed, Namaste") }
-				), 1);
+				const reviewJids = filteredParticipants.map(getParticipantJid).filter(Boolean);
+				await recordSafeAudit({ groupJid: jid, action: "country-filter-review", targetJid: reviewJids[0], reason: `${reviewJids.length} non-+91 join(s) require admin review` });
+				await messageQueue.enqueue(jid, () => sock.sendMessage(jid, {
+					text: `🛡️ *Country Filter Review*\n\n${reviewJids.map((value) => `@${getPhone(value)}`).join(", ")} joined with a number outside +91. No one was automatically removed; an administrator can review manually.`,
+					mentions: reviewJids,
+				}, { quoted: fake_quoted(events, "Country filter admin review") }), 1);
 			}
 		}
 		const addedNumbers = events.participants.map((p) => `<code>${escapeHtml(getPhone(p))}</code>`).join(", ");

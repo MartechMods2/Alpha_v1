@@ -8,6 +8,8 @@ import {
 	isSameGroupUser,
 } from "./groupParticipants.js";
 import { findMutedMember, getGroupSafetySettings } from "./groupSafety.js";
+import { getSafeSettings } from "../db/safePackData.js";
+import { claimDeletionBudget } from "./moderationCircuit.js";
 
 config();
 
@@ -46,7 +48,13 @@ export const addGroupWarning = async (groupJid, memberJid) =>
 			{ _id: groupJid },
 			{ projection: { memberWarnCount: 1 } },
 		);
-		const count = getGroupWarningCount(groupData, memberJid) + 1;
+		const safeSettings = await getSafeSettings(groupJid);
+		if (safeSettings.warningExpiryDays > 0) {
+			const cutoff = Date.now() - safeSettings.warningExpiryDays * 86_400_000;
+			const expired = (groupData?.memberWarnCount || []).find((entry) => entry.member === memberJid && entry.updatedAt && new Date(entry.updatedAt).getTime() < cutoff);
+			if (expired) await clearGroupWarnings(groupJid, memberJid);
+		}
+		const count = (safeSettings.warningExpiryDays > 0 && (groupData?.memberWarnCount || []).find((entry) => entry.member === memberJid && entry.updatedAt && new Date(entry.updatedAt).getTime() < Date.now() - safeSettings.warningExpiryDays * 86_400_000) ? 0 : getGroupWarningCount(groupData, memberJid)) + 1;
 		const updated = await group.updateOne(
 			{ _id: groupJid, "memberWarnCount.member": memberJid },
 			{
@@ -168,7 +176,7 @@ export const enforceMemberMute = async ({
 		);
 	}
 	if (!muted.entry) return { handled: false };
-	if (isBotAdmin) {
+	if (isBotAdmin && claimDeletionBudget(groupJid)) {
 		await sock.sendMessage(groupJid, { delete: msg.key }).catch((error) =>
 			console.warn("Could not delete a muted member's message:", error.message),
 		);

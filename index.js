@@ -8,6 +8,7 @@ import messageQueue from "./queue/messageQueue.js";
 import { pushLog, subscribe as subscribeAdminEvents, getLogs, getActivity } from "./notify/adminEvents.js";
 import { getBotData } from "./db/botData.js";
 import { setMediaRuntimeConfig } from "./utils/mediaJobs.js";
+import { startSafePackScheduler } from "./utils/safePackScheduler.js";
 
 // ── Console interceptor — feeds log ring buffer + deduplication ──────────────
 const _log   = console.log.bind(console);
@@ -271,6 +272,7 @@ async function startServer() {
 	await startSock("start");
 	startReminderScheduler();
 	startGroupAutomationScheduler();
+	startSafePackScheduler();
 	// handleNewSock() is called by the onNewSock hook inside connection.js,
 	// so app.locals.sock and connection.update listener are both set up there.
 

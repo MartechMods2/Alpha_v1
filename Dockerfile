@@ -11,6 +11,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     librsvg2-dev \
     ffmpeg \
     webp \
+	poppler-utils \
+	ghostscript \
+	tesseract-ocr \
+	qrencode \
+	zbar-tools \
+	python3-img2pdf \
     git \
     wget \
     curl \

@@ -50,6 +50,7 @@ export const getAnalytics = () => api.get('/api/admin/analytics')
 
 // Health
 export const getHealth = () => api.get('/api/admin/bot/health')
+export const getSafePack = () => api.get('/api/admin/safe-pack')
 
 // Broadcast
 export const broadcast = (message, targetJids) =>

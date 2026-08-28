@@ -44,6 +44,8 @@ import {
 import { getMediaRuntimeConfig } from "../utils/mediaJobs.js";
 import { isGroupStatusMentionMessage } from "../utils/groupSafety.js";
 import { handleAdvancedAutomation } from "../utils/advancedAutomation.js";
+import { handleSafeModerationMessage } from "../utils/safeModeration.js";
+import { getSafeSettings } from "../db/safePackData.js";
 
 // ── FOOLPROOF REWRITE FOR OWNER/BOT IDENTIFICATION ─────────────────
 const cleanMyNum = (process.env.MY_NUMBER || "").split(",")[0].replace(/[^0-9]/g, "");
@@ -303,6 +305,15 @@ const getCommand = async (sock, msg, cache) => {
 			} catch (error) {
 				console.error("[automod error]", error.message);
 			}
+			try {
+				const safeResult = await handleSafeModerationMessage({
+					sock, msg, groupJid: from, senderJid, body, isCommand: isCmd,
+					isOwner, isGroupAdmin, groupMetadata, botJids, isBotAdmin, sendMessageWTyping,
+				});
+				if (safeResult.handled) return;
+			} catch (error) {
+				console.error("[safe moderation error]", error.message);
+			}
 		}
 
 		// Unknown service messages have now passed moderation and need no command processing.
@@ -346,7 +357,7 @@ const getCommand = async (sock, msg, cache) => {
 							{ _id: from, "members.id": updateId },
 							{
 								$inc: { "members.$.count": 1, [`members.$.${mediaTypeField}`]: 1 },
-								$set: { "members.$.name": updateName },
+								$set: { "members.$.name": updateName, "members.$.lastMessageAt": new Date() },
 							},
 							{ returnDocument: "after" },
 						);
@@ -361,6 +372,7 @@ const getCommand = async (sock, msg, cache) => {
 								videototal: 0,
 								stickertotal: 0,
 								pdftotal: 0,
+								lastMessageAt: new Date(),
 							};
 							newMember[mediaTypeField] = 1;
 							await group.updateOne({ _id: from }, { $push: { members: newMember } });
@@ -722,7 +734,7 @@ const getCommand = async (sock, msg, cache) => {
 					{ text: "```❎ This command is only applicable in Groups!```" },
 					{ quoted: msg },
 				);
-			} else if (isGroupAdmin || moderatos.includes(senderNumber) || isOwner) {
+			} else if (isGroupAdmin || moderatos.includes(senderNumber) || isOwner || (await getSafeSettings(from)).helperMembers?.some((jid) => isSameGroupUser(groupMetadata, senderJid, jid))) {
 				result = await commandsAdmins[command](sock, msg, from, args, msgInfoObj);
 			} else {
 				result = await sendMessageWTyping(

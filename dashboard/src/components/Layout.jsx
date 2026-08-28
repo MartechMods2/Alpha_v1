@@ -15,6 +15,7 @@ const NAV = [
   { to: '/logs',      icon: '📋', label: 'Logs' },
   { to: '/health',    icon: '💚', label: 'Bot Health' },
   { to: '/media-studio', icon: '🎬', label: 'Media Studio' },
+  { to: '/safe-pack', icon: '🛡️', label: 'Safe Pack' },
   { to: '/settings',  icon: '⚙',  label: 'Settings' },
 ]
 
