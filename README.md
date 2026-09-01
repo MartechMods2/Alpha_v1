@@ -512,7 +512,8 @@ Create a `.env` file in the project root with the following keys.
 | `YTDLP_COOKIES` | unset | Optional protected Netscape cookie-file path for self-hosting; prefer the dashboard |
 
 Run `-downloadhealth` as the bot owner to check yt-dlp, the JavaScript runtime
-and cookie validity without exposing any cookie value.
+and cookie-file format without exposing any cookie value. Run
+`-downloadhealth test` for a live metadata-only YouTube access test.
 
 ## Example `.env` File
 

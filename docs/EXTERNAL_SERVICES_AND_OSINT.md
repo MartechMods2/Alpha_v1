@@ -16,11 +16,16 @@ Bot-owner commands:
 -cookiestatus
 -downloadhealth
 -ythealth
+-yttest
 ```
 
 These commands display only `READY`, `OPTIONAL`, `MISSING` or an invalid-cookie
 reason. They never print a secret value. `-downloadhealth` and `-ythealth` are
 aliases for the focused YouTube runtime report.
+
+Use `-downloadhealth test` or `-yttest` for a live metadata-only YouTube probe.
+The normal health report validates cookie syntax only; the live probe verifies
+whether public extraction or cookie fallback is actually accepted by YouTube.
 
 ## Required for the bot itself
 
@@ -70,6 +75,9 @@ The following commands use `yt-dlp`:
 
 Many public videos work with no cookie. A cookie may be required if YouTube asks
 the server to sign in, applies an age check, or presents an automated challenge.
+Alpha always tries a public request first and uses a saved account cookie only
+once when YouTube explicitly requires authentication. It never retries a
+rate-limited request with an account cookie.
 
 Safest setup:
 

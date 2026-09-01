@@ -131,8 +131,7 @@ export async function resolveYtDlpJsRuntime() {
 }
 
 export async function buildYtDlpOptions(extra = {}) {
-	const { getCookiePath } = await import("../functions/cookieManager.js");
-	const [jsRuntime, cookiePath] = await Promise.all([resolveYtDlpJsRuntime(), getCookiePath()]);
+	const jsRuntime = await resolveYtDlpJsRuntime();
 	return {
 		noPlaylist: true,
 		noWarnings: true,
@@ -142,7 +141,6 @@ export async function buildYtDlpOptions(extra = {}) {
 		socketTimeout: 25,
 		ffmpegLocation: process.env.FFMPEG_PATH || ffmpegStatic || "ffmpeg",
 		...(jsRuntime ? { jsRuntimes: jsRuntime } : {}),
-		...(cookiePath ? { cookies: cookiePath } : {}),
 		...extra,
 	};
 }
@@ -151,6 +149,59 @@ export async function runYtDlp(target, options = {}) {
 	const binary = await ensureYtDlp();
 	if (!binary?.path) throw new Error("YT_DLP_MISSING: yt-dlp is not installed");
 	return create(binary.path)(target, options);
+}
+
+const rawYtDlpError = (error) => String(error?.stderr || error?.message || error || "").toLowerCase();
+
+export function shouldRetryWithCookies(error) {
+	const message = rawYtDlpError(error);
+	if (message.includes("http error 429") || message.includes("too many requests")) return false;
+	return message.includes("sign in")
+		|| message.includes("not a bot")
+		|| message.includes("login required")
+		|| message.includes("age-restricted")
+		|| message.includes("age restricted")
+		|| message.includes("http error 403")
+		|| message.includes("forbidden");
+}
+
+async function adaptiveYtDlpAttempt(target, options = {}) {
+	const publicOptions = { ...options };
+	delete publicOptions.cookies;
+	try {
+		return { result: await runYtDlp(target, publicOptions), authMode: "public" };
+	} catch (publicError) {
+		if (!shouldRetryWithCookies(publicError)) throw publicError;
+		const { getCookiePath } = await import("../functions/cookieManager.js");
+		const cookiePath = await getCookiePath().catch(() => null);
+		if (!cookiePath) throw publicError;
+		try {
+			return {
+				result: await runYtDlp(target, { ...publicOptions, cookies: cookiePath }),
+				authMode: "cookie fallback",
+			};
+		} catch (cookieError) {
+			cookieError.alphaCookieAttempted = true;
+			cookieError.alphaPublicError = publicError;
+			throw cookieError;
+		}
+	}
+}
+
+/** Public access first; saved account cookies are used only when authentication is required. */
+export async function runYtDlpAdaptive(target, options = {}) {
+	return (await adaptiveYtDlpAttempt(target, options)).result;
+}
+
+export async function probeYoutubeAccess(target = "https://www.youtube.com/watch?v=jNQXAC9IVRw") {
+	if (!isYouTubeUrl(target)) throw new Error("The live-test target must be a secure YouTube URL");
+	const options = await buildYtDlpOptions({ dumpSingleJson: true, skipDownload: true });
+	const { result, authMode } = await adaptiveYtDlpAttempt(target, options);
+	return {
+		authMode,
+		title: String(result?.title || "Public YouTube video").slice(0, 100),
+		duration: Number(result?.duration || 0),
+	};
 }
 
 export const isYouTubeUrl = (value) => {
@@ -164,8 +215,7 @@ export const isYouTubeUrl = (value) => {
 };
 
 export function describeYtDlpError(error) {
-	const raw = String(error?.stderr || error?.message || error || "");
-	const message = raw.toLowerCase();
+	const message = rawYtDlpError(error);
 	if (message.includes("yt_dlp_missing") || message.includes("yt-dlp is missing") || message.includes("enoent")) {
 		return "The download engine is missing. Ask the bot owner to run -downloadhealth.";
 	}
@@ -173,7 +223,9 @@ export function describeYtDlpError(error) {
 		return "The saved YouTube cookie file is invalid. Replace it with a fresh Netscape cookies.txt export.";
 	}
 	if (message.includes("sign in to confirm") || message.includes("not a bot") || message.includes("confirm you’re not a bot") || message.includes("confirm you're not a bot")) {
-		return "YouTube challenged this server. Replace the saved cookies with a fresh export from a dedicated account.";
+		return error?.alphaCookieAttempted
+			? "YouTube rejected both public access and the saved session. The cookie format is valid, but the session is stale, rotated or rejected from this server IP. Clear it and export a fresh dedicated-account cookie from a private window."
+			: "YouTube challenged public access and no usable cookie fallback was available.";
 	}
 	if (message.includes("http error 429") || message.includes("too many requests")) {
 		return "YouTube temporarily rate-limited this server. Wait before trying again; do not repeat the command rapidly.";

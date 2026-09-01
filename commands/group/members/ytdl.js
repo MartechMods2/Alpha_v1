@@ -2,7 +2,7 @@ import fs from "fs";
 import yts from "yt-search";
 import memoryManager from "../../../utils/memory.js";
 import { readFileEfficiently, isValidVideoFile } from "../../../utils/file.js";
-import { buildYtDlpOptions, describeYtDlpError, isYouTubeUrl, runYtDlp } from "../../../utils/ytdlp.js";
+import { buildYtDlpOptions, describeYtDlpError, isYouTubeUrl, runYtDlpAdaptive } from "../../../utils/ytdlp.js";
 
 const getRandom = (ext) => memoryManager.generateTempFileName(ext);
 
@@ -47,7 +47,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		let title = "Unknown Video";
 		let duration = 0;
 		try {
-			const info = await runYtDlp(URL, await ytdlpOpts({ dumpSingleJson: true, skipDownload: true }));
+			const info = await runYtDlpAdaptive(URL, await ytdlpOpts({ dumpSingleJson: true, skipDownload: true }));
 			title = info.title || "Unknown Video";
 			duration = info.duration || 0;
 		} catch (infoError) {
@@ -66,7 +66,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 		// Prefer a pre-muxed mp4 (no ffmpeg merge needed) → avoids merge failures on servers.
 		// Falls back to merged streams only when no single-stream mp4 exists.
-		const result = await runYtDlp(
+		const result = await runYtDlpAdaptive(
 			URL,
 			await ytdlpOpts({
 				format: "best[height<=720][ext=mp4]/bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
