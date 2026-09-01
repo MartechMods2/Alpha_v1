@@ -12,10 +12,25 @@ const BOOTSTRAP_PATH = path.join(BOOTSTRAP_DIR, process.platform === "win32" ? "
 const MAX_BINARY_BYTES = 80 * 1024 * 1024;
 const PROBE_TIMEOUT_MS = 8_000;
 const DOWNLOAD_TIMEOUT_MS = 60_000;
+const CLIENT_PREFERENCE_TTL_MS = 10 * 60_000;
+
+const PUBLIC_YOUTUBE_PROFILES = Object.freeze([
+	{ id: "default", label: "public default", extractorArgs: null },
+	{ id: "android_vr", label: "public Android VR", extractorArgs: "youtube:player_client=android_vr" },
+	{ id: "web_safari", label: "public Safari HLS", extractorArgs: "youtube:player_client=web_safari" },
+	{ id: "web_embedded", label: "public embedded", extractorArgs: "youtube:player_client=web_embedded" },
+]);
+const COOKIE_YOUTUBE_PROFILE = Object.freeze({
+	id: "cookie_default_embedded",
+	label: "cookie default + embedded",
+	extractorArgs: "youtube:player_client=default,web_embedded",
+	usesCookies: true,
+});
 
 let resolvedBinary = null;
 let resolvingBinary = null;
 let resolvedJsRuntime = null;
+let preferredPublicProfile = null;
 
 const executableAsset = () => {
 	if (process.platform === "linux") {
@@ -153,6 +168,31 @@ export async function runYtDlp(target, options = {}) {
 
 const rawYtDlpError = (error) => String(error?.stderr || error?.message || error || "").toLowerCase();
 
+export function youtubePublicProfiles(preferredId = null, explicitExtractorArgs = null) {
+	if (explicitExtractorArgs) {
+		return [{ id: "custom", label: "custom YouTube client", extractorArgs: explicitExtractorArgs }];
+	}
+	const profiles = PUBLIC_YOUTUBE_PROFILES.map((profile) => ({ ...profile }));
+	if (!preferredId) return profiles;
+	return profiles.sort((left, right) => Number(right.id === preferredId) - Number(left.id === preferredId));
+}
+
+export function shouldRetryWithAlternateClient(error) {
+	const message = rawYtDlpError(error);
+	if (message.includes("http error 429") || message.includes("too many requests")) return false;
+	return message.includes("sign in")
+		|| message.includes("not a bot")
+		|| message.includes("login required")
+		|| message.includes("age-restricted")
+		|| message.includes("age restricted")
+		|| message.includes("http error 403")
+		|| message.includes("forbidden")
+		|| message.includes("requested format is not available")
+		|| message.includes("no video formats")
+		|| message.includes("only images are available")
+		|| message.includes("page needs to be reloaded");
+}
+
 export function shouldRetryWithCookies(error) {
 	const message = rawYtDlpError(error);
 	if (message.includes("http error 429") || message.includes("too many requests")) return false;
@@ -162,29 +202,63 @@ export function shouldRetryWithCookies(error) {
 		|| message.includes("age-restricted")
 		|| message.includes("age restricted")
 		|| message.includes("http error 403")
-		|| message.includes("forbidden");
+		|| message.includes("forbidden")
+		|| message.includes("page needs to be reloaded");
 }
 
+const optionsForProfile = (options, profile, cookiePath = null) => {
+	const next = { ...options };
+	delete next.cookies;
+	if (profile.extractorArgs) next.extractorArgs = profile.extractorArgs;
+	else delete next.extractorArgs;
+	if (profile.usesCookies && cookiePath) next.cookies = cookiePath;
+	return next;
+};
+
+const annotateFinalError = (error, attempts, { cookieAttempted = false, publicError = null } = {}) => {
+	error.alphaYoutubeAttempts = attempts.map((attempt) => attempt.label);
+	error.alphaCookieAttempted = cookieAttempted;
+	if (publicError) error.alphaPublicError = publicError;
+	return error;
+};
+
 async function adaptiveYtDlpAttempt(target, options = {}) {
-	const publicOptions = { ...options };
-	delete publicOptions.cookies;
-	try {
-		return { result: await runYtDlp(target, publicOptions), authMode: "public" };
-	} catch (publicError) {
-		if (!shouldRetryWithCookies(publicError)) throw publicError;
-		const { getCookiePath } = await import("../functions/cookieManager.js");
-		const cookiePath = await getCookiePath().catch(() => null);
-		if (!cookiePath) throw publicError;
+	const preferredId = preferredPublicProfile?.expires > Date.now() ? preferredPublicProfile.id : null;
+	const profiles = youtubePublicProfiles(preferredId, options.extractorArgs);
+	const attempts = [];
+	let lastPublicError = null;
+
+	for (const profile of profiles) {
+		attempts.push(profile);
 		try {
-			return {
-				result: await runYtDlp(target, { ...publicOptions, cookies: cookiePath }),
-				authMode: "cookie fallback",
-			};
-		} catch (cookieError) {
-			cookieError.alphaCookieAttempted = true;
-			cookieError.alphaPublicError = publicError;
-			throw cookieError;
+			const result = await runYtDlp(target, optionsForProfile(options, profile));
+			if (profile.id !== "custom") {
+				preferredPublicProfile = { id: profile.id, expires: Date.now() + CLIENT_PREFERENCE_TTL_MS };
+			}
+			return { result, authMode: profile.label, profile: profile.id };
+		} catch (error) {
+			lastPublicError = error;
+			if (!shouldRetryWithAlternateClient(error)) {
+				throw annotateFinalError(error, attempts);
+			}
 		}
+	}
+
+	const { getCookiePath } = await import("../functions/cookieManager.js");
+	const cookiePath = await getCookiePath().catch(() => null);
+	if (!cookiePath || !shouldRetryWithCookies(lastPublicError)) {
+		throw annotateFinalError(lastPublicError, attempts);
+	}
+
+	attempts.push(COOKIE_YOUTUBE_PROFILE);
+	try {
+		return {
+			result: await runYtDlp(target, optionsForProfile(options, COOKIE_YOUTUBE_PROFILE, cookiePath)),
+			authMode: COOKIE_YOUTUBE_PROFILE.label,
+			profile: COOKIE_YOUTUBE_PROFILE.id,
+		};
+	} catch (cookieError) {
+		throw annotateFinalError(cookieError, attempts, { cookieAttempted: true, publicError: lastPublicError });
 	}
 }
 
@@ -224,7 +298,7 @@ export function describeYtDlpError(error) {
 	}
 	if (message.includes("sign in to confirm") || message.includes("not a bot") || message.includes("confirm you’re not a bot") || message.includes("confirm you're not a bot")) {
 		return error?.alphaCookieAttempted
-			? "YouTube rejected both public access and the saved session. The cookie format is valid, but the session is stale, rotated or rejected from this server IP. Clear it and export a fresh dedicated-account cookie from a private window."
+			? "YouTube rejected every safe public client and the current cookie-client workaround. This deployment IP is likely challenged; replacing the same cookies repeatedly will not fix an IP rejection."
 			: "YouTube challenged public access and no usable cookie fallback was available.";
 	}
 	if (message.includes("http error 429") || message.includes("too many requests")) {

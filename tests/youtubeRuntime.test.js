@@ -5,7 +5,14 @@ import path from "node:path";
 import test from "node:test";
 
 const { normalizeCookies } = await import("../utils/youtubeCookies.js");
-const { describeYtDlpError, ensureYtDlp, isYouTubeUrl, shouldRetryWithCookies } = await import("../utils/ytdlp.js");
+const {
+	describeYtDlpError,
+	ensureYtDlp,
+	isYouTubeUrl,
+	shouldRetryWithAlternateClient,
+	shouldRetryWithCookies,
+	youtubePublicProfiles,
+} = await import("../utils/ytdlp.js");
 
 test("cookie validator accepts and minimizes a Netscape YouTube export", () => {
 	const input = [
@@ -65,12 +72,40 @@ test("cookie fallback is limited to authentication failures and never retries ra
 	assert.equal(shouldRetryWithCookies(new Error("Sign in to confirm you’re not a bot")), true);
 	assert.equal(shouldRetryWithCookies(new Error("HTTP Error 403: Forbidden")), true);
 	assert.equal(shouldRetryWithCookies(new Error("This video is age-restricted")), true);
+	assert.equal(shouldRetryWithCookies(new Error("Requested format is not available")), false);
 	assert.equal(shouldRetryWithCookies(new Error("HTTP Error 429: Too Many Requests")), false);
 	assert.equal(shouldRetryWithCookies(new Error("Network is unreachable")), false);
 });
 
-test("rejected cookie fallback is described as session rejection, not bad syntax", () => {
+test("safe YouTube client fallbacks are bounded and prefer a recently working profile", () => {
+	const normal = youtubePublicProfiles();
+	assert.deepEqual(normal.map((profile) => profile.id), ["default", "android_vr", "web_safari", "web_embedded"]);
+	assert.equal(normal.length, 4);
+	assert.equal(normal.some((profile) => profile.usesCookies), false);
+
+	const preferred = youtubePublicProfiles("android_vr");
+	assert.equal(preferred[0].id, "android_vr");
+	assert.equal(new Set(preferred.map((profile) => profile.id)).size, 4);
+});
+
+test("explicit extractor settings are respected without multiplying attempts", () => {
+	const profiles = youtubePublicProfiles(null, "youtube:player_client=tv");
+	assert.deepEqual(profiles, [{
+		id: "custom",
+		label: "custom YouTube client",
+		extractorArgs: "youtube:player_client=tv",
+	}]);
+});
+
+test("alternate clients are limited to challenge and format failures", () => {
+	assert.equal(shouldRetryWithAlternateClient(new Error("No video formats found")), true);
+	assert.equal(shouldRetryWithAlternateClient(new Error("The page needs to be reloaded")), true);
+	assert.equal(shouldRetryWithAlternateClient(new Error("HTTP Error 429: Too Many Requests")), false);
+	assert.equal(shouldRetryWithAlternateClient(new Error("Network is unreachable")), false);
+});
+
+test("rejected cookie fallback identifies deployment rejection instead of blaming syntax", () => {
 	const error = new Error("Sign in to confirm you’re not a bot");
 	error.alphaCookieAttempted = true;
-	assert.match(describeYtDlpError(error), /format is valid.*session is stale/i);
+	assert.match(describeYtDlpError(error), /every safe public client.*deployment IP/i);
 });

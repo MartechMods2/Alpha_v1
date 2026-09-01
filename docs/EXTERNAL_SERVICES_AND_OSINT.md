@@ -25,7 +25,8 @@ aliases for the focused YouTube runtime report.
 
 Use `-downloadhealth test` or `-yttest` for a live metadata-only YouTube probe.
 The normal health report validates cookie syntax only; the live probe verifies
-whether public extraction or cookie fallback is actually accepted by YouTube.
+whether a safe public client or the cookie workaround is actually accepted by
+YouTube. A passing probe names the successful client profile.
 
 ## Required for the bot itself
 
@@ -75,9 +76,12 @@ The following commands use `yt-dlp`:
 
 Many public videos work with no cookie. A cookie may be required if YouTube asks
 the server to sign in, applies an age check, or presents an automated challenge.
-Alpha always tries a public request first and uses a saved account cookie only
-once when YouTube explicitly requires authentication. It never retries a
-rate-limited request with an account cookie.
+Alpha first tries a bounded set of public yt-dlp clients. This includes the
+default client, Android VR, Safari HLS and embedded clients; these are used only
+as compatibility fallbacks and never as rapid or endless retries. If all public
+profiles receive an authentication challenge, the saved cookie is tried once
+with yt-dlp's current `default,web_embedded` logged-in client workaround. Alpha
+never retries a rate-limited request with another client or an account cookie.
 
 Safest setup:
 
