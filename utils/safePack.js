@@ -7,6 +7,7 @@ export const SAFE_PACK_COMMANDS = Object.freeze([
 	"ttt", "tttmove", "connect4", "drop", "tournament", "quizbank", "familyfeud", "feudanswer", "season", "seasonhistory", "wallet", "dailycoins", "shop", "buy", "inventory", "giftcoins", "richlist", "gamenight",
 	"aiproviders", "aibudget", "aiprivacy", "webfactcheck", "smartminutes", "modassist",
 	"backup", "backupstatus", "restorecheck", "storagehealth", "webhookadmin", "queuestatus", "configexport", "privacydata", "errorstatus", "migrationstatus", "safepackhelp",
+	"osinthelp", "osintstatus", "dns", "dig", "rdap", "whois", "iprdap", "ipwhois", "asn", "asnlookup", "ptr", "tls", "ssl", "headers", "webheaders", "emailsecurity", "emailsec", "ctsearch", "certsearch", "hashid",
 ]);
 
 export const cleanSafeText = (value, limit = 500) => String(value || "")
