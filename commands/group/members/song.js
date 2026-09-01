@@ -2,7 +2,7 @@ import fs from "fs";
 import yts from "yt-search";
 import memoryManager from "../../../utils/memory.js";
 import { isValidAudioFile, readFileEfficiently } from "../../../utils/file.js";
-import { buildYtDlpOptions, describeYtDlpError, isYouTubeUrl, runYtDlp } from "../../../utils/ytdlp.js";
+import { buildYtDlpOptions, describeYtDlpError, isYouTubeUrl, runYtDlpAdaptive } from "../../../utils/ytdlp.js";
 
 const audioCache = new Map();
 const requestCooldowns = new Map();
@@ -48,7 +48,7 @@ const ytdlpOptions = async (extra = {}) => {
 
 const resolveTrack = async (query) => {
 	if (isYouTubeUrl(query)) {
-		const info = await runYtDlp(query, await ytdlpOptions({ dumpSingleJson: true, skipDownload: true }));
+		const info = await runYtDlpAdaptive(query, await ytdlpOptions({ dumpSingleJson: true, skipDownload: true }));
 		if ((info.duration || 0) > 12 * 60) throw new Error("Track is longer than 12 minutes");
 		return { url: query, title: info.title || "Song" };
 	}
@@ -112,7 +112,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 	try {
 		const track = await resolveTrack(query);
-		await runYtDlp(
+		await runYtDlpAdaptive(
 			track.url,
 			await ytdlpOptions({
 				format: "bestaudio/best",

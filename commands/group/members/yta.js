@@ -1,7 +1,7 @@
 import fs from "fs";
 import memoryManager from "../../../utils/memory.js";
 import { readFileEfficiently } from "../../../utils/file.js";
-import { buildYtDlpOptions, describeYtDlpError, isYouTubeUrl, runYtDlp } from "../../../utils/ytdlp.js";
+import { buildYtDlpOptions, describeYtDlpError, isYouTubeUrl, runYtDlpAdaptive } from "../../../utils/ytdlp.js";
 
 const getRandom = (ext) => memoryManager.generateTempFileName(ext);
 
@@ -19,7 +19,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const fileDown = getRandom(".mp3");
 
 	try {
-		await runYtDlp(
+		await runYtDlpAdaptive(
 			args[0],
 			await ytdlpOpts({
 				format: "bestaudio/best",

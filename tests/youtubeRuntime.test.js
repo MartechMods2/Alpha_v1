@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 const { normalizeCookies } = await import("../utils/youtubeCookies.js");
-const { describeYtDlpError, ensureYtDlp, isYouTubeUrl } = await import("../utils/ytdlp.js");
+const { describeYtDlpError, ensureYtDlp, isYouTubeUrl, shouldRetryWithCookies } = await import("../utils/ytdlp.js");
 
 test("cookie validator accepts and minimizes a Netscape YouTube export", () => {
 	const input = [
@@ -59,4 +59,18 @@ test("yt-dlp errors produce useful user-facing diagnoses", () => {
 	assert.match(describeYtDlpError(new Error("spawn ENOENT")), /engine is missing/i);
 	assert.match(describeYtDlpError(new Error("HTTP Error 429: Too Many Requests")), /rate-limited/i);
 	assert.match(describeYtDlpError(new Error("Sign in to confirm you’re not a bot")), /challenged/i);
+});
+
+test("cookie fallback is limited to authentication failures and never retries rate limits", () => {
+	assert.equal(shouldRetryWithCookies(new Error("Sign in to confirm you’re not a bot")), true);
+	assert.equal(shouldRetryWithCookies(new Error("HTTP Error 403: Forbidden")), true);
+	assert.equal(shouldRetryWithCookies(new Error("This video is age-restricted")), true);
+	assert.equal(shouldRetryWithCookies(new Error("HTTP Error 429: Too Many Requests")), false);
+	assert.equal(shouldRetryWithCookies(new Error("Network is unreachable")), false);
+});
+
+test("rejected cookie fallback is described as session rejection, not bad syntax", () => {
+	const error = new Error("Sign in to confirm you’re not a bot");
+	error.alphaCookieAttempted = true;
+	assert.match(describeYtDlpError(error), /format is valid.*session is stale/i);
 });

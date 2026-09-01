@@ -66,7 +66,7 @@ export default function Settings() {
             background: hasStored ? 'rgba(34,197,94,.15)' : 'rgba(148,163,184,.1)',
             color: cookieStatus?.valid ? '#22c55e' : hasStored ? '#f59e0b' : 'var(--muted)',
           }}>
-            {cookieStatus?.valid ? 'Valid' : hasStored ? 'Needs replacement' : 'Not set'}
+            {cookieStatus?.valid ? 'Format valid' : hasStored ? 'Needs replacement' : 'Not set'}
           </span>
         </div>
         <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 16, lineHeight: 1.6 }}>
@@ -74,6 +74,7 @@ export default function Settings() {
           "Get cookies.txt LOCALLY"). Required for age-restricted or "Sign in to confirm" errors on
           YouTube commands (<code>-yt</code>, <code>-song</code>, <code>-yta</code>).
           Existing cookie values are never displayed again after saving.
+          A valid format does not guarantee that YouTube will accept the session from the server.
         </p>
 
         {hasStored && cookieStatus && !cookieStatus.valid && (
