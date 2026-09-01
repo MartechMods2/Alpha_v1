@@ -502,19 +502,17 @@ Create a `.env` file in the project root with the following keys.
 | `TELEGRAM_BOT_TOKEN`    | Telegram bot token — enables sending bot logs to a Telegram chat                         |
 | `TELEGRAM_CHAT_ID`      | Telegram chat/channel ID to receive bot logs                                             |
 
-## YouTube Download (Optional)
+## YouTube Download
 
-| Variable                            | Default  | Description                          |
-| ----------------------------------- | -------- | ------------------------------------ |
-| `YOUTUBE_DELAY_BETWEEN_REQUESTS`    | `1000`   | Delay between requests (ms)          |
-| `YOUTUBE_MAX_RETRIES`               | `3`      | Maximum retry attempts               |
-| `YOUTUBE_RETRY_DELAY`               | `2000`   | Delay between retries (ms)           |
-| `MAX_AUDIO_SIZE_MB`                 | `50`     | Maximum audio file size (MB)         |
-| `MAX_VIDEO_SIZE_MB`                 | `50`     | Maximum video file size (MB)         |
-| `DOWNLOAD_TIMEOUT_SECONDS`          | `600`    | Download timeout (seconds)           |
-| `YOUTUBE_DEBUG`                     | `false`  | Enable debug logging                 |
-| `ENABLE_USER_AGENT_ROTATION`        | `true`   | Rotate user agents                   |
-| `FORCE_DISABLE_YTDLP`               | `false`  | Force-disable yt-dlp                 |
+| Variable | Default | Description |
+|---|---|---|
+| `YTDLP_PATH` | auto-detected | Optional explicit yt-dlp executable path |
+| `YTDLP_AUTO_INSTALL` | `true` | Securely bootstrap the official standalone executable when every local candidate is missing |
+| `YTDLP_BOOTSTRAP_DIR` | system temp | Optional writable directory for the bootstrapped executable |
+| `YTDLP_COOKIES` | unset | Optional protected Netscape cookie-file path for self-hosting; prefer the dashboard |
+
+Run `-downloadhealth` as the bot owner to check yt-dlp, the JavaScript runtime
+and cookie validity without exposing any cookie value.
 
 ## Example `.env` File
 
@@ -559,16 +557,11 @@ TWITTER_BEARER_TOKEN=your_twitter_bearer_token_here
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 TELEGRAM_CHAT_ID=your_telegram_chat_id_here
 
-# YouTube Download Configuration
-YOUTUBE_DELAY_BETWEEN_REQUESTS=1000
-YOUTUBE_MAX_RETRIES=3
-YOUTUBE_RETRY_DELAY=2000
-MAX_AUDIO_SIZE_MB=50
-MAX_VIDEO_SIZE_MB=50
-DOWNLOAD_TIMEOUT_SECONDS=600
-YOUTUBE_DEBUG=false
-ENABLE_USER_AGENT_ROTATION=true
-FORCE_DISABLE_YTDLP=false
+# YouTube Download (optional overrides)
+YTDLP_PATH=
+YTDLP_AUTO_INSTALL=true
+YTDLP_BOOTSTRAP_DIR=
+YTDLP_COOKIES=
 ```
 
 ---

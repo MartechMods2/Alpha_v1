@@ -9,6 +9,7 @@ import { pushLog, subscribe as subscribeAdminEvents, getLogs, getActivity } from
 import { getBotData } from "./db/botData.js";
 import { setMediaRuntimeConfig } from "./utils/mediaJobs.js";
 import { startSafePackScheduler } from "./utils/safePackScheduler.js";
+import { ensureYtDlp, resolveYtDlpJsRuntime } from "./utils/ytdlp.js";
 
 // ── Console interceptor — feeds log ring buffer + deduplication ──────────────
 const _log   = console.log.bind(console);
@@ -261,6 +262,12 @@ wss.on("connection", (ws) => {
 
 // ── Bot start ─────────────────────────────────────────────────────────────────
 async function startServer() {
+	try {
+		const [ytDlp, jsRuntime] = await Promise.all([ensureYtDlp(), resolveYtDlpJsRuntime()]);
+		console.log(`✅ yt-dlp ${ytDlp.version} ready (${ytDlp.source}); JS runtime: ${jsRuntime || "unavailable"}`);
+	} catch (error) {
+		console.warn(`⚠️ YouTube downloads unavailable at startup: ${error.message}`);
+	}
 	try {
 		const botData = await getBotData();
 		if (botData && typeof botData === "object" && botData.mediaConfig) {
