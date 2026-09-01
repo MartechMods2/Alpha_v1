@@ -53,7 +53,7 @@ A feature-rich WhatsApp bot with a modern React/Vite admin dashboard. Supports d
 |        -news        |                      Show tech news                       |                `-news`                 |            ✔            |
 |  -news categories   |            Show news from a specific category             |             `-news sports`             |            ✔            |
 |        -list        |            Show a list of categories for news             |                `-list`                 |            ✔            |
-|        -idp         | Download the private profile picture of an Instagram user |            `-idp username`             |           ❌            |
+|        -idp         | Download a publicly published Instagram profile picture  |            `-idp username`             |           ❌            |
 |       -insta        |               Download media from Instagram               |          `-insta linkadress`           |            ✔            |
 |       -gender       |            Get the gender percentage of a name            |          `-gender FirstName`           |            ✔            |
 |         -yt         |       Download a YouTube video in the best quality        |           `-yt youtubelink`            |           ❌            |
@@ -479,6 +479,7 @@ Create a `.env` file in the project root with the following keys.
 | `MODERATORS`     | Comma-separated moderator numbers (e.g. `123,456`)                        |
 | `MONGODB_KEY`    | MongoDB connection string from [mongodb.com](https://www.mongodb.com)     |
 | `ADMIN_PASSWORD` | Password to log in to the React admin dashboard at `/admin`               |
+| `SESSION_SECRET` | Long random secret used to protect dashboard sessions                      |
 
 ## Optional
 
@@ -486,17 +487,16 @@ Create a `.env` file in the project root with the following keys.
 | ----------------------- | ---------------------------------------------------------------------------------------- |
 | `PORT`                  | Server port (default: `8000`)                                                            |
 | `NODE_ENV`              | `development` or `production`                                                            |
+| `HOST_URL`              | Public service URL used for the optional Google OAuth callback                           |
 | `BOT_TIMEZONE`          | Time zone used for challenges, events and reminders. Default: `Africa/Lagos`             |
-| `SESSION_SECRET`        | Secret used to sign the session cookie. Set a strong random string in production.        |
 | `NVIDIA_API_KEY`        | NVIDIA API key used by the Alpha text assistant                                            |
 | `GOOGLE_API_KEY`        | Google/Gemini API key used only for optional tagged image/audio/document understanding     |
 | `GEMINI_MEDIA_MODEL`    | Optional Gemini model for media understanding; defaults to `gemini-2.0-flash`              |
-| `GOOGLE_API_KEY_SEARCH` | Google API key for the Custom Search API — used by the `-img` image search command       |
-| `SEARCH_ENGINE_KEY`     | Google Custom Search Engine ID — required alongside `GOOGLE_API_KEY_SEARCH` for `-img`   |
+| `GOOGLE_API_KEY_SEARCH` | Google API key for Custom Search — used by `-search`, `-gs` and `-img`                   |
+| `SEARCH_ENGINE_KEY`     | Programmable Search Engine ID — required alongside `GOOGLE_API_KEY_SEARCH`               |
 | `GENIUS_ACCESS_SECRET`  | Genius API token — used by the `-l` lyrics command                                       |
-| `PIN_KEY`               | Pinterest API key for Pinterest image search                                             |
 | `REMOVE_BG_KEY`         | remove.bg API key — used by `-removebg` and AI cut-out `-aisticker`                    |
-| `TRUECALLER_ID`         | Truecaller API ID for caller identification                                              |
+| `TRUECALLER_ID`         | Legacy India-only Truecaller command; privacy-sensitive and not recommended              |
 | `TWITTER_BEARER_TOKEN`  | Twitter/X API bearer token for Twitter-related features                                  |
 | `FFMPEG_PATH`           | Path to a custom `ffmpeg` binary. If unset the bundled `ffmpeg-static` binary is used.  |
 | `TELEGRAM_BOT_TOKEN`    | Telegram bot token — enables sending bot logs to a Telegram chat                         |
@@ -526,12 +526,13 @@ BOT_NUMBER=1234567890
 MODERATORS=1234567890,0987654321
 MONGODB_KEY=mongodb+srv://username:password@cluster.mongodb.net/database
 ADMIN_PASSWORD=supersecretpassword
+SESSION_SECRET=change_this_to_a_random_string
 
 # Optional
 PORT=8000
 NODE_ENV=production
+HOST_URL=https://your-service.example.com
 BOT_TIMEZONE=Africa/Lagos
-SESSION_SECRET=change_this_to_a_random_string
 MESSAGE_DELAY_MS=500
 GROUP_MESSAGE_DELAY_MS=900
 MAX_CONCURRENT_SENDS=2
@@ -547,7 +548,6 @@ SEARCH_ENGINE_KEY=your_search_engine_id_here
 
 # Other optional services
 GENIUS_ACCESS_SECRET=your_genius_access_secret_here
-PIN_KEY=your_pinterest_api_key_here
 REMOVE_BG_KEY=your_remove_bg_key_here
 TRUECALLER_ID=your_truecaller_id_here
 TWITTER_BEARER_TOKEN=your_twitter_bearer_token_here
@@ -583,6 +583,15 @@ encrypted backups and privacy commands are documented in
 
 The pack deliberately excludes bulk/private outreach, status automation,
 anti-delete/view-once recovery, uncontrolled plugins and automatic mass removals.
+
+## Passive OSINT and setup audit
+
+The free, rate-limited OSINT commands and the complete list of features that need
+keys, IDs, cookies or server binaries are documented in
+[docs/EXTERNAL_SERVICES_AND_OSINT.md](docs/EXTERNAL_SERVICES_AND_OSINT.md).
+
+Run `-setupcheck` as the bot owner to see what is configured without displaying
+any secret value. Run `-osinthelp` in a group for the passive security-tool menu.
 
 - [@Baileys](https://github.com/WhiskeySockets/Baileys)
 
