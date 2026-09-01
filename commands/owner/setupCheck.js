@@ -1,7 +1,7 @@
 import { getCookiePath, getCookieStatus } from "../../functions/cookieManager.js";
 import { auditRuntimeTools, FEATURE_REQUIREMENTS, missingForRequirement, requirementReady } from "../../utils/setupAudit.js";
 import { existsSync } from "node:fs";
-import { describeYtDlpError, isYouTubeUrl, probeYoutubeAccess } from "../../utils/ytdlp.js";
+import { describeYtDlpError, getPoTokenProviderStatus, isYouTubeUrl, probeYoutubeAccess } from "../../utils/ytdlp.js";
 
 let liveProbeCache = null;
 const LIVE_PROBE_TTL_MS = 2 * 60_000;
@@ -19,6 +19,7 @@ const handler = async (_sock, msg, from, args, info) => {
 
 		if (["cookiestatus", "downloadhealth", "ythealth", "yttest"].includes(command)) {
 			const ytdlp = runtime.binaries.find((entry) => entry.name === "yt-dlp");
+			const poProvider = getPoTokenProviderStatus();
 			const wantsLiveTest = command === "yttest" || String(args[0] || "").toLowerCase() === "test";
 			let liveText = "";
 			if (wantsLiveTest) {
@@ -34,7 +35,7 @@ const handler = async (_sock, msg, from, args, info) => {
 					liveText = `\nLive YouTube test: *FAIL*\n${describeYtDlpError(error)}`;
 				}
 			}
-			return reply(`🍪 *YouTube Download Health*\nyt-dlp: *${ytdlp?.ready ? "READY" : "MISSING"}*${ytdlp?.detail ? ` — ${ytdlp.detail}` : ""}\nJavaScript runtime: *${runtime.ytDlpJsRuntime || "MISSING"}*\nCookie file: *${cookieStatus.valid ? `FORMAT VALID (${cookieStatus.count} rows)` : cookieStatus.configured ? "INVALID" : "NOT CONFIGURED"}*${cookieStatus.valid || !cookieStatus.reason ? "" : `\nCookie issue: ${cookieStatus.reason}`}${liveText}\n\nPublic videos are tried without account cookies first. Cookies are used once only when login is required. Saved values are never displayed again.`);
+			return reply(`🍪 *YouTube Download Health*\nyt-dlp: *${ytdlp?.ready ? "READY" : "MISSING"}*${ytdlp?.detail ? ` — ${ytdlp.detail}` : ""}\nJavaScript runtime: *${runtime.ytDlpJsRuntime || "MISSING"}*\nPO-token provider: *${poProvider.ready ? `READY — ${poProvider.version} (${poProvider.reason})` : `MISSING — ${poProvider.reason}`}*\nCookie file: *${cookieStatus.valid ? `FORMAT VALID (${cookieStatus.count} rows)` : cookieStatus.configured ? "INVALID" : "NOT CONFIGURED"}*${cookieStatus.valid || !cookieStatus.reason ? "" : `\nCookie issue: ${cookieStatus.reason}`}${liveText}\n\nPublic clients and the local token provider are tried before account cookies. Cookies are used once only when login is required. Saved values are never displayed again.`);
 		}
 
 		const features = FEATURE_REQUIREMENTS.map((entry) => {

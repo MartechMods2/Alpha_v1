@@ -8,6 +8,7 @@ const { normalizeCookies } = await import("../utils/youtubeCookies.js");
 const {
 	describeYtDlpError,
 	ensureYtDlp,
+	getPoTokenProviderStatus,
 	isYouTubeUrl,
 	shouldRetryWithAlternateClient,
 	shouldRetryWithCookies,
@@ -86,6 +87,34 @@ test("safe YouTube client fallbacks are bounded and prefer a recently working pr
 	const preferred = youtubePublicProfiles("android_vr");
 	assert.equal(preferred[0].id, "android_vr");
 	assert.equal(new Set(preferred.map((profile) => profile.id)).size, 4);
+});
+
+test("local PO-token profile is added only when its pinned runtime is available", () => {
+	const profiles = youtubePublicProfiles(null, null, "/opt/bgutil/server");
+	assert.equal(profiles.length, 5);
+	assert.equal(profiles[1].id, "mweb_pot");
+	assert.deepEqual(profiles[1].extractorArgs, [
+		"youtube:player_client=mweb",
+		"youtubepot-bgutilscript:server_home=/opt/bgutil/server",
+	]);
+	assert.equal(youtubePublicProfiles().some((profile) => profile.id === "mweb_pot"), false);
+});
+
+test("PO-token provider status never treats a partial installation as ready", () => {
+	const previousHome = process.env.YTDLP_POT_PROVIDER_HOME;
+	const previousPlugin = process.env.YTDLP_POT_PLUGIN_PATH;
+	process.env.YTDLP_POT_PROVIDER_HOME = path.join(os.tmpdir(), "alpha-pot-provider-missing");
+	process.env.YTDLP_POT_PLUGIN_PATH = path.join(os.tmpdir(), "alpha-pot-plugin-missing.zip");
+	try {
+		const status = getPoTokenProviderStatus();
+		assert.equal(status.ready, false);
+		assert.match(status.reason, /missing/i);
+	} finally {
+		if (previousHome === undefined) delete process.env.YTDLP_POT_PROVIDER_HOME;
+		else process.env.YTDLP_POT_PROVIDER_HOME = previousHome;
+		if (previousPlugin === undefined) delete process.env.YTDLP_POT_PLUGIN_PATH;
+		else process.env.YTDLP_POT_PLUGIN_PATH = previousPlugin;
+	}
 });
 
 test("explicit extractor settings are respected without multiplying attempts", () => {
