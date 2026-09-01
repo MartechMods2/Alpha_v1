@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { ensureYtDlp, resolveYtDlpJsRuntime } from "./ytdlp.js";
 
 const execFileAsync = promisify(execFile);
 const configured = (...names) => names.every((name) => Boolean(String(process.env[name] || "").trim()));
@@ -44,9 +45,12 @@ export const checkBinary = async (command, args = ["--version"]) => {
 };
 
 export const auditRuntimeTools = async ({ youtubeCookies = false } = {}) => {
+	const [ytDlp, jsRuntime] = await Promise.all([
+		ensureYtDlp().catch((error) => ({ error: String(error.message || error).slice(0, 160) })),
+		resolveYtDlpJsRuntime(),
+	]);
 	const checks = await Promise.all([
 		checkBinary(process.env.FFMPEG_PATH || "ffmpeg", ["-version"]),
-		checkBinary(process.env.YTDLP_PATH || "yt-dlp", ["--version"]),
 		checkBinary("tesseract", ["--version"]),
 		checkBinary("qrencode", ["--version"]),
 		checkBinary("zbarimg", ["--version"]),
@@ -55,9 +59,13 @@ export const auditRuntimeTools = async ({ youtubeCookies = false } = {}) => {
 		checkBinary("gs", ["--version"]),
 		checkBinary("clamscan", ["--version"]),
 	]);
+	checks.splice(1, 0, ytDlp?.path
+		? { ready: true, detail: `${ytDlp.version} (${ytDlp.source})` }
+		: { ready: false, detail: ytDlp?.error || "not installed" });
 	const names = ["FFmpeg", "yt-dlp", "Tesseract OCR", "QR encoder", "QR reader", "image-to-PDF", "PDF tools", "Ghostscript", "ClamAV"];
 	return {
 		binaries: names.map((name, index) => ({ name, ...checks[index], optional: name === "ClamAV" })),
 		youtubeCookies,
+		ytDlpJsRuntime: jsRuntime,
 	};
 };

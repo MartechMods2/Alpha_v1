@@ -8,7 +8,7 @@ import passport from "passport";
 import { normalizeJID } from "../utils/lid.js";
 import messageQueue from "../queue/messageQueue.js";
 import { pushActivity, getLogs, getActivity, cmdUsage } from "../notify/adminEvents.js";
-import { getCookiesContent, saveCookies } from "../functions/cookieManager.js";
+import { getCookieStatus, saveCookies } from "../functions/cookieManager.js";
 import {
 	checkFfmpegHealth,
 	getMediaRuntimeStatus,
@@ -597,8 +597,14 @@ router.get("/api/admin/command-stats", requireAdmin, (_req, res) => {
 // ── API: YT Cookies ────────────────────────────────────────────────────────────
 router.get("/api/admin/yt-cookies", requireAdmin, async (req, res) => {
 	try {
-		const content = await getCookiesContent();
-		res.json({ content: content || "" });
+		const status = await getCookieStatus();
+		res.json({
+			configured: status.configured,
+			valid: status.valid,
+			count: status.count,
+			source: status.source,
+			reason: status.valid ? "" : status.reason,
+		});
 	} catch (err) {
 		res.status(500).json({ error: err.message });
 	}
@@ -611,7 +617,7 @@ router.post("/api/admin/yt-cookies", requireAdmin, async (req, res) => {
 		await saveCookies(content);
 		res.json({ ok: true });
 	} catch (err) {
-		res.status(500).json({ error: err.message });
+		res.status(err.code === "INVALID_COOKIE_FILE" ? 400 : 500).json({ error: err.message });
 	}
 });
 

@@ -1,12 +1,9 @@
 import fs from "fs";
 import yts from "yt-search";
-import ffmpegStatic from "ffmpeg-static";
-import defaultYoutubedl, { create } from "youtube-dl-exec";
 import memoryManager from "../../../utils/memory.js";
 import { isValidAudioFile, readFileEfficiently } from "../../../utils/file.js";
-import { getCookiePath } from "../../../functions/cookieManager.js";
+import { buildYtDlpOptions, describeYtDlpError, isYouTubeUrl, runYtDlp } from "../../../utils/ytdlp.js";
 
-const youtubedl = process.env.YTDLP_PATH ? create(process.env.YTDLP_PATH) : defaultYoutubedl;
 const audioCache = new Map();
 const requestCooldowns = new Map();
 const CACHE_TTL_MS = 15 * 60_000;
@@ -46,30 +43,18 @@ const rememberAudio = (key, entry) => {
 };
 
 const ytdlpOptions = async (extra = {}) => {
-	const options = {
-		noCheckCertificates: true,
-		noWarnings: true,
-		noPlaylist: true,
-		forceIpv4: true,
-		ffmpegLocation: process.env.FFMPEG_PATH || ffmpegStatic || "ffmpeg",
-		extractorArgs: "youtube:player_client=tv,android_vr,web",
-		jsRuntimes: "node",
-		...extra,
-	};
-	const cookiePath = await getCookiePath();
-	if (cookiePath) options.cookies = cookiePath;
-	return options;
+	return buildYtDlpOptions(extra);
 };
 
 const resolveTrack = async (query) => {
-	if (/^https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(query)) {
-		const info = await youtubedl(query, await ytdlpOptions({ dumpSingleJson: true }));
+	if (isYouTubeUrl(query)) {
+		const info = await runYtDlp(query, await ytdlpOptions({ dumpSingleJson: true, skipDownload: true }));
 		if ((info.duration || 0) > 12 * 60) throw new Error("Track is longer than 12 minutes");
 		return { url: query, title: info.title || "Song" };
 	}
 	const results = await yts(query);
 	const track = (results.videos || []).find(
-		(video) => video.url && (!video.seconds || video.seconds <= 12 * 60),
+		(video) => isYouTubeUrl(video.url) && (!video.seconds || video.seconds <= 12 * 60),
 	);
 	if (!track) throw new Error("No song under 12 minutes was found");
 	return { url: track.url, title: track.title || query };
@@ -127,7 +112,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 	try {
 		const track = await resolveTrack(query);
-		await youtubedl(
+		await runYtDlp(
 			track.url,
 			await ytdlpOptions({
 				format: "bestaudio/best",
@@ -156,12 +141,9 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		requestCooldowns.delete(senderJid);
 		console.error("Song download failed:", error.message);
 		const message = String(error.message || "").toLowerCase();
-		let detail = "Try a more specific song title.";
-		if (message.includes("sign in") || message.includes("bot")) {
-			detail = "YouTube blocked this server; refresh the configured cookies.";
-		} else if (message.includes("12 minutes") || message.includes("25mb")) {
-			detail = error.message;
-		}
+		const detail = message.includes("12 minutes") || message.includes("25mb")
+			? error.message
+			: describeYtDlpError(error);
 		return sendMessageWTyping(from, { text: `❌ Song failed. ${detail}` }, { quoted: msg });
 	} finally {
 		memoryManager.safeUnlink(outputPath);

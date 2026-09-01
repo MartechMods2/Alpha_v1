@@ -1,37 +1,13 @@
 import fs from "fs";
-import path from "path";
 import yts from "yt-search";
-import ffmpeg from "ffmpeg-static";
-import defaultYoutubedl, { create } from "youtube-dl-exec";
 import memoryManager from "../../../utils/memory.js";
 import { readFileEfficiently, isValidVideoFile } from "../../../utils/file.js";
+import { buildYtDlpOptions, describeYtDlpError, isYouTubeUrl, runYtDlp } from "../../../utils/ytdlp.js";
 
 const getRandom = (ext) => memoryManager.generateTempFileName(ext);
 
-// Use the system yt-dlp binary when YTDLP_PATH is set (e.g. /usr/local/bin/yt-dlp on
-// the server). Otherwise fall back to the binary bundled with youtube-dl-exec.
-const youtubedl = process.env.YTDLP_PATH ? create(process.env.YTDLP_PATH) : defaultYoutubedl;
-
-import { getCookiePath } from "../../../functions/cookieManager.js";
-
 const ytdlpOpts = async (extra = {}) => {
-	const opts = {
-		noCheckCertificates: true,
-		noWarnings: true,
-		noPlaylist: true,
-		forceIpv4: true,
-		ffmpegLocation: ffmpeg,
-		// tv + android_vr work without a PO token (server-side, no browser). web is
-		// kept last as a cookie-backed extra. android/ios are dead on modern YouTube.
-		extractorArgs: "youtube:player_client=tv,android_vr,web",
-		// yt-dlp now requires an EJS runtime to solve YouTube JS challenges (2026+).
-		// Node.js is available in the container, so use it.
-		jsRuntimes: "node",
-		...extra,
-	};
-	const cookiePath = await getCookiePath();
-	if (cookiePath) opts.cookies = cookiePath;
-	return opts;
+	return buildYtDlpOptions(extra);
 };
 
 const findVideoURL = async (name) => {
@@ -44,7 +20,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const { sendMessageWTyping, command, evv } = msgInfoObj;
 
 	if (command != "vs") {
-		if (!args[0] || !args[0].startsWith("http")) {
+		if (!args[0] || !isYouTubeUrl(args[0])) {
 			return sendMessageWTyping(from, { text: `Enter youtube link after yt` }, { quoted: msg });
 		}
 	}
@@ -54,7 +30,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		if (!args[0]) return sendMessageWTyping(from, { text: `Enter something to search` }, { quoted: msg });
 		try {
 			URL = await findVideoURL(evv);
-			if (!URL) return sendMessageWTyping(from, { text: `❌ No video found for: ${evv}` }, { quoted: msg });
+			if (!URL || !isYouTubeUrl(URL)) return sendMessageWTyping(from, { text: `❌ No video found for: ${evv}` }, { quoted: msg });
 		} catch (searchError) {
 			console.error("Video search error:", searchError);
 			return sendMessageWTyping(from, { text: `❌ Search failed. Please try again.` }, { quoted: msg });
@@ -71,7 +47,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		let title = "Unknown Video";
 		let duration = 0;
 		try {
-			const info = await youtubedl(URL, await ytdlpOpts({ dumpSingleJson: true }));
+			const info = await runYtDlp(URL, await ytdlpOpts({ dumpSingleJson: true, skipDownload: true }));
 			title = info.title || "Unknown Video";
 			duration = info.duration || 0;
 		} catch (infoError) {
@@ -90,7 +66,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 		// Prefer a pre-muxed mp4 (no ffmpeg merge needed) → avoids merge failures on servers.
 		// Falls back to merged streams only when no single-stream mp4 exists.
-		const result = await youtubedl(
+		const result = await runYtDlp(
 			URL,
 			await ytdlpOpts({
 				format: "best[height<=720][ext=mp4]/bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
@@ -145,18 +121,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		);
 	} catch (err) {
 		console.error("YTDL Handler Error:", err);
-		const m = (err.message || "").toLowerCase();
-		let errorMsg = "❌ Download failed. ";
-		if (m.includes("sign in to confirm") || m.includes("bot")) {
-			errorMsg += "YouTube is blocking this server. Set YTDLP_COOKIES to fix.";
-		} else if (m.includes("age")) {
-			errorMsg += "Age-restricted. Set YTDLP_COOKIES to download.";
-		} else if (m.includes("unavailable") || m.includes("private")) {
-			errorMsg += "Video is unavailable or private.";
-		} else {
-			errorMsg += "Please try with a different video.";
-		}
-		sendMessageWTyping(from, { text: errorMsg }, { quoted: msg });
+		sendMessageWTyping(from, { text: `❌ Download failed. ${describeYtDlpError(err)}` }, { quoted: msg });
 	} finally {
 		memoryManager.safeUnlink(fileDown_final);
 		if (fileDown_final !== fileDown) memoryManager.safeUnlink(fileDown);

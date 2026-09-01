@@ -14,10 +14,13 @@ Bot-owner commands:
 -featurecheck
 -keycheck
 -cookiestatus
+-downloadhealth
+-ythealth
 ```
 
-These commands display only `READY`, `OPTIONAL` or `MISSING`. They never print a
-secret value.
+These commands display only `READY`, `OPTIONAL`, `MISSING` or an invalid-cookie
+reason. They never print a secret value. `-downloadhealth` and `-ythealth` are
+aliases for the focused YouTube runtime report.
 
 ## Required for the bot itself
 
@@ -72,8 +75,11 @@ Safest setup:
 
 1. Use a dedicated, non-primary YouTube account with no payment information.
 2. Export a Netscape-format `cookies.txt` from your own logged-in browser.
-3. Open the protected Alpha dashboard and upload/paste it in **YouTube Cookies**.
-4. Run `-cookiestatus` as the bot owner.
+3. Confirm that the first line is exactly `# Netscape HTTP Cookie File`.
+4. Open the protected Alpha dashboard and upload/paste it in **YouTube Cookies**.
+5. The dashboard validates the file and retains only YouTube/Google cookie rows.
+   It never displays stored cookie values again after saving.
+6. Run `-downloadhealth` as the bot owner.
 
 Do not post the file in WhatsApp, commit it to GitHub, or use another person's
 cookie. Cookies grant account access and expire; refresh them only when the bot
@@ -95,8 +101,10 @@ point to a protected cookie file on a self-hosted server.
 | ClamAV (`clamscan`) | Optional malware-signature stage in `-filescan` |
 
 The project Dockerfile already installs every required program above except
-ClamAV. Without ClamAV, `-filescan` still reports the file type and SHA-256 but
-clearly says signature scanning is unavailable.
+ClamAV. The bot also checks configured, bundled and system `yt-dlp` locations at
+startup. If all are missing, it downloads the official standalone executable to
+a private temporary tools directory. Without ClamAV, `-filescan` still reports
+the file type and SHA-256 but clearly says signature scanning is unavailable.
 
 ## Free passive OSINT commands
 
