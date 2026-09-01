@@ -13,6 +13,8 @@ const MAX_BINARY_BYTES = 80 * 1024 * 1024;
 const PROBE_TIMEOUT_MS = 8_000;
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 const CLIENT_PREFERENCE_TTL_MS = 10 * 60_000;
+const DEFAULT_POT_PROVIDER_HOME = "/opt/bgutil-ytdlp-pot-provider/server";
+const DEFAULT_POT_PLUGIN_PATH = "/etc/yt-dlp/plugins/bgutil-ytdlp-pot-provider.zip";
 
 const PUBLIC_YOUTUBE_PROFILES = Object.freeze([
 	{ id: "default", label: "public default", extractorArgs: null },
@@ -26,6 +28,24 @@ const COOKIE_YOUTUBE_PROFILE = Object.freeze({
 	extractorArgs: "youtube:player_client=default,web_embedded",
 	usesCookies: true,
 });
+
+export function getPoTokenProviderStatus() {
+	const home = path.resolve(process.env.YTDLP_POT_PROVIDER_HOME || DEFAULT_POT_PROVIDER_HOME);
+	const pluginPath = path.resolve(process.env.YTDLP_POT_PLUGIN_PATH || DEFAULT_POT_PLUGIN_PATH);
+	const scriptReady = fs.existsSync(path.join(home, "build", "main.js"));
+	const pluginReady = fs.existsSync(pluginPath);
+	return {
+		ready: scriptReady && pluginReady,
+		home,
+		pluginPath,
+		version: String(process.env.YTDLP_POT_PROVIDER_VERSION || "1.3.2").slice(0, 40),
+		reason: scriptReady && pluginReady
+			? "on-demand"
+			: !scriptReady && !pluginReady
+				? "provider and plugin are missing"
+				: !scriptReady ? "provider script is missing" : "yt-dlp plugin is missing",
+	};
+}
 
 let resolvedBinary = null;
 let resolvingBinary = null;
@@ -168,11 +188,21 @@ export async function runYtDlp(target, options = {}) {
 
 const rawYtDlpError = (error) => String(error?.stderr || error?.message || error || "").toLowerCase();
 
-export function youtubePublicProfiles(preferredId = null, explicitExtractorArgs = null) {
+export function youtubePublicProfiles(preferredId = null, explicitExtractorArgs = null, poProviderHome = null) {
 	if (explicitExtractorArgs) {
 		return [{ id: "custom", label: "custom YouTube client", extractorArgs: explicitExtractorArgs }];
 	}
 	const profiles = PUBLIC_YOUTUBE_PROFILES.map((profile) => ({ ...profile }));
+	if (poProviderHome) {
+		profiles.splice(1, 0, {
+			id: "mweb_pot",
+			label: "public mweb + local PO token",
+			extractorArgs: [
+				"youtube:player_client=mweb",
+				`youtubepot-bgutilscript:server_home=${poProviderHome}`,
+			],
+		});
+	}
 	if (!preferredId) return profiles;
 	return profiles.sort((left, right) => Number(right.id === preferredId) - Number(left.id === preferredId));
 }
@@ -224,7 +254,8 @@ const annotateFinalError = (error, attempts, { cookieAttempted = false, publicEr
 
 async function adaptiveYtDlpAttempt(target, options = {}) {
 	const preferredId = preferredPublicProfile?.expires > Date.now() ? preferredPublicProfile.id : null;
-	const profiles = youtubePublicProfiles(preferredId, options.extractorArgs);
+	const poProvider = getPoTokenProviderStatus();
+	const profiles = youtubePublicProfiles(preferredId, options.extractorArgs, poProvider.ready ? poProvider.home : null);
 	const attempts = [];
 	let lastPublicError = null;
 
@@ -297,8 +328,9 @@ export function describeYtDlpError(error) {
 		return "The saved YouTube cookie file is invalid. Replace it with a fresh Netscape cookies.txt export.";
 	}
 	if (message.includes("sign in to confirm") || message.includes("not a bot") || message.includes("confirm you’re not a bot") || message.includes("confirm you're not a bot")) {
+		const poAttempted = error?.alphaYoutubeAttempts?.some((attempt) => String(attempt).includes("local PO token"));
 		return error?.alphaCookieAttempted
-			? "YouTube rejected every safe public client and the current cookie-client workaround. This deployment IP is likely challenged; replacing the same cookies repeatedly will not fix an IP rejection."
+			? `YouTube rejected every safe public client${poAttempted ? ", the local PO-token provider," : ""} and the current cookie-client workaround. This deployment IP remains challenged; replacing the same cookies repeatedly will not fix it.`
 			: "YouTube challenged public access and no usable cookie fallback was available.";
 	}
 	if (message.includes("http error 429") || message.includes("too many requests")) {
