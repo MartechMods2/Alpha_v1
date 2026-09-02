@@ -31,6 +31,20 @@ const COOKIE_YOUTUBE_PROFILE = Object.freeze({
 	usesCookies: true,
 });
 
+export function youtubeCookieProfile(poProvider = null) {
+	if (!poProvider?.ready) return COOKIE_YOUTUBE_PROFILE;
+	return {
+		id: "cookie_mweb_pot",
+		label: "cookie mweb + session-bound local PO token",
+		extractorArgs: [
+			"youtube:player_client=mweb",
+			`youtubepot-bgutilscript:server_home=${poProvider.home}`,
+		],
+		...(poProvider.pluginDirectory ? { pluginDirs: poProvider.pluginDirectory } : {}),
+		usesCookies: true,
+	};
+}
+
 export function getPoTokenProviderStatus() {
 	const home = path.resolve(process.env.YTDLP_POT_PROVIDER_HOME || DEFAULT_POT_PROVIDER_HOME);
 	const pluginPath = path.resolve(process.env.YTDLP_POT_PLUGIN_PATH || DEFAULT_POT_PLUGIN_PATH);
@@ -301,12 +315,13 @@ async function adaptiveYtDlpAttempt(target, options = {}) {
 		throw annotateFinalError(lastPublicError, attempts);
 	}
 
-	attempts.push(COOKIE_YOUTUBE_PROFILE);
+	const cookieProfile = youtubeCookieProfile(poProvider);
+	attempts.push(cookieProfile);
 	try {
 		return {
-			result: await runYtDlp(target, optionsForProfile(options, COOKIE_YOUTUBE_PROFILE, cookiePath)),
-			authMode: COOKIE_YOUTUBE_PROFILE.label,
-			profile: COOKIE_YOUTUBE_PROFILE.id,
+			result: await runYtDlp(target, optionsForProfile(options, cookieProfile, cookiePath)),
+			authMode: cookieProfile.label,
+			profile: cookieProfile.id,
 		};
 	} catch (cookieError) {
 		throw annotateFinalError(cookieError, attempts, { cookieAttempted: true, publicError: lastPublicError });

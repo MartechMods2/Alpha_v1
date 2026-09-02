@@ -85,8 +85,10 @@ to both native Render and Docker deployments. It launches the provider only
 when a token is needed, avoiding the memory cost of a permanent sidecar
 service. If all public profiles receive
 an authentication challenge, the saved cookie is tried once
-with yt-dlp's current `default,web_embedded` logged-in client workaround. Alpha
-never retries a rate-limited request with another client or an account cookie.
+with the `mweb` client and a new PO token bound to that logged-in session. If the
+local provider is unavailable, Alpha uses yt-dlp's `default,web_embedded`
+logged-in workaround instead. Alpha never retries a rate-limited request with
+another client or an account cookie.
 
 Safest setup:
 
