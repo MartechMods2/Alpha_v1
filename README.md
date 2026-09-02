@@ -498,6 +498,8 @@ Create a `.env` file in the project root with the following keys.
 | `REMOVE_BG_KEY`         | remove.bg API key — used by `-removebg` and AI cut-out `-aisticker`                    |
 | `TRUECALLER_ID`         | Legacy India-only Truecaller command; privacy-sensitive and not recommended              |
 | `TWITTER_BEARER_TOKEN`  | Twitter/X API bearer token for Twitter-related features                                  |
+| `JAMENDO_CLIENT_ID`     | Optional free Jamendo client ID for licensed full-track `-music` downloads               |
+| `PEXELS_API_KEY`        | Optional free Pexels key for licensed stock-video `-video` searches                       |
 | `FFMPEG_PATH`           | Path to a custom `ffmpeg` binary. If unset the bundled `ffmpeg-static` binary is used.  |
 | `TELEGRAM_BOT_TOKEN`    | Telegram bot token — enables sending bot logs to a Telegram chat                         |
 | `TELEGRAM_CHAT_ID`      | Telegram chat/channel ID to receive bot logs                                             |
@@ -550,6 +552,8 @@ GENIUS_ACCESS_SECRET=your_genius_access_secret_here
 REMOVE_BG_KEY=your_remove_bg_key_here
 TRUECALLER_ID=your_truecaller_id_here
 TWITTER_BEARER_TOKEN=your_twitter_bearer_token_here
+JAMENDO_CLIENT_ID=your_jamendo_client_id_here
+PEXELS_API_KEY=your_pexels_api_key_here
 
 # Custom ffmpeg path (leave blank to use bundled ffmpeg-static)
 # FFMPEG_PATH=/usr/bin/ffmpeg

@@ -48,6 +48,7 @@ YouTube. A passing probe names the successful client profile.
 | Google web/image search | `-search`, `-gs`, `-img` | `GOOGLE_API_KEY_SEARCH` + `SEARCH_ENGINE_KEY` | The search API key is not the same variable as the Gemini key |
 | Background removal | `-removebg`, `-bg`, `-cutoutsticker`, `-replacebg`, `-passport` | `REMOVE_BG_KEY` | Normal stickers do not need this key |
 | Lyrics | `-lyric`, `-l` | `GENIUS_ACCESS_SECRET` | Genius API access token |
+| Open media search | `-music`, `-musicfile`, `-video`, `-videofile`, `-lyrics`, `-file` | No key; optional `JAMENDO_CLIENT_ID` | Internet Archive, Wikimedia Commons and official previews remain available without a key |
 | Twitter/X video | `-twitter`, `-tw`, `-x` | `TWITTER_BEARER_TOKEN` | X developer bearer token; API availability may depend on X's current plan |
 | Truecaller | `-true`, `-truecaller` | `TRUECALLER_ID` | Legacy India-only command; privacy-sensitive and intentionally not recommended |
 | Telegram owner alerts | Runtime/error alerts | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` | Optional; not needed for WhatsApp replies |
