@@ -1,4 +1,7 @@
 import axios from "axios";
+import dns from "node:dns/promises";
+import { isIP } from "node:net";
+import { isPublicIp } from "./passiveOsint.js";
 
 const REQUEST_TIMEOUT_MS = 20_000;
 export const MAX_OPEN_MEDIA_BYTES = 25 * 1024 * 1024;
@@ -176,11 +179,22 @@ export const searchLyrics = async (query) => {
 };
 
 export const downloadOpenMedia = async (result, maxBytes = MAX_OPEN_MEDIA_BYTES) => {
+	const target = new URL(result.url);
+	if (target.protocol !== "https:") throw new Error("Only secure HTTPS media URLs are accepted");
+	if (["localhost", "localhost.localdomain"].includes(target.hostname.toLowerCase())) throw new Error("Private media hosts are blocked");
+	const addresses = isIP(target.hostname)
+		? [{ address: target.hostname }]
+		: await dns.lookup(target.hostname, { all: true, verbatim: true });
+	if (!addresses.length || addresses.some(({ address }) => !isPublicIp(address))) throw new Error("Private or reserved media hosts are blocked");
 	const response = await http.get(result.url, {
 		responseType: "arraybuffer",
 		maxContentLength: maxBytes,
 		maxBodyLength: maxBytes,
 		headers: { Range: `bytes=0-${maxBytes - 1}`, "User-Agent": "AlphaWhatsAppBot/3.0 (MartechMods2/Alpha_v1)" },
+		beforeRedirect: (options) => {
+			const host = String(options.hostname || "").toLowerCase();
+			if (!host || host === "localhost" || (isIP(host) && !isPublicIp(host))) throw new Error("Unsafe media redirect blocked");
+		},
 	});
 	const buffer = Buffer.from(response.data);
 	if (!buffer.length) throw new Error("The provider returned an empty file");

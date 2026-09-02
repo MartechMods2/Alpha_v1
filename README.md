@@ -1,3 +1,5 @@
+[![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&slug=jacktheboss220&button_colour=BD5FFF&font_colour=ffffff&outline_colour=000000&coffee_colour=FFDD00)](https://www.buymeacoffee.com/jacktheboss220)
+
 # WhatsAppBotMultiDevice
 
 A feature-rich WhatsApp bot with a modern React/Vite admin dashboard. Supports downloading songs, getting lyrics, creating stickers, memes, image search, media conversion, news, horoscopes, and much more — all controllable from a sleek web UI.
@@ -498,6 +500,9 @@ Create a `.env` file in the project root with the following keys.
 | `TWITTER_BEARER_TOKEN`  | Twitter/X API bearer token for Twitter-related features                                  |
 | `JAMENDO_CLIENT_ID`     | Optional free Jamendo client ID for licensed full-track `-music` downloads               |
 | `PEXELS_API_KEY`        | Optional free Pexels key for licensed stock-video `-video` searches                       |
+| `GIPHY_API_KEY`         | Free GIPHY developer key for safe-rated reaction GIF commands                             |
+| `PIXABAY_API_KEY`       | Free Pixabay key for royalty-free photo and video commands                                |
+| `FREESOUND_API_KEY`     | Free Freesound key for Creative Commons sound-effect commands                             |
 | `FFMPEG_PATH`           | Path to a custom `ffmpeg` binary. If unset the bundled `ffmpeg-static` binary is used.  |
 | `TELEGRAM_BOT_TOKEN`    | Telegram bot token — enables sending bot logs to a Telegram chat                         |
 | `TELEGRAM_CHAT_ID`      | Telegram chat/channel ID to receive bot logs                                             |
@@ -552,6 +557,9 @@ TRUECALLER_ID=your_truecaller_id_here
 TWITTER_BEARER_TOKEN=your_twitter_bearer_token_here
 JAMENDO_CLIENT_ID=your_jamendo_client_id_here
 PEXELS_API_KEY=your_pexels_api_key_here
+GIPHY_API_KEY=your_giphy_api_key_here
+PIXABAY_API_KEY=your_pixabay_api_key_here
+FREESOUND_API_KEY=your_freesound_api_key_here
 
 # Custom ffmpeg path (leave blank to use bundled ffmpeg-static)
 # FFMPEG_PATH=/usr/bin/ffmpeg
