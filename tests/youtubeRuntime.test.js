@@ -12,6 +12,7 @@ const {
 	isYouTubeUrl,
 	shouldRetryWithAlternateClient,
 	shouldRetryWithCookies,
+	youtubeCookieProfile,
 	youtubePublicProfiles,
 } = await import("../utils/ytdlp.js");
 
@@ -99,6 +100,22 @@ test("local PO-token profile is added only when its pinned runtime is available"
 	]);
 	assert.equal(profiles[1].pluginDirs, "/app/vendor/provider");
 	assert.equal(youtubePublicProfiles().some((profile) => profile.id === "mweb_pot"), false);
+});
+
+test("the single cookie fallback combines mweb with a session-bound PO token", () => {
+	const profile = youtubeCookieProfile({
+		ready: true,
+		home: "/app/vendor/provider",
+		pluginDirectory: "/app/vendor/provider",
+	});
+	assert.equal(profile.id, "cookie_mweb_pot");
+	assert.equal(profile.usesCookies, true);
+	assert.equal(profile.pluginDirs, "/app/vendor/provider");
+	assert.deepEqual(profile.extractorArgs, [
+		"youtube:player_client=mweb",
+		"youtubepot-bgutilscript:server_home=/app/vendor/provider",
+	]);
+	assert.equal(youtubeCookieProfile().id, "cookie_default_embedded");
 });
 
 test("native PO-token workspace is detected and exposes its plugin directory", async (t) => {
