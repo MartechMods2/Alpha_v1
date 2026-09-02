@@ -79,9 +79,11 @@ the server to sign in, applies an age check, or presents an automated challenge.
 Alpha first tries a bounded set of public yt-dlp clients. This includes the
 default client, an on-demand local PO-token client, Android VR, Safari HLS and
 embedded clients; these are used only as compatibility fallbacks and never as
-rapid or endless retries. The Docker image pins BgUtils provider 1.3.2 and its
-plugin checksum. It launches the provider only when a token is needed, avoiding
-the memory cost of a permanent sidecar service. If all public profiles receive
+rapid or endless retries. The repository vendors the pinned BgUtils provider
+1.3.2 runtime and yt-dlp plugin as a private Bun workspace, so it is available
+to both native Render and Docker deployments. It launches the provider only
+when a token is needed, avoiding the memory cost of a permanent sidecar
+service. If all public profiles receive
 an authentication challenge, the saved cookie is tried once
 with yt-dlp's current `default,web_embedded` logged-in client workaround. Alpha
 never retries a rate-limited request with another client or an account cookie.

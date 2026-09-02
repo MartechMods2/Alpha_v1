@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { constants as youtubeDlConstants, create } from "youtube-dl-exec";
 import ffmpegStatic from "ffmpeg-static";
@@ -13,8 +14,9 @@ const MAX_BINARY_BYTES = 80 * 1024 * 1024;
 const PROBE_TIMEOUT_MS = 8_000;
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 const CLIENT_PREFERENCE_TTL_MS = 10 * 60_000;
-const DEFAULT_POT_PROVIDER_HOME = "/opt/bgutil-ytdlp-pot-provider/server";
-const DEFAULT_POT_PLUGIN_PATH = "/etc/yt-dlp/plugins/bgutil-ytdlp-pot-provider.zip";
+const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const DEFAULT_POT_PROVIDER_HOME = path.join(APP_ROOT, "vendor", "bgutil-ytdlp-pot-provider");
+const DEFAULT_POT_PLUGIN_PATH = path.join(DEFAULT_POT_PROVIDER_HOME, "yt-dlp-plugins");
 
 const PUBLIC_YOUTUBE_PROFILES = Object.freeze([
 	{ id: "default", label: "public default", extractorArgs: null },
@@ -32,12 +34,23 @@ const COOKIE_YOUTUBE_PROFILE = Object.freeze({
 export function getPoTokenProviderStatus() {
 	const home = path.resolve(process.env.YTDLP_POT_PROVIDER_HOME || DEFAULT_POT_PROVIDER_HOME);
 	const pluginPath = path.resolve(process.env.YTDLP_POT_PLUGIN_PATH || DEFAULT_POT_PLUGIN_PATH);
-	const scriptReady = fs.existsSync(path.join(home, "build", "main.js"));
-	const pluginReady = fs.existsSync(pluginPath);
+	const scriptReady = fs.existsSync(path.join(home, "build", "generate_once.js"));
+	let pluginReady = false;
+	let pluginDirectory = null;
+	try {
+		const pluginStat = fs.statSync(pluginPath);
+		pluginReady = pluginStat.isDirectory()
+			? fs.existsSync(path.join(pluginPath, "yt_dlp_plugins", "extractor", "getpot_bgutil_script.py"))
+			: pluginStat.isFile();
+		if (pluginReady) pluginDirectory = path.dirname(pluginPath);
+	} catch {
+		// A disappearing or unreadable plugin path is handled by the readiness result.
+	}
 	return {
 		ready: scriptReady && pluginReady,
 		home,
 		pluginPath,
+		pluginDirectory,
 		version: String(process.env.YTDLP_POT_PROVIDER_VERSION || "1.3.2").slice(0, 40),
 		reason: scriptReady && pluginReady
 			? "on-demand"
@@ -188,7 +201,7 @@ export async function runYtDlp(target, options = {}) {
 
 const rawYtDlpError = (error) => String(error?.stderr || error?.message || error || "").toLowerCase();
 
-export function youtubePublicProfiles(preferredId = null, explicitExtractorArgs = null, poProviderHome = null) {
+export function youtubePublicProfiles(preferredId = null, explicitExtractorArgs = null, poProviderHome = null, poPluginDirectory = null) {
 	if (explicitExtractorArgs) {
 		return [{ id: "custom", label: "custom YouTube client", extractorArgs: explicitExtractorArgs }];
 	}
@@ -201,6 +214,7 @@ export function youtubePublicProfiles(preferredId = null, explicitExtractorArgs 
 				"youtube:player_client=mweb",
 				`youtubepot-bgutilscript:server_home=${poProviderHome}`,
 			],
+			...(poPluginDirectory ? { pluginDirs: poPluginDirectory } : {}),
 		});
 	}
 	if (!preferredId) return profiles;
@@ -241,6 +255,7 @@ const optionsForProfile = (options, profile, cookiePath = null) => {
 	delete next.cookies;
 	if (profile.extractorArgs) next.extractorArgs = profile.extractorArgs;
 	else delete next.extractorArgs;
+	if (profile.pluginDirs) next.pluginDirs = profile.pluginDirs;
 	if (profile.usesCookies && cookiePath) next.cookies = cookiePath;
 	return next;
 };
@@ -255,7 +270,12 @@ const annotateFinalError = (error, attempts, { cookieAttempted = false, publicEr
 async function adaptiveYtDlpAttempt(target, options = {}) {
 	const preferredId = preferredPublicProfile?.expires > Date.now() ? preferredPublicProfile.id : null;
 	const poProvider = getPoTokenProviderStatus();
-	const profiles = youtubePublicProfiles(preferredId, options.extractorArgs, poProvider.ready ? poProvider.home : null);
+	const profiles = youtubePublicProfiles(
+		preferredId,
+		options.extractorArgs,
+		poProvider.ready ? poProvider.home : null,
+		poProvider.ready ? poProvider.pluginDirectory : null,
+	);
 	const attempts = [];
 	let lastPublicError = null;
 

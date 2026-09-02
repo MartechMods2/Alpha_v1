@@ -33,37 +33,17 @@ ADD https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest /tmp/yt-dlp-lates
 RUN wget -q https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux \
     -O /usr/local/bin/yt-dlp && chmod a+rx /usr/local/bin/yt-dlp
 
-# Install the current BgUtils PO-token provider in on-demand script mode. This
-# avoids a permanent sidecar process on small Render instances. Both the source
-# revision and release plugin digest are pinned so upstream changes cannot alter
-# a rebuild silently.
-ARG BGUTIL_VERSION=1.3.2
-ARG BGUTIL_COMMIT=7511309af023b09788dc8f2efc96cc3671291e6c
-ARG BGUTIL_PLUGIN_SHA256=d51cf1c54e487137df749bd8778cceaa62304e6c5054c955b95f028f93ad6d57
-RUN mkdir -p /etc/yt-dlp/plugins \
-    && wget -q "https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/download/${BGUTIL_VERSION}/bgutil-ytdlp-pot-provider.zip" \
-        -O /etc/yt-dlp/plugins/bgutil-ytdlp-pot-provider.zip \
-    && echo "${BGUTIL_PLUGIN_SHA256}  /etc/yt-dlp/plugins/bgutil-ytdlp-pot-provider.zip" | sha256sum -c - \
-    && git clone --filter=blob:none https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /opt/bgutil-ytdlp-pot-provider \
-    && cd /opt/bgutil-ytdlp-pot-provider \
-    && git checkout --detach "${BGUTIL_COMMIT}" \
-    && cd server \
-    && npm ci \
-    && npx tsc \
-    && npm prune --omit=dev \
-    && rm -rf /opt/bgutil-ytdlp-pot-provider/.git
-
 ENV YTDLP_PATH=/usr/local/bin/yt-dlp
 ENV FFMPEG_PATH=ffmpeg
-ENV YTDLP_POT_PROVIDER_HOME=/opt/bgutil-ytdlp-pot-provider/server
-ENV YTDLP_POT_PLUGIN_PATH=/etc/yt-dlp/plugins/bgutil-ytdlp-pot-provider.zip
 ENV YTDLP_POT_PROVIDER_VERSION=1.3.2
 
 WORKDIR /app
 
-# Copy manifests for all workspace members before install (better layer caching)
+# The vendored on-demand PO-token workspace is used by native Render and Docker
+# alike. Copy its manifest before install so the frozen workspace lock resolves.
 COPY package.json bun.lock* ./
 COPY dashboard/package.json ./dashboard/
+COPY vendor/bgutil-ytdlp-pot-provider/package.json ./vendor/bgutil-ytdlp-pot-provider/
 RUN bun install --frozen-lockfile
 
 # Copy full source and build dashboard
