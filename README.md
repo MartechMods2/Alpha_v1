@@ -481,6 +481,8 @@ Create a `.env` file in the project root with the following keys.
 | `ADMIN_PASSWORD` | Password to log in to the React admin dashboard at `/admin`               |
 | `SESSION_SECRET` | Long random secret used to protect dashboard sessions                      |
 
+`SMART_DM_INTENTS=true` enables safe natural-request recognition in one-to-one chats. In groups, natural requests require an explicit Alpha mention.
+
 ## Optional
 
 | Variable                | Description                                                                              |
