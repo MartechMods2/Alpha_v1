@@ -49,6 +49,10 @@ YouTube. A passing probe names the successful client profile.
 | Background removal | `-removebg`, `-bg`, `-cutoutsticker`, `-replacebg`, `-passport` | `REMOVE_BG_KEY` | Normal stickers do not need this key |
 | Lyrics | `-lyric`, `-l` | `GENIUS_ACCESS_SECRET` | Genius API access token |
 | Open media search | `-music`, `-musicfile`, `-video`, `-videofile`, `-lyrics`, `-file` | No key; optional `JAMENDO_CLIENT_ID` | Internet Archive, Wikimedia Commons and official previews remain available without a key |
+| GIPHY safe GIFs | `-gifsearch`, reaction GIF categories | `GIPHY_API_KEY` | Free beta keys are rate-limited; Alpha requests safe-rated results and displays attribution |
+| Pixabay media | stock photo and video categories | `PIXABAY_API_KEY` | Free royalty-free image/video search with provider attribution |
+| Freesound effects | sound and ambience categories | `FREESOUND_API_KEY` | Free Creative Commons sound previews with licence attribution |
+| Openverse/NASA | open photo/audio and space-image categories | No key | Keyless fallbacks; licence/source information is kept in the caption |
 | Twitter/X video | `-twitter`, `-tw`, `-x` | `TWITTER_BEARER_TOKEN` | X developer bearer token; API availability may depend on X's current plan |
 | Truecaller | `-true`, `-truecaller` | `TRUECALLER_ID` | Legacy India-only command; privacy-sensitive and intentionally not recommended |
 | Telegram owner alerts | Runtime/error alerts | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` | Optional; not needed for WhatsApp replies |
