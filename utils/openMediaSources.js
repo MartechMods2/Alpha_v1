@@ -1,4 +1,5 @@
 import axios from "axios";
+import { createHmac, randomBytes } from "node:crypto";
 import dns from "node:dns/promises";
 import { isIP } from "node:net";
 import { isPublicIp } from "./passiveOsint.js";
@@ -33,6 +34,89 @@ const normalizeResult = (result) => ({
 	source: clean(result.source || "Open media", 40),
 	license: clean(result.license || "Provider terms apply", 160),
 });
+
+const configured = (name) => Boolean(String(process.env[name] || "").trim());
+
+export const openMusicProviderStatus = () => ({
+	audius: { configured: configured("AUDIUS_API_KEY"), optional: true, capability: "permitted streams" },
+	audiomack: { configured: configured("AUDIOMACK_CONSUMER_KEY") && configured("AUDIOMACK_CONSUMER_SECRET"), optional: true, capability: "Nigerian catalogue and permitted streams" },
+	apple: { configured: true, optional: false, capability: "Nigerian catalogue and official previews" },
+	deezer: { configured: true, optional: false, capability: "catalogue and previews" },
+	jamendo: { configured: configured("JAMENDO_CLIENT_ID"), optional: true, capability: "licensed full tracks" },
+	internetArchive: { configured: true, optional: false, capability: "open full files" },
+	lrclib: { configured: true, optional: false, capability: "plain and synced lyrics" },
+	musicBrainz: { configured: true, optional: false, capability: "metadata matching" },
+	lastFm: { configured: configured("LASTFM_API_KEY"), optional: true, capability: "Nigeria charts and discovery" },
+	genius: { configured: configured("GENIUS_ACCESS_SECRET") || configured("GENIUS_ACCESS_TOKEN"), optional: true, capability: "official lyrics links" },
+	discogs: { configured: configured("DISCOGS_TOKEN"), optional: true, capability: "release catalogue" },
+	coverArtArchive: { configured: true, optional: false, capability: "release artwork" },
+});
+
+const audiusHeaders = (apiKey = process.env.AUDIUS_API_KEY) => apiKey ? { "x-api-key": apiKey } : {};
+
+export const searchAudiusTrack = async (query, apiKey = process.env.AUDIUS_API_KEY) => {
+	const { data } = await http.get("https://api.audius.co/v1/tracks/search", {
+		headers: audiusHeaders(apiKey),
+		params: { query: clean(query, 120), limit: 10, app_name: "AlphaWhatsAppBot" },
+	});
+	const track = (data?.data || []).find((entry) => entry?.id && entry?.is_streamable !== false && entry?.is_available !== false);
+	if (!track) return null;
+	return normalizeResult({
+		url: `https://api.audius.co/v1/tracks/${encodeURIComponent(track.id)}/stream?app_name=AlphaWhatsAppBot`,
+		title: track.title,
+		artist: track.user?.name,
+		mime: "audio/mpeg",
+		ext: "mp3",
+		source: "Audius",
+		license: "Artist-authorized Audius API stream; provider terms apply",
+		fullLength: true,
+	});
+};
+
+const oauthEncode = (value) => encodeURIComponent(String(value)).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+
+const audiomackAuthorization = (method, url, params, consumerKey, consumerSecret) => {
+	const oauth = {
+		oauth_consumer_key: consumerKey,
+		oauth_nonce: randomBytes(16).toString("hex"),
+		oauth_signature_method: "HMAC-SHA1",
+		oauth_timestamp: Math.floor(Date.now() / 1000),
+		oauth_version: "1.0",
+	};
+	const pairs = Object.entries({ ...params, ...oauth })
+		.map(([key, value]) => [oauthEncode(key), oauthEncode(value)])
+		.sort(([aKey, aValue], [bKey, bValue]) => aKey.localeCompare(bKey) || aValue.localeCompare(bValue));
+	const normalized = pairs.map(([key, value]) => `${key}=${value}`).join("&");
+	const base = [method.toUpperCase(), oauthEncode(url), oauthEncode(normalized)].join("&");
+	oauth.oauth_signature = createHmac("sha1", `${oauthEncode(consumerSecret)}&`).update(base).digest("base64");
+	return `OAuth ${Object.entries(oauth).map(([key, value]) => `${oauthEncode(key)}="${oauthEncode(value)}"`).join(", ")}`;
+};
+
+export const searchAudiomackTrack = async (
+	query,
+	consumerKey = process.env.AUDIOMACK_CONSUMER_KEY,
+	consumerSecret = process.env.AUDIOMACK_CONSUMER_SECRET,
+) => {
+	if (!consumerKey || !consumerSecret) return null;
+	const url = "https://api.audiomack.com/v1/search";
+	const params = { q: clean(query, 120), show: "songs", sort: "relevance", limit: 10, verified: 1 };
+	const { data } = await http.get(url, {
+		params,
+		headers: { Authorization: audiomackAuthorization("GET", url, params, consumerKey, consumerSecret) },
+	});
+	const track = (data?.results || []).find((entry) => entry?.streaming_url && entry?.live !== false);
+	if (!track) return null;
+	return normalizeResult({
+		url: track.streaming_url,
+		title: track.title,
+		artist: track.artist || track.uploader?.name,
+		mime: "audio/mpeg",
+		ext: "mp3",
+		source: "Audiomack",
+		license: "Official Audiomack stream; artist and provider terms apply",
+		fullLength: true,
+	});
+};
 
 export const searchJamendoTrack = async (query, clientId = process.env.JAMENDO_CLIENT_ID) => {
 	if (!clientId) return null;
@@ -105,17 +189,44 @@ export const searchApplePreview = async (query, kind = "audio") => {
 		title: item.trackName,
 		artist: item.artistName,
 		mime: kind === "video" ? "video/mp4" : "audio/mp4",
-		ext: "m4a",
+		ext: kind === "video" ? "mp4" : "m4a",
 		source: "Apple Music preview",
 		license: "Official limited preview; Apple terms apply",
 		fullLength: false,
+		pageUrl: item.trackViewUrl,
+	});
+};
+
+export const searchDeezerPreview = async (query) => {
+	const { data } = await http.get("https://api.deezer.com/search", {
+		params: { q: clean(query, 120), limit: 10, order: "RANKING", strict: "on" },
+	});
+	const track = data?.data?.find((entry) => entry.preview);
+	if (!track) return null;
+	return normalizeResult({
+		url: track.preview,
+		title: track.title,
+		artist: track.artist?.name,
+		mime: "audio/mpeg",
+		ext: "mp3",
+		source: "Deezer preview",
+		license: "Official limited preview; Deezer terms apply",
+		fullLength: false,
+		pageUrl: track.link,
 	});
 };
 
 export const findOpenAudio = async (query) =>
+	(await searchAudiusTrack(query).catch(() => null)) ||
+	(await searchAudiomackTrack(query).catch(() => null)) ||
 	(await searchJamendoTrack(query).catch(() => null)) ||
 	(await searchArchiveMedia(query, "audio").catch(() => null)) ||
-	(await searchApplePreview(query, "audio").catch(() => null));
+	(await searchApplePreview(query, "audio").catch(() => null)) ||
+	(await searchDeezerPreview(query).catch(() => null));
+
+export const findOfficialPreview = async (query) =>
+	(await searchApplePreview(query, "audio").catch(() => null)) ||
+	(await searchDeezerPreview(query).catch(() => null));
 
 export const searchPexelsVideo = async (query, apiKey = process.env.PEXELS_API_KEY) => {
 	if (!apiKey) return null;
@@ -174,8 +285,96 @@ export const searchLyrics = async (query) => {
 		title: clean(item.trackName || parsed.title, 100),
 		artist: clean(item.artistName || parsed.artist, 80),
 		lyrics: String(item.plainLyrics).trim().slice(0, 30_000),
+		syncedLyrics: String(item.syncedLyrics || "").trim().slice(0, 30_000),
 		source: "LRCLIB",
 	};
+};
+
+export const searchGeniusLink = async (query, token = process.env.GENIUS_ACCESS_TOKEN || process.env.GENIUS_ACCESS_SECRET) => {
+	if (!token) return null;
+	const { data } = await http.get("https://api.genius.com/search", {
+		headers: { Authorization: `Bearer ${token}` },
+		params: { q: clean(query, 120) },
+	});
+	const hit = data?.response?.hits?.find((entry) => entry.type === "song")?.result;
+	if (!hit?.url) return null;
+	return { title: clean(hit.title, 100), artist: clean(hit.primary_artist?.name, 80), url: hit.url, source: "Genius" };
+};
+
+export const searchMusicBrainz = async (query) => {
+	const parsed = parseArtistTitle(query);
+	const terms = [parsed.title && `recording:${JSON.stringify(parsed.title)}`, parsed.artist && `artist:${JSON.stringify(parsed.artist)}`].filter(Boolean).join(" AND ");
+	const { data } = await http.get("https://musicbrainz.org/ws/2/recording", {
+		headers: { "User-Agent": process.env.MUSICBRAINZ_USER_AGENT || "AlphaWhatsAppBot/3.0 (https://github.com/MartechMods2/Alpha_v1)" },
+		params: { query: terms || parsed.query, fmt: "json", limit: 5 },
+	});
+	const recording = data?.recordings?.[0];
+	if (!recording?.id) return null;
+	return {
+		title: clean(recording.title, 100), artist: clean(recording["artist-credit"]?.[0]?.name, 80),
+		url: `https://musicbrainz.org/recording/${recording.id}`, source: "MusicBrainz",
+		releaseId: recording.releases?.[0]?.id,
+	};
+};
+
+export const searchLastFm = async (query, apiKey = process.env.LASTFM_API_KEY) => {
+	if (!apiKey) return null;
+	const { data } = await http.get("https://ws.audioscrobbler.com/2.0/", {
+		params: { method: "track.search", track: clean(query, 120), api_key: apiKey, format: "json", limit: 5 },
+	});
+	const track = data?.results?.trackmatches?.track?.[0];
+	if (!track?.url) return null;
+	return { title: clean(track.name, 100), artist: clean(track.artist, 80), url: track.url, source: "Last.fm" };
+};
+
+export const searchDiscogs = async (query, token = process.env.DISCOGS_TOKEN) => {
+	if (!token) return null;
+	const { data } = await http.get("https://api.discogs.com/database/search", {
+		headers: { Authorization: `Discogs token=${token}` }, params: { q: clean(query, 120), type: "release", per_page: 5 },
+	});
+	const release = data?.results?.[0];
+	if (!release?.uri) return null;
+	return { title: clean(release.title, 120), artist: "", url: `https://www.discogs.com${release.uri}`, source: "Discogs" };
+};
+
+export const findMusicLinks = async (query) => {
+	const applePromise = http.get("https://itunes.apple.com/search", {
+		params: { term: clean(query, 120), country: "NG", media: "music", entity: "song", limit: 3 },
+	}).then(({ data }) => {
+		const item = data?.results?.find((entry) => entry.trackViewUrl);
+		return item ? { title: clean(item.trackName, 100), artist: clean(item.artistName, 80), url: item.trackViewUrl, source: "Apple Music NG" } : null;
+	}).catch(() => null);
+	const results = await Promise.all([
+		applePromise,
+		searchMusicBrainz(query).catch(() => null),
+		searchLastFm(query).catch(() => null),
+		searchGeniusLink(query).catch(() => null),
+		searchDiscogs(query).catch(() => null),
+	]);
+	return results.filter((entry, index, items) => entry?.url && items.findIndex((other) => other?.url === entry.url) === index);
+};
+
+export const searchNigeriaChart = async (apiKey = process.env.LASTFM_API_KEY) => {
+	if (!apiKey) return [];
+	const { data } = await http.get("https://ws.audioscrobbler.com/2.0/", {
+		params: { method: "geo.gettoptracks", country: "Nigeria", api_key: apiKey, format: "json", limit: 10 },
+	});
+	return (data?.tracks?.track || []).slice(0, 10).map((track) => ({
+		title: clean(track.name, 100), artist: clean(track.artist?.name, 80), url: track.url, source: "Last.fm Nigeria",
+	}));
+};
+
+export const searchCoverArt = async (query) => {
+	const match = await searchMusicBrainz(query);
+	if (!match?.releaseId) return null;
+	const { data } = await http.get(`https://coverartarchive.org/release/${encodeURIComponent(match.releaseId)}`);
+	const cover = data?.images?.find((image) => image.front) || data?.images?.[0];
+	const url = cover?.thumbnails?.["500"] || cover?.thumbnails?.large || cover?.image;
+	if (!url) return null;
+	return normalizeResult({
+		url, title: match.title, artist: match.artist, mime: "image/jpeg", ext: "jpg",
+		source: "Cover Art Archive", license: "Cover artwork rights remain with their owners", fullLength: true,
+	});
 };
 
 export const downloadOpenMedia = async (result, maxBytes = MAX_OPEN_MEDIA_BYTES) => {

@@ -1,11 +1,17 @@
 import { fileTypeFromBuffer } from "file-type";
 import {
 	downloadOpenMedia,
+	findMusicLinks,
 	findOpenAudio,
 	findOpenVideo,
+	findOfficialPreview,
+	openMusicProviderStatus,
 	parseArtistTitle,
+	searchCoverArt,
 	searchCommonsFile,
+	searchGeniusLink,
 	searchLyrics,
+	searchNigeriaChart,
 } from "../../utils/openMediaSources.js";
 
 const cooldowns = new Map();
@@ -54,48 +60,94 @@ const sendResult = async ({ result, sendMessageWTyping, from, msg, forceDocument
 
 const helpText = (prefix) => `📥 *Alpha Media Search V2*\n\n` +
 	`${prefix}music Artist - Song name\n` +
+	`${prefix}naijasong Artist - Song name\n` +
+	`${prefix}afrobeats Artist - Song name\n` +
+	`${prefix}gospelsong Artist - Song name\n` +
+	`${prefix}songpreview Artist - Song name\n` +
+	`${prefix}songlink Artist - Song name\n` +
 	`${prefix}musicfile Artist - Song name\n` +
-	`${prefix}video Artist - Video name\n` +
+	`${prefix}musicvideo Artist - Video name\n` +
 	`${prefix}lyrics Artist - Song name\n` +
+	`${prefix}syncedlyrics Artist - Song name\n` +
+	`${prefix}albumart Artist - Album or song\n` +
+	`${prefix}musicartist Artist name\n` +
+	`${prefix}naijacharts\n` +
 	`${prefix}file Nature sounds\n\n` +
 	`Works in groups and private chats. Full downloads use public/licensed catalogues. If a commercial track is unavailable, Alpha may send a clearly labelled official preview instead.`;
+
+const providerText = () => {
+	const status = openMusicProviderStatus();
+	return Object.entries(status).map(([name, entry]) =>
+		`${entry.configured ? "✅" : "⚪"} ${name} — ${entry.configured ? entry.capability : `optional credentials (${entry.capability})`}`,
+	).join("\n");
+};
+
+const sendLinks = async ({ query, sendMessageWTyping, from, msg }) => {
+	const links = await findMusicLinks(query);
+	if (!links.length) throw new Error("No verified music pages were found.");
+	const first = links[0];
+	return reply(sendMessageWTyping, from, msg,
+		`🔗 *${safe(first.title || query)}*${first.artist ? `\n🎤 ${safe(first.artist)}` : ""}\n\n${links.map((entry) => `• ${entry.source}: ${entry.url}`).join("\n")}\n\nThese are official catalogue or reference links; no protected audio was copied.`);
+};
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const { command, prefix, senderJid, sendMessageWTyping } = msgInfoObj;
 	if (command === "mediahelp") return reply(sendMessageWTyping, from, msg, helpText(prefix));
 	if (command === "mediasources") {
 		return reply(sendMessageWTyping, from, msg,
-			`📡 *Open Media Sources*\n\n✅ Internet Archive — no key\n✅ Wikimedia Commons — no key\n✅ Apple official previews — no key\n✅ LRCLIB lyrics — no key\n${process.env.JAMENDO_CLIENT_ID ? "✅" : "⚪"} Jamendo full-track catalogue — ${process.env.JAMENDO_CLIENT_ID ? "configured" : "optional JAMENDO_CLIENT_ID"}\n${process.env.PEXELS_API_KEY ? "✅" : "⚪"} Pexels stock video — ${process.env.PEXELS_API_KEY ? "configured" : "optional PEXELS_API_KEY"}\n\nYouTube is not used by these commands.`);
+			`📡 *Nigerian-first Music Sources*\n\n${providerText()}\n${process.env.PEXELS_API_KEY ? "✅" : "⚪"} pexels — stock video\n✅ Wikimedia Commons — open files\n\nYouTube, scraping, cookies and rotating proxies are not used by these commands.`);
 	}
 
 	let cooldownStarted = false;
 	try {
+		if (["naijacharts", "trendingnaija", "newnaija"].includes(command)) {
+			checkCooldown(senderJid);
+			cooldownStarted = true;
+			const tracks = await searchNigeriaChart();
+			if (!tracks.length) throw new Error("Nigeria charts require LASTFM_API_KEY. Add the free key in Render and try again.");
+			return reply(sendMessageWTyping, from, msg, `🇳🇬 *Nigeria Music Discovery*\n\n${tracks.map((track, index) => `${index + 1}. ${safe(track.artist)} — ${safe(track.title)}\n${track.url}`).join("\n\n")}\n\nSource: Last.fm Nigeria discovery data`);
+		}
 		const query = requireQuery(args, prefix, command);
 		checkCooldown(senderJid);
 		cooldownStarted = true;
-		if (command === "lyrics") {
+		if (command === "lyrics" || command === "syncedlyrics") {
 			const parsed = parseArtistTitle(query);
 			const result = await searchLyrics(query);
-			if (!result) throw new Error(`No lyrics found for ${parsed.query}.`);
+			if (!result) {
+				const genius = await searchGeniusLink(query).catch(() => null);
+				if (genius) return reply(sendMessageWTyping, from, msg, `🎵 *${safe(genius.title)}*\n🎤 ${safe(genius.artist)}\n\nLyrics were not available from the open provider. Official Genius page:\n${genius.url}`);
+				throw new Error(`No lyrics found for ${parsed.query}.`);
+			}
+			const selectedLyrics = command === "syncedlyrics" && result.syncedLyrics ? result.syncedLyrics : result.lyrics;
+			const type = command === "syncedlyrics" && result.syncedLyrics ? "Synchronized lyrics" : "Lyrics";
 			return reply(
 				sendMessageWTyping,
 				from,
 				msg,
-				`🎵 *${safe(result.title)}*\n🎤 *${safe(result.artist || "Unknown artist")}*\n📚 Source: ${result.source}\n\n${result.lyrics}`,
+				`🎵 *${safe(result.title)}*\n🎤 *${safe(result.artist || "Unknown artist")}*\n📚 ${type} — ${result.source}\n\n${selectedLyrics}`,
 			);
+		}
+
+		if (["songlink", "musicartist"].includes(command)) {
+			return sendLinks({ query, sendMessageWTyping, from, msg });
 		}
 
 		await reply(sendMessageWTyping, from, msg, "⏳ Searching safe public media sources…");
 
-		if (command === "music" || command === "musicfile") {
-			const result = await findOpenAudio(query);
+		if (["music", "musicfile", "naijasong", "afrobeats", "gospelsong", "songpreview"].includes(command)) {
+			const result = command === "songpreview" ? await findOfficialPreview(query) : await findOpenAudio(query);
 			if (!result) throw new Error("No licensed audio or official preview was found.");
 			return sendResult({ result, sendMessageWTyping, from, msg, forceDocument: command === "musicfile" });
 		}
-		if (command === "video" || command === "videofile") {
+		if (command === "video" || command === "videofile" || command === "musicvideo") {
 			const result = await findOpenVideo(query);
 			if (!result) throw new Error("No licensed video or official preview was found.");
 			return sendResult({ result, sendMessageWTyping, from, msg, forceDocument: command === "videofile" });
+		}
+		if (command === "albumart" || command === "musiccover") {
+			const result = await searchCoverArt(query);
+			if (!result) throw new Error("No matching release artwork was found.");
+			return sendResult({ result, sendMessageWTyping, from, msg });
 		}
 
 		const result = await searchCommonsFile(query);
@@ -109,8 +161,8 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 };
 
 export default () => ({
-	cmd: ["music", "musicfile", "video", "videofile", "lyrics", "file", "mediahelp", "mediasources"],
+	cmd: ["music", "musicfile", "naijasong", "afrobeats", "gospelsong", "songpreview", "songlink", "video", "videofile", "musicvideo", "lyrics", "syncedlyrics", "musicartist", "naijacharts", "trendingnaija", "newnaija", "albumart", "musiccover", "file", "mediahelp", "mediasources"],
 	desc: "Search and send licensed music, video, lyrics and open media in groups or DMs",
-	usage: "music <artist - title> | video <query> | lyrics <artist - title> | file <query>",
+	usage: "music <artist - title> | naijasong <artist - title> | musicvideo <query> | lyrics <artist - title>",
 	handler,
 });
