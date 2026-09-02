@@ -1,5 +1,3 @@
-[![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&slug=jacktheboss220&button_colour=BD5FFF&font_colour=ffffff&outline_colour=000000&coffee_colour=FFDD00)](https://www.buymeacoffee.com/jacktheboss220)
-
 # WhatsAppBotMultiDevice
 
 A feature-rich WhatsApp bot with a modern React/Vite admin dashboard. Supports downloading songs, getting lyrics, creating stickers, memes, image search, media conversion, news, horoscopes, and much more — all controllable from a sleek web UI.
