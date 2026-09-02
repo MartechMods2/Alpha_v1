@@ -13,7 +13,7 @@
     "python": ">=3.9.x",
     "bun": ">=1.1.0"
   },
-  "workspaces": ["dashboard"],
+  "workspaces": ["dashboard", "vendor/bgutil-ytdlp-pot-provider"],
   "scripts": {
     "build": "bun install && bun run --cwd dashboard build",
     "start": "bun index.js",
@@ -66,7 +66,9 @@
   },
   "repository": "https://github.com/jacktheboss220/WhatsAppBotMultiDevice.git",
   "trustedDependencies": [
+    "@swc/core",
     "baileys",
+    "canvas",
     "youtube-dl-exec"
   ]
 }

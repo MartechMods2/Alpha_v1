@@ -90,14 +90,44 @@ test("safe YouTube client fallbacks are bounded and prefer a recently working pr
 });
 
 test("local PO-token profile is added only when its pinned runtime is available", () => {
-	const profiles = youtubePublicProfiles(null, null, "/opt/bgutil/server");
+	const profiles = youtubePublicProfiles(null, null, "/app/vendor/provider", "/app/vendor/provider");
 	assert.equal(profiles.length, 5);
 	assert.equal(profiles[1].id, "mweb_pot");
 	assert.deepEqual(profiles[1].extractorArgs, [
 		"youtube:player_client=mweb",
-		"youtubepot-bgutilscript:server_home=/opt/bgutil/server",
+		"youtubepot-bgutilscript:server_home=/app/vendor/provider",
 	]);
+	assert.equal(profiles[1].pluginDirs, "/app/vendor/provider");
 	assert.equal(youtubePublicProfiles().some((profile) => profile.id === "mweb_pot"), false);
+});
+
+test("native PO-token workspace is detected and exposes its plugin directory", async (t) => {
+	const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "alpha-pot-provider-test-"));
+	const home = path.join(directory, "provider");
+	const pluginDirectory = path.join(home, "yt-dlp-plugins");
+	await fs.promises.mkdir(path.join(home, "build"), { recursive: true });
+	await fs.promises.mkdir(path.join(pluginDirectory, "yt_dlp_plugins", "extractor"), { recursive: true });
+	await fs.promises.writeFile(path.join(home, "build", "generate_once.js"), "// fixture\n");
+	await fs.promises.writeFile(
+		path.join(pluginDirectory, "yt_dlp_plugins", "extractor", "getpot_bgutil_script.py"),
+		"# fixture\n",
+	);
+	const previousHome = process.env.YTDLP_POT_PROVIDER_HOME;
+	const previousPlugin = process.env.YTDLP_POT_PLUGIN_PATH;
+	process.env.YTDLP_POT_PROVIDER_HOME = home;
+	process.env.YTDLP_POT_PLUGIN_PATH = pluginDirectory;
+	t.after(async () => {
+		if (previousHome === undefined) delete process.env.YTDLP_POT_PROVIDER_HOME;
+		else process.env.YTDLP_POT_PROVIDER_HOME = previousHome;
+		if (previousPlugin === undefined) delete process.env.YTDLP_POT_PLUGIN_PATH;
+		else process.env.YTDLP_POT_PLUGIN_PATH = previousPlugin;
+		await fs.promises.rm(directory, { recursive: true, force: true });
+	});
+	const status = getPoTokenProviderStatus();
+	assert.equal(status.ready, true);
+	assert.equal(status.home, home);
+	assert.equal(status.pluginPath, pluginDirectory);
+	assert.equal(status.pluginDirectory, home);
 });
 
 test("PO-token provider status never treats a partial installation as ready", () => {
