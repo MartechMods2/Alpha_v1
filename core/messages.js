@@ -46,6 +46,8 @@ import { isGroupStatusMentionMessage } from "../utils/groupSafety.js";
 import { handleAdvancedAutomation } from "../utils/advancedAutomation.js";
 import { handleSafeModerationMessage } from "../utils/safeModeration.js";
 import { getSafeSettings } from "../db/safePackData.js";
+import { detectSmartIntent } from "../utils/smartIntent.js";
+import { runSmartIntent } from "../commands/public/smartIntent.js";
 
 // ── FOOLPROOF REWRITE FOR OWNER/BOT IDENTIFICATION ─────────────────
 const cleanMyNum = (process.env.MY_NUMBER || "").split(",")[0].replace(/[^0-9]/g, "");
@@ -496,6 +498,19 @@ const getCommand = async (sock, msg, cache) => {
 				return;
 			}
 			try {
+				const smartIntent = detectSmartIntent(cleanMentionText, { isGroup: true });
+				if (smartIntent) {
+					const handled = await runSmartIntent({
+						intent: smartIntent, sock, msg, from,
+						info: {
+							prefix, type, content, isGroup, senderJid, groupMetadata, groupAdmins,
+							isGroupAdmin, isBotAdmin, botNumber, botJids, sendMessageWTyping,
+							updateName: updateName || senderData?.username, updateId, isOwner,
+							extendedMessageOriginal: alphaContext,
+						},
+					});
+					if (handled) return;
+				}
 				const pollText = cleanMentionText.replace(/^create\s+(?:a\s+)?poll\s*/i, "");
 				if (/^create\s+(?:a\s+)?poll\b/i.test(cleanMentionText)) {
 					const [question, ...options] = pollText.split("|").map((part) => part.trim()).filter(Boolean);
@@ -611,6 +626,22 @@ const getCommand = async (sock, msg, cache) => {
 			}
 		}
 		//---------------------------------------------------NO-CMD----------------------------------------------------//
+		if (!isCmd && !isGroup && (type === "conversation" || type === "extendedTextMessage") && String(process.env.SMART_DM_INTENTS || "true").toLowerCase() !== "false") {
+			const smartIntent = detectSmartIntent(body, { isGroup: false });
+			if (smartIntent && await checkRateLimit(senderJid, `intent:${smartIntent.command}`, 3)) {
+				try {
+					const handled = await runSmartIntent({
+						intent: smartIntent, sock, msg, from,
+						info: { prefix, type, content, isGroup, senderJid, sendMessageWTyping, updateName, updateId, isOwner, extendedMessageOriginal },
+					});
+					if (handled) return;
+				} catch (error) {
+					console.error("Smart DM intent failed:", error.message);
+					await sendMessageWTyping(from, { text: `❌ Alpha could not complete that request: ${error.message}` }, { quoted: msg });
+					return;
+				}
+			}
+		}
 		if (!isCmd) return;
 		//-------------------------------------------------------------------------------------------------------------//
 		// Keep command bursts from turning into high-volume automated sends.
