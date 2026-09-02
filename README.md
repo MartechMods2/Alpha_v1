@@ -501,6 +501,14 @@ Create a `.env` file in the project root with the following keys.
 | `TRUECALLER_ID`         | Legacy India-only Truecaller command; privacy-sensitive and not recommended              |
 | `TWITTER_BEARER_TOKEN`  | Twitter/X API bearer token for Twitter-related features                                  |
 | `JAMENDO_CLIENT_ID`     | Optional free Jamendo client ID for licensed full-track `-music` downloads               |
+| `AUDIUS_API_KEY`        | Optional Audius key for higher-rate permitted streams and Nigerian music discovery        |
+| `AUDIUS_API_SECRET`     | Optional Audius developer secret; never display it in chat                                 |
+| `AUDIOMACK_CONSUMER_KEY` | Optional official Audiomack OAuth consumer key                                            |
+| `AUDIOMACK_CONSUMER_SECRET` | Optional official Audiomack OAuth consumer secret                                      |
+| `LASTFM_API_KEY`        | Free Last.fm key for Nigerian charts, related artists and discovery                       |
+| `GENIUS_ACCESS_TOKEN`   | Optional Genius bearer token used for official lyric-page fallbacks                       |
+| `DISCOGS_TOKEN`         | Optional Discogs personal token for Nigerian release and label matching                    |
+| `MUSICBRAINZ_USER_AGENT` | Contactable User-Agent for the free MusicBrainz metadata service                          |
 | `PEXELS_API_KEY`        | Optional free Pexels key for licensed stock-video `-video` searches                       |
 | `GIPHY_API_KEY`         | Free GIPHY developer key for safe-rated reaction GIF commands                             |
 | `PIXABAY_API_KEY`       | Free Pixabay key for royalty-free photo and video commands                                |
@@ -559,6 +567,15 @@ TRUECALLER_ID=your_truecaller_id_here
 TWITTER_BEARER_TOKEN=your_twitter_bearer_token_here
 JAMENDO_CLIENT_ID=your_jamendo_client_id_here
 PEXELS_API_KEY=your_pexels_api_key_here
+AUDIUS_API_KEY=your_audius_api_key_here
+AUDIUS_API_SECRET=your_audius_api_secret_here
+AUDIOMACK_CONSUMER_KEY=your_official_audiomack_consumer_key
+AUDIOMACK_CONSUMER_SECRET=your_official_audiomack_consumer_secret
+LASTFM_API_KEY=your_lastfm_api_key
+LASTFM_SHARED_SECRET=your_lastfm_shared_secret
+GENIUS_ACCESS_TOKEN=your_genius_access_token
+DISCOGS_TOKEN=your_discogs_token
+MUSICBRAINZ_USER_AGENT=AlphaWhatsAppBot/3.0 (https://github.com/MartechMods2/Alpha_v1)
 GIPHY_API_KEY=your_giphy_api_key_here
 PIXABAY_API_KEY=your_pixabay_api_key_here
 FREESOUND_API_KEY=your_freesound_api_key_here

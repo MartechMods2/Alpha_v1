@@ -49,6 +49,10 @@ YouTube. A passing probe names the successful client profile.
 | Background removal | `-removebg`, `-bg`, `-cutoutsticker`, `-replacebg`, `-passport` | `REMOVE_BG_KEY` | Normal stickers do not need this key |
 | Lyrics | `-lyric`, `-l` | `GENIUS_ACCESS_SECRET` | Genius API access token |
 | Open media search | `-music`, `-musicfile`, `-video`, `-videofile`, `-lyrics`, `-file` | No key; optional `JAMENDO_CLIENT_ID` | Internet Archive, Wikimedia Commons and official previews remain available without a key |
+| Audius music | `-music`, `-naijasong`, `-afrobeats`, `-gospelsong` | Optional `AUDIUS_API_KEY`, `AUDIUS_API_SECRET` | Permitted artist streams; free key improves limits |
+| Audiomack music | Nigerian music routing | `AUDIOMACK_CONSUMER_KEY`, `AUDIOMACK_CONSUMER_SECRET` | Official OAuth access only; no scraping |
+| Nigeria discovery | `-naijacharts`, `-trendingnaija`, `-newnaija` | `LASTFM_API_KEY` | Discovery metadata and official links, not MP3 files |
+| Music references | `-songlink`, `-musicartist`, `-albumart` | Optional `GENIUS_ACCESS_TOKEN`, `DISCOGS_TOKEN`; MusicBrainz needs no key | Catalogue links and artwork matching |
 | GIPHY safe GIFs | `-gifsearch`, reaction GIF categories | `GIPHY_API_KEY` | Free beta keys are rate-limited; Alpha requests safe-rated results and displays attribution |
 | Pixabay media | stock photo and video categories | `PIXABAY_API_KEY` | Free royalty-free image/video search with provider attribution |
 | Freesound effects | sound and ambience categories | `FREESOUND_API_KEY` | Free Creative Commons sound previews with licence attribution |

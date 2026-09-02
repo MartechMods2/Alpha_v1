@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import openMediaCommand from "../commands/public/openMedia.js";
-import { MAX_OPEN_MEDIA_BYTES, parseArtistTitle } from "../utils/openMediaSources.js";
+import { MAX_OPEN_MEDIA_BYTES, openMusicProviderStatus, parseArtistTitle } from "../utils/openMediaSources.js";
 
 test("artist-title queries are parsed without damaging simple searches", () => {
 	assert.deepEqual(parseArtistTitle("Asake - Forgiveness"), {
@@ -20,12 +20,18 @@ test("open media commands are public, collision-free and include help", () => {
 	const command = openMediaCommand();
 	assert.equal(typeof command.handler, "function");
 	assert.equal(new Set(command.cmd).size, command.cmd.length);
-	for (const name of ["music", "musicfile", "video", "videofile", "lyrics", "file", "mediahelp", "mediasources"]) {
+	for (const name of ["music", "musicfile", "naijasong", "afrobeats", "gospelsong", "songpreview", "songlink", "video", "videofile", "musicvideo", "lyrics", "syncedlyrics", "musicartist", "naijacharts", "albumart", "file", "mediahelp", "mediasources"]) {
 		assert.ok(command.cmd.includes(name));
+	}
+});
+
+test("no-key Nigerian music fallbacks remain available", () => {
+	const status = openMusicProviderStatus();
+	for (const provider of ["apple", "deezer", "internetArchive", "lrclib", "musicBrainz", "coverArtArchive"]) {
+		assert.equal(status[provider].configured, true);
 	}
 });
 
 test("open media download limit remains WhatsApp-safe", () => {
 	assert.equal(MAX_OPEN_MEDIA_BYTES, 25 * 1024 * 1024);
 });
-

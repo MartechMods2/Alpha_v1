@@ -6,6 +6,7 @@ test("smart intents distinguish music, lyrics and music video requests",()=>{
 	assert.equal(detectSmartIntent("send me the song Asake - Forgiveness").command,"music");
 	assert.equal(detectSmartIntent("get lyrics for Wizkid - Essence").command,"lyrics");
 	assert.equal(detectSmartIntent("show me Burna Boy music video").command,"video");
+	assert.equal(detectSmartIntent("send me Nigerian song Asake - Forgiveness").command,"naijasong");
 });
 
 test("smart intents recognise useful non-media requests",()=>{

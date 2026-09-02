@@ -24,6 +24,8 @@ export const detectSmartIntent = (rawText, { isGroup = false } = {}) => {
 	if (match) return { command: "lyrics", args: clean(match[1]).split(/\s+/), label: "lyrics" };
 	match = text.match(/^(?:please\s+)?(?:send|download|play|get|find)\s+(?:me\s+)?(?:the\s+)?(?:song|music|audio|mp3)(?:\s+(?:for|of|by))?\s+(.+)$/i);
 	if (match) return { command: /\b(?:file|document)\b/i.test(text) ? "musicfile" : "music", args: clean(match[1]).replace(/\s+(?:as\s+)?(?:a\s+)?(?:file|document)$/i, "").split(/\s+/), label: "music" };
+	match = text.match(/^(?:please\s+)?(?:send|download|play|get|find)\s+(?:me\s+)?(?:a\s+)?(?:naija|nigerian|afrobeats?|afrobeat|gospel)\s+(?:song|music)\s+(.+)$/i);
+	if (match) return { command: "naijasong", args: clean(match[1]).split(/\s+/), label: "Nigerian music" };
 	match = text.match(/^(?:please\s+)?(?:send|download|play|get|find)\s+(?:me\s+)?(.+\s+-\s+.+)$/i);
 	if (match) return { command: "music", args: clean(match[1]).split(/\s+/), label: "music" };
 	match = text.match(/^(?:please\s+)?(?:send|download|show|get|find)\s+(?:me\s+)?(?:a\s+)?video(?:\s+(?:for|of|about))?\s+(.+)$/i);
