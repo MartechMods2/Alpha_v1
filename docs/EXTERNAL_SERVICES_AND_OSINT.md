@@ -58,7 +58,7 @@ YouTube. A passing probe names the successful client profile.
 | Freesound effects | sound and ambience categories | `FREESOUND_API_KEY` | Free Creative Commons sound previews with licence attribution |
 | Openverse/NASA | open photo/audio and space-image categories | No key | Keyless fallbacks; licence/source information is kept in the caption |
 | Twitter/X video | `-twitter`, `-tw`, `-x` | `TWITTER_BEARER_TOKEN` | X developer bearer token; API availability may depend on X's current plan |
-| Truecaller | `-true`, `-truecaller` | `TRUECALLER_ID` | Legacy India-only command; privacy-sensitive and intentionally not recommended |
+| Truecaller | `-true`, `-truecaller` | `TRUECALLER_ID` | Global E.164 numbers; Nigerian local numbers by default; privacy-sensitive |
 | Telegram owner alerts | Runtime/error alerts | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` | Optional; not needed for WhatsApp replies |
 | Google dashboard login | Dashboard OAuth | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS`, `HOST_URL` | Callback URL is `<HOST_URL>/auth/google/callback` |
 | Redis | Shared cache | `REDIS_URL`, or host/password fields | Optional for one bot instance |
@@ -69,6 +69,22 @@ YouTube. A passing probe names the successful client profile.
 
 `PIN_KEY` appears in an older README example but no current command reads it.
 It is not required.
+
+## Global Truecaller number formats
+
+Set `TRUECALLER_DEFAULT_COUNTRY=NG` so numbers without an international prefix are treated as Nigerian. Explicit E.164 (`+`) and `00` formats are detected worldwide. For a non-Nigerian local number, prefix the two-letter ISO country code.
+
+```text
+-true 08031234567
+-true 09131234567
+-true +2348031234567
+-true 2348031234567
+-true +919876543210
+-true GB 02071838750
+-true US 4155552671
+```
+
+Tagging a WhatsApp member or replying to their message remains supported. Truecaller results stay in the requesting chat and are no longer copied to Telegram owner alerts. Use this privacy-sensitive lookup only for legitimate identification and never for harassment or bulk enrichment.
 
 ## YouTube cookies
 

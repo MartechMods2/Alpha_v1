@@ -27,9 +27,11 @@ test("open media commands are public, collision-free and include help", () => {
 
 test("no-key Nigerian music fallbacks remain available", () => {
 	const status = openMusicProviderStatus();
-	for (const provider of ["apple", "deezer", "internetArchive", "lrclib", "musicBrainz", "coverArtArchive"]) {
+	for (const provider of ["audius", "apple", "deezer", "internetArchive", "lrclib", "musicBrainz", "coverArtArchive"]) {
 		assert.equal(status[provider].configured, true);
 	}
+	assert.equal(status.apple.access, "public");
+	assert.equal(status.audiomack.access, "restricted");
 });
 
 test("open media download limit remains WhatsApp-safe", () => {

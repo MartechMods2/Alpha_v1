@@ -498,7 +498,8 @@ Create a `.env` file in the project root with the following keys.
 | `SEARCH_ENGINE_KEY`     | Programmable Search Engine ID — required alongside `GOOGLE_API_KEY_SEARCH`               |
 | `GENIUS_ACCESS_SECRET`  | Genius API token — used by the `-l` lyrics command                                       |
 | `REMOVE_BG_KEY`         | remove.bg API key — used by `-removebg` and AI cut-out `-aisticker`                    |
-| `TRUECALLER_ID`         | Legacy India-only Truecaller command; privacy-sensitive and not recommended              |
+| `TRUECALLER_ID`         | Optional Truecaller installation ID; supports E.164 worldwide and Nigerian local numbers |
+| `TRUECALLER_DEFAULT_COUNTRY` | Country used for local numbers without `+`; defaults to `NG`                        |
 | `TWITTER_BEARER_TOKEN`  | Twitter/X API bearer token for Twitter-related features                                  |
 | `JAMENDO_CLIENT_ID`     | Optional free Jamendo client ID for licensed full-track `-music` downloads               |
 | `AUDIUS_API_KEY`        | Optional Audius key for higher-rate permitted streams and Nigerian music discovery        |
@@ -564,6 +565,7 @@ SEARCH_ENGINE_KEY=your_search_engine_id_here
 GENIUS_ACCESS_SECRET=your_genius_access_secret_here
 REMOVE_BG_KEY=your_remove_bg_key_here
 TRUECALLER_ID=your_truecaller_id_here
+TRUECALLER_DEFAULT_COUNTRY=NG
 TWITTER_BEARER_TOKEN=your_twitter_bearer_token_here
 JAMENDO_CLIENT_ID=your_jamendo_client_id_here
 PEXELS_API_KEY=your_pexels_api_key_here
