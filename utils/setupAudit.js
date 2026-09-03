@@ -33,13 +33,15 @@ export const FEATURE_REQUIREMENTS = [
 	{ name: "S3-compatible off-site storage", commands: "backup, storagehealth", env: ["S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"] },
 	{ name: "Signed webhooks", commands: "webhookadmin", env: ["OUTBOUND_WEBHOOK_URL", "OUTBOUND_WEBHOOK_SECRET"] },
 	{ name: "External cited fact-check", commands: "webfactcheck", env: ["FACTCHECK_API_URL"] },
+	{ name: "Offline Defensive Security Lab", commands: "sechelp and 110 sec* checks", local: true },
 ];
 
-export const requirementReady = (entry) => entry.env
+export const requirementReady = (entry) => entry.local ? true : entry.env
 	? configured(...entry.env)
 	: entry.any.some((option) => configured(...option));
 
 export const missingForRequirement = (entry) => {
+	if (entry.local) return [];
 	if (entry.env) return entry.env.filter((name) => !configured(name));
 	if (requirementReady(entry)) return [];
 	return entry.any.map((option) => option.join(" + "));

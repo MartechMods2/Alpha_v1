@@ -7,6 +7,7 @@ const sections = [
 	["Virtual economy", "wallet · dailycoins · shop · buy · inventory · giftcoins · richlist"],
 	["Privacy", "privacydata status · privacydata export · privacydata delete confirm"],
 	["Passive OSINT", "osinthelp · dns · rdap · iprdap · asn · ptr · tls · headers · emailsecurity · ctsearch · hashid"],
+	["Defensive Security Lab", "sechelp · securlrisk · seciocdetect · secpasswordstrength · secheaderreport · seclogsummary · secpiiredact"],
 ];
 
 const handler = async (_sock, msg, from, _args, { sendMessageWTyping }) => sendMessageWTyping(from, {

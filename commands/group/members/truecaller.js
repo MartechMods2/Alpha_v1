@@ -17,7 +17,10 @@ export const resolveLookupTarget = async (sock, jid, groupMetadata) => {
 };
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
-	const { prefix, sendMessageWTyping, extendedMessageOriginal, groupMetadata } = msgInfoObj;
+	const { command, prefix, sendMessageWTyping, extendedMessageOriginal, groupMetadata } = msgInfoObj;
+	if (command === "truestatus") return sendMessageWTyping(from, { text: TRUECALLER_ID
+		? `📱 *Truecaller Health*\nCredential: CONFIGURED\nDefault country: ${process.env.TRUECALLER_DEFAULT_COUNTRY || "NG"}\n\nA configured credential does not guarantee that every valid number has a public Truecaller record.`
+		: "📱 *Truecaller Health*\nCredential: MISSING\nAdd TRUECALLER_ID through the protected host environment." }, { quoted: msg });
 
 	if (!TRUECALLER_ID) return sendMessageWTyping(from, { text: "```Truecaller ID is Missing```" }, { quoted: msg });
 
@@ -44,7 +47,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const response = await truecallerjs.search(searchData).catch(() => null);
 	if (!response) return sendMessageWTyping(from, { text: `❌ Number not found or Truecaller rejected the request.` }, { quoted: msg });
 	const data = response.json?.()?.data?.[0];
-	if (!data?.phones?.[0]) return sendMessageWTyping(from, { text: `❌ Number not found` }, { quoted: msg });
+	if (!data?.phones?.[0]) return sendMessageWTyping(from, { text: `ℹ️ *No accessible Truecaller record*\n\nThe number format was accepted:\n• International: ${normalized.e164}\n• Country: ${normalized.countryCode}\n\nTruecaller returned no public/community record for it. This does not mean the number is invalid. Try ${prefix}truestatus to check the integration; tagged members may also be looked up by typing their number directly.` }, { quoted: msg });
 
 	const name = response.getName();
 	const { e164Format, numberType, countryCode, carrier, type } = data.phones[0];
@@ -56,7 +59,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 };
 
 export default () => ({
-	cmd: ["true", "truecaller"],
+	cmd: ["true", "truecaller", "truestatus"],
 	desc: "Look up a valid local or international phone number",
 	usage: "true <080… | +234… | international number> | reply/tag a member",
 	handler,
