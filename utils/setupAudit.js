@@ -25,7 +25,7 @@ export const FEATURE_REQUIREMENTS = [
 	{ name: "Pixabay stock media", commands: "photo and video category commands", env: ["PIXABAY_API_KEY"] },
 	{ name: "Freesound effects", commands: "sound effects and ambience categories", env: ["FREESOUND_API_KEY"] },
 	{ name: "Twitter/X video", commands: "twitter, tw, x", env: ["TWITTER_BEARER_TOKEN"] },
-	{ name: "Truecaller lookup", commands: "true, truecaller (legacy India-only; privacy-sensitive)", env: ["TRUECALLER_ID"], discouraged: true },
+	{ name: "Truecaller lookup", commands: "true, truecaller (global E.164; Nigerian local numbers by default; privacy-sensitive)", env: ["TRUECALLER_ID"], discouraged: true },
 	{ name: "Telegram owner alerts", commands: "runtime owner alerts", env: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] },
 	{ name: "Google dashboard login", commands: "dashboard OAuth", env: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_ALLOWED_EMAILS", "HOST_URL"] },
 	{ name: "Redis cache", commands: "shared cache across instances", any: [["REDIS_URL"], ["REDIS_HOST", "REDIS_PASSWORD"]] },

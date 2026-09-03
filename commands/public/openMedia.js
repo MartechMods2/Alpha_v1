@@ -77,9 +77,13 @@ const helpText = (prefix) => `📥 *Alpha Media Search V2*\n\n` +
 
 const providerText = () => {
 	const status = openMusicProviderStatus();
-	return Object.entries(status).map(([name, entry]) =>
-		`${entry.configured ? "✅" : "⚪"} ${name} — ${entry.configured ? entry.capability : `optional credentials (${entry.capability})`}`,
-	).join("\n");
+	return Object.entries(status).map(([name, entry]) => {
+		let state = "NOT LINKED";
+		if (entry.access === "restricted" && !entry.configured) state = "RESTRICTED — safely skipped";
+		else if (entry.credentialsConfigured) state = "LINKED";
+		else if (entry.configured) state = "READY — no key required";
+		return `${entry.configured ? "✅" : "⚪"} ${name} — ${state}\n   ${entry.capability}`;
+	}).join("\n");
 };
 
 const sendLinks = async ({ query, sendMessageWTyping, from, msg }) => {
@@ -95,7 +99,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	if (command === "mediahelp") return reply(sendMessageWTyping, from, msg, helpText(prefix));
 	if (command === "mediasources") {
 		return reply(sendMessageWTyping, from, msg,
-			`📡 *Nigerian-first Music Sources*\n\n${providerText()}\n${process.env.PEXELS_API_KEY ? "✅" : "⚪"} pexels — stock video\n✅ Wikimedia Commons — open files\n\nYouTube, scraping, cookies and rotating proxies are not used by these commands.`);
+			`📡 *Nigerian-first Music Sources*\n\n${providerText()}\n${process.env.PEXELS_API_KEY ? "✅ pexels — LINKED" : "⚪ pexels — NOT LINKED"}\n   stock video\n✅ Wikimedia Commons — READY — no key required\n   open files\n\nAudiomack is skipped unless official partner credentials are present. YouTube, scraping, cookies and rotating proxies are not used by these commands.`);
 	}
 
 	let cooldownStarted = false;

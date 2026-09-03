@@ -37,20 +37,32 @@ const normalizeResult = (result) => ({
 
 const configured = (name) => Boolean(String(process.env[name] || "").trim());
 
-export const openMusicProviderStatus = () => ({
-	audius: { configured: configured("AUDIUS_API_KEY"), optional: true, capability: "permitted streams" },
-	audiomack: { configured: configured("AUDIOMACK_CONSUMER_KEY") && configured("AUDIOMACK_CONSUMER_SECRET"), optional: true, capability: "Nigerian catalogue and permitted streams" },
-	apple: { configured: true, optional: false, capability: "Nigerian catalogue and official previews" },
-	deezer: { configured: true, optional: false, capability: "catalogue and previews" },
-	jamendo: { configured: configured("JAMENDO_CLIENT_ID"), optional: true, capability: "licensed full tracks" },
-	internetArchive: { configured: true, optional: false, capability: "open full files" },
-	lrclib: { configured: true, optional: false, capability: "plain and synced lyrics" },
-	musicBrainz: { configured: true, optional: false, capability: "metadata matching" },
-	lastFm: { configured: configured("LASTFM_API_KEY"), optional: true, capability: "Nigeria charts and discovery" },
-	genius: { configured: configured("GENIUS_ACCESS_SECRET") || configured("GENIUS_ACCESS_TOKEN"), optional: true, capability: "official lyrics links" },
-	discogs: { configured: configured("DISCOGS_TOKEN"), optional: true, capability: "release catalogue" },
-	coverArtArchive: { configured: true, optional: false, capability: "release artwork" },
+const provider = ({ ready, linked = false, access = "key", capability }) => ({
+	configured: ready,
+	credentialsConfigured: linked,
+	access,
+	capability,
 });
+
+export const openMusicProviderStatus = () => {
+	const audiusLinked = configured("AUDIUS_API_KEY");
+	const audiomackLinked = configured("AUDIOMACK_CONSUMER_KEY") && configured("AUDIOMACK_CONSUMER_SECRET");
+	const geniusLinked = configured("GENIUS_ACCESS_SECRET") || configured("GENIUS_ACCESS_TOKEN");
+	return {
+		audius: provider({ ready: true, linked: audiusLinked, access: audiusLinked ? "linked" : "public", capability: "permitted artist streams" }),
+		audiomack: provider({ ready: audiomackLinked, linked: audiomackLinked, access: "restricted", capability: "partner catalogue and permitted streams" }),
+		apple: provider({ ready: true, access: "public", capability: "Nigeria catalogue and official previews" }),
+		deezer: provider({ ready: true, access: "public", capability: "catalogue and official previews" }),
+		jamendo: provider({ ready: configured("JAMENDO_CLIENT_ID"), linked: configured("JAMENDO_CLIENT_ID"), capability: "licensed full tracks" }),
+		internetArchive: provider({ ready: true, access: "public", capability: "open full files" }),
+		lrclib: provider({ ready: true, access: "public", capability: "plain and synced lyrics" }),
+		musicBrainz: provider({ ready: true, access: "public", capability: "metadata matching" }),
+		lastFm: provider({ ready: configured("LASTFM_API_KEY"), linked: configured("LASTFM_API_KEY"), capability: "Nigeria charts and discovery" }),
+		genius: provider({ ready: geniusLinked, linked: geniusLinked, capability: "official lyrics links" }),
+		discogs: provider({ ready: configured("DISCOGS_TOKEN"), linked: configured("DISCOGS_TOKEN"), capability: "release catalogue" }),
+		coverArtArchive: provider({ ready: true, access: "public", capability: "release artwork" }),
+	};
+};
 
 const audiusHeaders = (apiKey = process.env.AUDIUS_API_KEY) => apiKey ? { "x-api-key": apiKey } : {};
 
