@@ -922,9 +922,9 @@ export default () => ({
 	// New preferred command:
 	// alpha
 	//
-	// Kept eva and gemini as aliases so your existing command
+	// Keep the provider alias for compatibility while Alpha remains the public brand.
 	// system does not suddenly break.
-	cmd: ["alpha", "eva", "gemini"],
+	cmd: ["alpha", "gemini"],
 
 	desc: "Chat with ⚡Alpha⚡ using automatic NVIDIA/Gemini failover",
 

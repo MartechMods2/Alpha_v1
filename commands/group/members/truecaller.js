@@ -2,24 +2,36 @@ import dotenv from "dotenv";
 dotenv.config();
 const TRUECALLER_ID = process.env.TRUECALLER_ID || "";
 import truecallerjs from "truecallerjs";
-import { extractPhoneNumber } from "../../../utils/lid.js";
+import { extractPhoneNumber, getPNFromLID, isLID } from "../../../utils/lid.js";
+import { participantJids } from "../../../utils/groupParticipants.js";
 import { lookupNumberHelp, normalizeLookupNumber } from "../../../utils/phoneNumber.js";
 
+export const resolveLookupTarget = async (sock, jid, groupMetadata) => {
+	if (!jid) return "";
+	if (!isLID(jid)) return extractPhoneNumber(jid);
+	const mapped = await getPNFromLID(sock, jid);
+	if (mapped) return extractPhoneNumber(mapped);
+	const participant = (groupMetadata?.participants || []).find((entry) => participantJids(entry).includes(jid));
+	const phoneJid = participantJids(participant).find((alias) => alias.endsWith("@s.whatsapp.net"));
+	return phoneJid ? extractPhoneNumber(phoneJid) : "";
+};
+
 const handler = async (sock, msg, from, args, msgInfoObj) => {
-	const { prefix, sendMessageWTyping, extendedMessageOriginal } = msgInfoObj;
+	const { prefix, sendMessageWTyping, extendedMessageOriginal, groupMetadata } = msgInfoObj;
 
 	if (!TRUECALLER_ID) return sendMessageWTyping(from, { text: "```Truecaller ID is Missing```" }, { quoted: msg });
 
 	let rawNumber;
-	if (extendedMessageOriginal?.participant?.length > 0) {
-		// Use extractPhoneNumber for LID/PN compatibility
-		rawNumber = extractPhoneNumber(extendedMessageOriginal.participant);
-	} else if (extendedMessageOriginal?.mentionedJid?.length > 0) {
-		rawNumber = extractPhoneNumber(extendedMessageOriginal.mentionedJid[0]);
+	const mentionedJid = extendedMessageOriginal?.mentionedJid?.[0]
+		|| extendedMessageOriginal?.contextInfo?.mentionedJid?.[0];
+	if (mentionedJid) {
+		rawNumber = await resolveLookupTarget(sock, mentionedJid, groupMetadata);
+	} else if (extendedMessageOriginal?.participant) {
+		rawNumber = await resolveLookupTarget(sock, extendedMessageOriginal.participant, groupMetadata);
 	} else {
 		rawNumber = args.join(" ").trim();
 	}
-	if (!rawNumber) return sendMessageWTyping(from, { text: `❌ Give a number, tag a member, or reply to their message.\n\n${lookupNumberHelp(prefix)}` }, { quoted: msg });
+	if (!rawNumber) return sendMessageWTyping(from, { text: `❌ WhatsApp did not expose that tagged member's phone number. Type the number directly instead.\n\n${lookupNumberHelp(prefix)}` }, { quoted: msg });
 	const normalized = normalizeLookupNumber(rawNumber);
 	if (!normalized) return sendMessageWTyping(from, { text: `❌ That phone number is not valid.\n\n${lookupNumberHelp(prefix)}` }, { quoted: msg });
 

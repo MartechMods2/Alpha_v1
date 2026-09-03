@@ -1,7 +1,7 @@
 {
   "name": "whatsappbot",
   "version": "3.0.0",
-  "description": "well...Unique and intreating project",
+  "description": "Alpha — a safe, media-rich WhatsApp community bot created by Martech",
   "main": "index.js",
   "type": "module",
   "private": true,
@@ -22,7 +22,7 @@
     "test": "node --test tests/*.test.js"
   },
   "keywords": [],
-  "author": "mahesh kumar",
+  "author": "Martech",
   "license": "MIT",
   "dependencies": {
     "@erickwendel/meme-maker": "^3.0.0",
@@ -65,7 +65,7 @@
     "youtube-dl-exec": "^3.1.8",
     "yt-search": "^2.13.1"
   },
-  "repository": "https://github.com/jacktheboss220/WhatsAppBotMultiDevice.git",
+  "repository": "https://github.com/MartechMods2/Alpha_v1.git",
   "trustedDependencies": [
     "@swc/core",
     "baileys",

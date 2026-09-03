@@ -63,7 +63,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			{
 				audio: { url: url },
 				mimetype: "audio/mpeg",
-				fileName: "eva.mp3",
+				fileName: "alpha-by-martech.mp3",
 			},
 			{ quoted: msg }
 		);

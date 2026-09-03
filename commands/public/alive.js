@@ -46,7 +46,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 	const response =
 		`*👋🏻 Hello ${updateName}*\n\n` +
-		`*🎾 Eva is Online!*\n` +
+		`*⚡ Alpha by Martech is Online!*\n` +
 		`*🟢 Response:* ${responseTime >= 1000 ? `${responseTimeInSeconds.toFixed(2)}s` : `${responseTime.toFixed(2)}ms`}\n` +
 		`*⏱️ Uptime:* ${simpleUptime}\n` +
 		`*🧠 RAM:* ${usedMB} MB\n\n` +

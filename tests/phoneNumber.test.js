@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { normalizeLookupNumber } from "../utils/phoneNumber.js";
+import { resolveLookupTarget } from "../commands/group/members/truecaller.js";
 
 test("normalizes common Nigerian mobile formats", () => {
 	for (const input of ["0803 123 4567", "+234 803 123 4567", "2348031234567", "0803-123-4567"]) {
@@ -31,4 +32,14 @@ test("rejects malformed phone input", () => {
 	assert.equal(normalizeLookupNumber("hello"), null);
 	assert.equal(normalizeLookupNumber("123"), null);
 	assert.equal(normalizeLookupNumber("+999123456789"), null);
+});
+
+test("resolves a tagged WhatsApp LID through the PN mapping store", async () => {
+	const sock = { signalRepository: { lidMapping: { getPNForLID: async () => "2348085109399@s.whatsapp.net" } } };
+	assert.equal(await resolveLookupTarget(sock, "987654321@lid", {}), "2348085109399");
+});
+
+test("falls back to the group participant PN alias", async () => {
+	const metadata = { participants: [{ id: "987654321@lid", phoneNumber: "2348085109399@s.whatsapp.net" }] };
+	assert.equal(await resolveLookupTarget({}, "987654321@lid", metadata), "2348085109399");
 });

@@ -64,7 +64,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 				await sendMessageWTyping(from, {
 					image: await fs.promises.readFile(outputPath),
 					mimetype: "image/png",
-					caption: `*Sent by eva*`,
+					caption: `*Created by Alpha — Martech*`,
 				}, { quoted: msg });
 			} catch (err) {
 				sendMessageWTyping(from, { text: err.toString() }, { quoted: msg });

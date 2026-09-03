@@ -140,7 +140,7 @@ app.get("/admin/*", (req, res, next) => {
 const server = app.listen(port, () => {
 	const mem = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
 	_log(`\n${"═".repeat(50)}`);
-	_log(`  Eva Bot  ·  ${getDate()}`);
+	_log(`  Alpha by Martech  ·  ${getDate()}`);
 	_log(`  Port: ${port}  ·  Heap: ${mem}MB`);
 	_log(`${"═".repeat(50)}\n`);
 	startServer();

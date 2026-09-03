@@ -8,10 +8,19 @@ import {
 	openMusicProviderStatus,
 	parseArtistTitle,
 	searchCoverArt,
+	searchApplePreview,
+	searchAudiomackTrack,
+	searchAudiusTrack,
 	searchCommonsFile,
+	searchDeezerPreview,
+	searchDiscogs,
 	searchGeniusLink,
+	searchJamendoTrack,
+	searchLastFm,
 	searchLyrics,
+	searchMusicBrainz,
 	searchNigeriaChart,
+	searchPexelsVideo,
 } from "../../utils/openMediaSources.js";
 
 const cooldowns = new Map();
@@ -64,6 +73,9 @@ const helpText = (prefix) => `📥 *Alpha Media Search V2*\n\n` +
 	`${prefix}afrobeats Artist - Song name\n` +
 	`${prefix}gospelsong Artist - Song name\n` +
 	`${prefix}songpreview Artist - Song name\n` +
+	`${prefix}musicdirect Artist - Song name\n` +
+	`${prefix}musicfrom audius Artist - Song name\n` +
+	`${prefix}mediatest Artist - Song name\n` +
 	`${prefix}songlink Artist - Song name\n` +
 	`${prefix}musicfile Artist - Song name\n` +
 	`${prefix}musicvideo Artist - Video name\n` +
@@ -71,6 +83,8 @@ const helpText = (prefix) => `📥 *Alpha Media Search V2*\n\n` +
 	`${prefix}syncedlyrics Artist - Song name\n` +
 	`${prefix}albumart Artist - Album or song\n` +
 	`${prefix}musicartist Artist name\n` +
+	`${prefix}trackinfo Artist - Song name\n` +
+	`${prefix}stockvideo Search words\n` +
 	`${prefix}naijacharts\n` +
 	`${prefix}file Nature sounds\n\n` +
 	`Works in groups and private chats. Full downloads use public/licensed catalogues. If a commercial track is unavailable, Alpha may send a clearly labelled official preview instead.`;
@@ -94,6 +108,42 @@ const sendLinks = async ({ query, sendMessageWTyping, from, msg }) => {
 		`🔗 *${safe(first.title || query)}*${first.artist ? `\n🎤 ${safe(first.artist)}` : ""}\n\n${links.map((entry) => `• ${entry.source}: ${entry.url}`).join("\n")}\n\nThese are official catalogue or reference links; no protected audio was copied.`);
 };
 
+const providerSearch = async (name, query) => {
+	const providers = {
+		audius: () => searchAudiusTrack(query),
+		audiomack: () => searchAudiomackTrack(query),
+		jamendo: () => searchJamendoTrack(query),
+		apple: () => searchApplePreview(query, "audio"),
+		deezer: () => searchDeezerPreview(query),
+	};
+	return providers[name]?.() || null;
+};
+
+const runProviderCheck = async (query) => {
+	const status = openMusicProviderStatus();
+	const checks = [
+		["Audius", true, () => searchAudiusTrack(query)],
+		["Audiomack", status.audiomack.configured, () => searchAudiomackTrack(query)],
+		["Jamendo", status.jamendo.configured, () => searchJamendoTrack(query)],
+		["Apple Music NG", true, () => searchApplePreview(query, "audio")],
+		["Deezer", true, () => searchDeezerPreview(query)],
+		["LRCLIB", true, () => searchLyrics(query)],
+		["MusicBrainz", true, () => searchMusicBrainz(query)],
+		["Last.fm", status.lastFm.configured, () => searchLastFm(query)],
+		["Genius", status.genius.configured, () => searchGeniusLink(query)],
+		["Discogs", status.discogs.configured, () => searchDiscogs(query)],
+	];
+	return Promise.all(checks.map(async ([name, enabled, search]) => {
+		if (!enabled) return `${name}: ⚪ not linked`;
+		try {
+			const result = await search();
+			return `${name}: ${result ? "✅ responding; match found" : "🟡 responding; no match"}`;
+		} catch {
+			return `${name}: ❌ request failed`;
+		}
+	}));
+};
+
 const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const { command, prefix, senderJid, sendMessageWTyping } = msgInfoObj;
 	if (command === "mediahelp") return reply(sendMessageWTyping, from, msg, helpText(prefix));
@@ -104,6 +154,30 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 	let cooldownStarted = false;
 	try {
+		if (["mediatest", "mediadiagnose", "providercheck"].includes(command)) {
+			const query = safe(args.join(" "), 160) || "Asake - Forgiveness";
+			checkCooldown(senderJid);
+			const checks = await runProviderCheck(query);
+			return reply(sendMessageWTyping, from, msg, `🧪 *Live Media Provider Test*\nQuery: ${query}\n\n${checks.join("\n")}\n\nA provider can be healthy without carrying that exact song.`);
+		}
+		if (command === "musicfrom") {
+			const providerName = safe(args.shift(), 20).toLowerCase();
+			if (!["audius", "audiomack", "jamendo", "apple", "deezer"].includes(providerName)) {
+				throw new Error(`Usage: ${prefix}musicfrom <audius|audiomack|jamendo|apple|deezer> Artist - Song`);
+			}
+			const query = requireQuery(args, prefix, command);
+			checkCooldown(senderJid);
+			cooldownStarted = true;
+			const result = await providerSearch(providerName, query);
+			if (!result) throw new Error(`${providerName} did not return a permitted stream or preview for that search.`);
+			return sendResult({ result, sendMessageWTyping, from, msg });
+		}
+		if (command === "trackinfo") {
+			const query = requireQuery(args, prefix, command);
+			const result = await searchMusicBrainz(query);
+			if (!result) throw new Error("No matching track metadata was found.");
+			return reply(sendMessageWTyping, from, msg, `🎼 *Track Information*\n\nTitle: ${safe(result.title)}\nArtist: ${safe(result.artist || "Unknown")}\nSource: MusicBrainz\n${result.url}`);
+		}
 		if (["naijacharts", "trendingnaija", "newnaija"].includes(command)) {
 			checkCooldown(senderJid);
 			cooldownStarted = true;
@@ -138,13 +212,13 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 		await reply(sendMessageWTyping, from, msg, "⏳ Searching safe public media sources…");
 
-		if (["music", "musicfile", "naijasong", "afrobeats", "gospelsong", "songpreview"].includes(command)) {
-			const result = command === "songpreview" ? await findOfficialPreview(query) : await findOpenAudio(query);
+		if (["music", "musicfile", "musicdirect", "streammusic", "naijasong", "afrobeats", "gospelsong", "songpreview", "previewaudio"].includes(command)) {
+			const result = ["songpreview", "previewaudio"].includes(command) ? await findOfficialPreview(query) : await findOpenAudio(query);
 			if (!result) throw new Error("No licensed audio or official preview was found.");
 			return sendResult({ result, sendMessageWTyping, from, msg, forceDocument: command === "musicfile" });
 		}
-		if (command === "video" || command === "videofile" || command === "musicvideo") {
-			const result = await findOpenVideo(query);
+		if (["video", "videofile", "musicvideo", "stockvideo"].includes(command)) {
+			const result = command === "stockvideo" ? await searchPexelsVideo(query) : await findOpenVideo(query);
 			if (!result) throw new Error("No licensed video or official preview was found.");
 			return sendResult({ result, sendMessageWTyping, from, msg, forceDocument: command === "videofile" });
 		}
@@ -165,7 +239,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 };
 
 export default () => ({
-	cmd: ["music", "musicfile", "naijasong", "afrobeats", "gospelsong", "songpreview", "songlink", "video", "videofile", "musicvideo", "lyrics", "syncedlyrics", "musicartist", "naijacharts", "trendingnaija", "newnaija", "albumart", "musiccover", "file", "mediahelp", "mediasources"],
+	cmd: ["music", "musicfile", "musicdirect", "streammusic", "musicfrom", "naijasong", "afrobeats", "gospelsong", "songpreview", "previewaudio", "songlink", "video", "videofile", "musicvideo", "stockvideo", "lyrics", "syncedlyrics", "musicartist", "trackinfo", "naijacharts", "trendingnaija", "newnaija", "albumart", "musiccover", "file", "mediahelp", "mediasources", "mediatest", "mediadiagnose", "providercheck"],
 	desc: "Search and send licensed music, video, lyrics and open media in groups or DMs",
 	usage: "music <artist - title> | naijasong <artist - title> | musicvideo <query> | lyrics <artist - title>",
 	handler,

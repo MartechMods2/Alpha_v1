@@ -129,7 +129,7 @@ export const createTextStickerImage = (text) => {
 
 export const imageBufferToSticker = async (
 	imageBuffer,
-	{ pack = "Alpha", author = "MartechMods2", quality = 82 } = {},
+	{ pack = "Alpha", author = "Martech", quality = 82 } = {},
 ) => {
 	if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) throw new Error("Image is empty");
 	if (imageBuffer.length > 12 * 1024 * 1024) throw new Error("Image is larger than 12MB");
@@ -361,7 +361,7 @@ export const convertMediaToSticker = async (inputBuffer, {
 	inputExtension = "mp4",
 	animated = false,
 	pack = "Alpha",
-	author = "MartechMods2",
+	author = "Martech",
 	quality = 78,
 	crop = false,
 } = {}) => {

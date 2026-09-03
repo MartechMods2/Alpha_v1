@@ -1,8 +1,8 @@
 {
-	"name": "whatsapp-bot-md",
-	"description": "nodejs whatsapp bot",
+	"name": "alpha-by-martech",
+	"description": "Alpha WhatsApp community bot created by Martech",
 	"logo": "https://i.ibb.co/sWmwD0k/e0bslrup.jpg",
-	"repository": "https://github.com/jacktheboss220/WhatsAppBotMultiDevice",
+	"repository": "https://github.com/MartechMods2/Alpha_v1",
 	"keywords": [
 		"whatsapp-bot",
 		"instagram",
@@ -23,11 +23,11 @@
 			"required": true
 		},
 		"MY_NUMBER": {
-			"description": "Your WhatsApp Numbers to use as bot owner with , Include country code. Example: +919876543210,+1234567890",
+			"description": "Owner WhatsApp numbers with country code. Example: +2348031234567,+14155552671",
 			"required": true
 		},
 		"MODERATORS": {
-			"description": "Your WhatsApp Number to use as bot moderators. Include country code. Example: +919876543210",
+			"description": "Moderator WhatsApp numbers with country code. Example: +2348031234567",
 			"required": true
 		},
 		"REMOVE_BG_KEY": {

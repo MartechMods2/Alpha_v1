@@ -1,8 +1,6 @@
-[![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&slug=jacktheboss220&button_colour=BD5FFF&font_colour=ffffff&outline_colour=000000&coffee_colour=FFDD00)](https://www.buymeacoffee.com/jacktheboss220)
+# Alpha by Martech
 
-# WhatsAppBotMultiDevice
-
-A feature-rich WhatsApp bot with a modern React/Vite admin dashboard. Supports downloading songs, getting lyrics, creating stickers, memes, image search, media conversion, news, horoscopes, and much more — all controllable from a sleek web UI.
+Alpha is a feature-rich WhatsApp community bot created and maintained by **Martech**. Official repository: [MartechMods2/Alpha_v1](https://github.com/MartechMods2/Alpha_v1).
 
 ## Table of Contents
 
@@ -17,6 +15,7 @@ A feature-rich WhatsApp bot with a modern React/Vite admin dashboard. Supports d
 - [Deploy on Heroku](#deploy-on-heroku)
 - [Environment Variables](#environment-variables)
 - [References](#references)
+- [Martech Upgrade V3](docs/MARTECH_UPGRADE_V3.md)
 
 ---
 
@@ -75,7 +74,7 @@ A feature-rich WhatsApp bot with a modern React/Vite admin dashboard. Supports d
 |        -nsfw        |            Get the NSFW percentage of an image            |                `-nsfw`                 |           ❌            |
 |        -tts         |                  Convert text to speech                   |              `-tts text`               |            ✔            |
 |        -text        |            Add a header and footer to an image            |       `-text TopText;BottomText`       |            ✔            |
-|         -ud         |                Show the meaning of a name                 |              `-ud Mahesh`              |            ✔            |
+|         -ud         |                Show the meaning of a name                 |              `-ud Martech`             |            ✔            |
 |        -dic         |      Get the definition of a word from a dictionary       |              `-dic Love`               |            ✔            |
 |      -txtmeme       |            Add a header and footer to an image            |     `-txtmeme TopText;BottomText`      |            ✔            |
 |       -source       |                    Get the source code                    |               `-source`                |            ✔            |
@@ -130,8 +129,8 @@ A feature-rich WhatsApp bot with a modern React/Vite admin dashboard. Supports d
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/jacktheboss220/WhatsAppBotMultiDevice.git
-   cd WhatsAppBotMultiDevice
+   git clone https://github.com/MartechMods2/Alpha_v1.git
+   cd Alpha_v1
    ```
 
 2. **Create a `.env` file** in the project root (see [Environment Variables](#environment-variables) below for all keys).
@@ -459,7 +458,7 @@ The outbound queue spaces group sends, automated join/leave notices are batched 
 
 # Deploy on Heroku
 
-[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/jacktheboss220/WhatsAppBotMultiDevice)
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/MartechMods2/Alpha_v1)
 
 The `app.json` and `Procfile` are already configured. Click the button above, fill in the environment variables, and deploy.
 
