@@ -16,6 +16,8 @@ Alpha is a feature-rich WhatsApp community bot created and maintained by **Marte
 - [Environment Variables](#environment-variables)
 - [References](#references)
 - [Martech Upgrade V3](docs/MARTECH_UPGRADE_V3.md)
+- [110 Defensive Security Commands](docs/DEFENSIVE_SECURITY_COMMANDS.md)
+- [Complete Environment Variable Guide](docs/ENVIRONMENT_VARIABLES.md)
 
 ---
 
@@ -616,6 +618,11 @@ keys, IDs, cookies or server binaries are documented in
 
 Run `-setupcheck` as the bot owner to see what is configured without displaying
 any secret value. Run `-osinthelp` in a group for the passive security-tool menu.
+
+The separate [Defensive Security Lab guide](docs/DEFENSIVE_SECURITY_COMMANDS.md)
+documents 110 additional offline checks for supplied URLs, indicators, tokens,
+headers and logs. The [complete environment guide](docs/ENVIRONMENT_VARIABLES.md)
+lists required, optional and platform-managed variables without exposing secrets.
 
 - [@Baileys](https://github.com/WhiskeySockets/Baileys)
 
