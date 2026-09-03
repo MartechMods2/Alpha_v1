@@ -41,8 +41,8 @@ export default function Login() {
     <div className="login-wrap">
       <div className="login-card">
         <div className="login-brand">
-          <img src="/eva.jpg" alt="Eva" />
-          <h1>Eva Bot</h1>
+          <img src="/alpha-martech.jpg" alt="Alpha by Martech" />
+          <h1>Alpha by Martech</h1>
           <p>Admin Panel — Restricted Access</p>
         </div>
 

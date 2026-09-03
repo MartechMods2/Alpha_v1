@@ -12,7 +12,7 @@ const parseMetadata = (args) => {
 	};
 	return {
 		pack: valueAfter("pack") || "Alpha Stickers",
-		author: valueAfter("author") || "MartechMods2",
+		author: valueAfter("author") || "Martech",
 		quality: Math.min(90, Math.max(40, Number(normalized.find((arg) => /^\d{1,3}$/.test(arg))) || 78)),
 		crop: normalized.some((arg) => ["crop", "c"].includes(arg.toLowerCase())),
 		nometadata: normalized.some((arg) => arg.toLowerCase() === "nometadata"),

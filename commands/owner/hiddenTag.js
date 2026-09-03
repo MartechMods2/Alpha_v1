@@ -42,7 +42,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		} else {
 			let message = msg.message.conversation ?? "";
 			message = message.includes(prefix + "hidetag") ? message.split(prefix + "hidetag")[1].trim() : message;
-			message = message ? message : "Hidden Tag by Eva";
+			message = message ? message : "Hidden Tag by Alpha — Martech";
 			sendMessageWTyping(from, {
 				text: message,
 				mentions: [...groupMetadata.participants.map((e) => e.id)],

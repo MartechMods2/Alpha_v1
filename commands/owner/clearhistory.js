@@ -13,7 +13,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 		return sendMessageWTyping(
 			from,
-			{ text: "✅ Eva's conversation history has been cleared for this group!" },
+			{ text: "✅ Alpha's conversation history has been cleared for this group!" },
 			{ quoted: msg }
 		);
 	} catch (err) {
@@ -23,8 +23,8 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 };
 
 export default () => ({
-	cmd: ["clearhistory", "cleareva", "reseteva", "forgeteva"],
-	desc: "Clear Eva's conversation history for this group",
+	cmd: ["clearhistory", "clearalpha", "resetalpha", "forgetalpha"],
+	desc: "Clear Alpha's conversation history for this group",
 	usage: "clearhistory",
 	handler,
 });

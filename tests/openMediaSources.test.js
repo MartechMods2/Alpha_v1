@@ -20,7 +20,7 @@ test("open media commands are public, collision-free and include help", () => {
 	const command = openMediaCommand();
 	assert.equal(typeof command.handler, "function");
 	assert.equal(new Set(command.cmd).size, command.cmd.length);
-	for (const name of ["music", "musicfile", "naijasong", "afrobeats", "gospelsong", "songpreview", "songlink", "video", "videofile", "musicvideo", "lyrics", "syncedlyrics", "musicartist", "naijacharts", "albumart", "file", "mediahelp", "mediasources"]) {
+	for (const name of ["music", "musicfile", "musicdirect", "streammusic", "musicfrom", "naijasong", "afrobeats", "gospelsong", "songpreview", "previewaudio", "songlink", "video", "videofile", "musicvideo", "stockvideo", "lyrics", "syncedlyrics", "musicartist", "trackinfo", "naijacharts", "albumart", "file", "mediahelp", "mediasources", "mediatest", "providercheck"]) {
 		assert.ok(command.cmd.includes(name));
 	}
 });

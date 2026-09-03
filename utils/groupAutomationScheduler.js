@@ -108,7 +108,7 @@ const sendDailyAction = async (sock, automation, clock) => {
 			retryable: false,
 			task: async () => imageBufferToSticker(await createActionStickerImage({
 				action, actorName, targetName, style: safeSettings.actionStyle,
-			}), { pack: "Alpha Daily Action", author: "MartechMods2", quality: 84 }),
+			}), { pack: "Alpha Daily Action", author: "Martech", quality: 84 }),
 		});
 		await sendQueued(sock, automation._id, { sticker, mentions: [actorJid, targetJid] });
 		await recordAction({ groupJid: automation._id, actorJid, actorName, targetJid, targetName, action });

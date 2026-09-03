@@ -1,17 +1,14 @@
 const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const { sendMessageWTyping } = msgInfoObj;
 
-	const text = `*👨‍💻 Developer — Mahesh Kumar*
+	const text = `*👨‍💻 Creator — Martech*
 
 ╭───────────────────────────
 │ *🔗 GitHub*
-│ github.com/jacktheboss220
+│ github.com/MartechMods2
 │
-│ *☕ Support My Work*
-│ buymeacoffee.com/jacktheboss220
-│
-│ *🌐 Portfolio*
-│ jacktheboss220.com
+│ *🤖 Project*
+│ github.com/MartechMods2/Alpha_v1
 ╰───────────────────────────`;
 
 	await sendMessageWTyping(from, { text }, { quoted: msg });
@@ -19,7 +16,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 export default () => ({
 	cmd: ["dev", "developer"],
-	desc: "Developer info",
+	desc: "Creator and official project information",
 	usage: "dev | developer",
 	handler,
 });

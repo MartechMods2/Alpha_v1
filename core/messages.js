@@ -190,12 +190,12 @@ const getCommand = async (sock, msg, cache) => {
 		// console.log("extendedMessageOriginal:", JSON.stringify(extendedMessageOriginal, null, 2));
 
 		if (type == "buttonsResponseMessage") {
-			if (msg.message.buttonsResponseMessage.selectedButtonId == "eva")
+			if (msg.message.buttonsResponseMessage.selectedButtonId == "alpha")
 				body = body.startsWith(prefix) ? body : prefix + body;
 		} else if (type == "templateButtonReplyMessage") {
 			body = body.startsWith(prefix) ? body : prefix + body;
 		} else if (type == "listResponseMessage") {
-			if (msg.message.listResponseMessage.singleSelectReply.selectedRowId == "eva")
+			if (msg.message.listResponseMessage.singleSelectReply.selectedRowId == "alpha")
 				body = body.startsWith(prefix) ? body : prefix + body;
 		}
 
@@ -401,14 +401,14 @@ const getCommand = async (sock, msg, cache) => {
 			}
 		}
 
-		// Log text messages to chat history for gemini summarization
-		// Skip: commands (prefix), eva triggers, bot's own messages
-		const isEvaTrigger = body.trim().split(" ")[0].toLowerCase() === "eva";
+		// Log text messages to chat history for summarization.
+		// Skip commands, direct Alpha triggers and the bot's own messages.
+		const isAlphaTrigger = body.trim().split(" ")[0].toLowerCase() === "alpha";
 		if (
 			isGroup &&
 			body &&
 			!isCmd &&
-			!isEvaTrigger &&
+			!isAlphaTrigger &&
 			!msg.key.fromMe &&
 			(type === "conversation" || type === "extendedTextMessage")
 		) {
@@ -568,10 +568,10 @@ const getCommand = async (sock, msg, cache) => {
 				"";
 			const assistantName = getMediaRuntimeConfig().alphaName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 			const isAlphaReply = isTaggedBot && new RegExp(
-				`^(?:(?:⚡\\s*)?${assistantName}(?:⚡)?\\b|_\\*eva:\\*_?)`,
+				`^(?:(?:⚡\\s*)?${assistantName}(?:⚡)?\\b|_\\*alpha:\\*_?)`,
 				"i",
 			).test(quotedText.trim());
-			if (body.split(" ")[0].toLowerCase() == "eva" || isAlphaReply) {
+			if (body.split(" ")[0].toLowerCase() == "alpha" || isAlphaReply) {
 				const settings = normalizeAlphaSettings(groupData);
 				if (!canUseAlphaMention({
 					settings,
@@ -580,7 +580,7 @@ const getCommand = async (sock, msg, cache) => {
 					isOwner,
 					matches: (left, right) => isSameGroupUser(groupMetadata, left, right),
 				})) return;
-				commandsPublic["eva"](sock, msg, from, args, {
+				commandsPublic["alpha"](sock, msg, from, args, {
 					sendMessageWTyping,
 					command,
 					updateName:
@@ -607,7 +607,7 @@ const getCommand = async (sock, msg, cache) => {
 				);
 			}
 		}
-		if (!isCmd && !isEvaTrigger && isGroup && (type === "conversation" || type === "extendedTextMessage")) {
+		if (!isCmd && !isAlphaTrigger && isGroup && (type === "conversation" || type === "extendedTextMessage")) {
 			try {
 				const automationResult = await handleAdvancedAutomation({
 					msg,

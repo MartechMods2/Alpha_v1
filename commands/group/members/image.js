@@ -55,7 +55,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 						from,
 						{
 							image: imageBuffer,
-							caption: "Sent by eva",
+							caption: "Sent by Alpha — Martech",
 							mimetype: "image/png",
 						},
 						{ quoted: msg }

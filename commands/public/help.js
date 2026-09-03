@@ -33,7 +33,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 	const help = `
 ---------------------------------------------------------------
-    *Wҽʅƈσɱҽ ƚσ Eʋα Bσƚ*
+    *Welcome to Alpha by Martech*
 ---------------------------------------------------------------
 ${readMore}
 
@@ -50,20 +50,20 @@ ${adminCmd.map((cmd) => `*${prefix}${cmd.cmd.join(", ")}* - ${cmd.desc}\nUsage: 
 ${ownerCmd.map((cmd) => `*${prefix}${cmd.cmd.join(", ")}* - ${cmd.desc}\nUsage: ${prefix}${cmd.usage}`).join("\n\n")}
 
 
-♥ мα∂є ωιтн ℓσνє, υѕє ωιтн ℓσνє ♥️\n buymeacoffee.com/jacktheboss220`;
+⚡ Created and maintained by Martech\n github.com/MartechMods2/Alpha_v1`;
 
 	const helpInDm = `
 ─「 *Dm Commands* 」─
 
 ---------------------------------------------------------------
-    *Wҽʅƈσɱҽ ƚσ Eʋα Bσƚ*
+    *Welcome to Alpha by Martech*
 ---------------------------------------------------------------
 
 ${directCommands
 	.map((cmd) => `*${prefix}${cmd.cmd.join(", ")}* - ${cmd.desc}\nUsage: ${prefix}${cmd.usage}`)
 	.join("\n\n")}
 
-♥ мα∂є ωιтн ℓσνє, υѕє ωιтн ℓσνє ♥️\n buymeacoffee.com/jacktheboss220`;
+⚡ Created and maintained by Martech\n github.com/MartechMods2/Alpha_v1`;
 
 	await sendMessageWTyping(from, {
 		text: isGroup ? help : helpInDm,
