@@ -120,6 +120,9 @@ const handleTodos = async ({ msg, from, args, senderJid, updateName, isGroupAdmi
 const handleBirthdays = async ({ msg, from, args, senderJid, updateName, sendMessageWTyping }) => {
 	const reply = (text) => sendMessageWTyping(from, { text }, { quoted: msg });
 	const action = String(args[0] || "list").toLowerCase();
+	if (action === "form" || action === "setup") {
+		return reply("🎂 *Birthday Setup*\n\n1. Send `birthday set DD-MM` (example: `birthday set 24-12`).\n2. Ask an admin to enable `birthdayauto on`.\n3. Alpha will greet you automatically on the date.\n\nOnly day and month are saved. Use `birthday remove` whenever you want to opt out.");
+	}
 	if (action === "set") {
 		if (!canWrite(senderJid)) return;
 		const birthday = parseBirthday(args[1]);
@@ -170,7 +173,10 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	try {
 		if (["gnote", "groupnote"].includes(msgInfoObj.command)) return handleNotes(context);
 		if (["todo", "tasks"].includes(msgInfoObj.command)) return handleTodos(context);
-		if (["birthday", "birthdays"].includes(msgInfoObj.command)) return handleBirthdays(context);
+		if (["birthday", "birthdays", "birthdayform"].includes(msgInfoObj.command)) {
+			if (msgInfoObj.command === "birthdayform" && !args.length) context.args = ["form"];
+			return handleBirthdays(context);
+		}
 		if (msgInfoObj.command === "countdown") return handleCountdown(context);
 		return msgInfoObj.sendMessageWTyping(
 			from,
@@ -184,7 +190,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 };
 
 export default () => ({
-	cmd: ["groupkit", "gnote", "groupnote", "todo", "tasks", "birthday", "birthdays", "countdown"],
+	cmd: ["groupkit", "gnote", "groupnote", "todo", "tasks", "birthday", "birthdays", "birthdayform", "countdown"],
 	desc: "Persistent shared notes, task board, birthdays and event countdowns",
 	usage: "groupkit | gnote | todo | birthday | countdown",
 	handler,

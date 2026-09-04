@@ -34,6 +34,7 @@ export const FEATURE_REQUIREMENTS = [
 	{ name: "Signed webhooks", commands: "webhookadmin", env: ["OUTBOUND_WEBHOOK_URL", "OUTBOUND_WEBHOOK_SECRET"] },
 	{ name: "External cited fact-check", commands: "webfactcheck", env: ["FACTCHECK_API_URL"] },
 	{ name: "Offline Defensive Security Lab", commands: "sechelp and 110 sec* checks", local: true },
+	{ name: "Safe Kali-Inspired Guidance", commands: "safekalihelp, phishcheck, ipregion, phonemeta and hardening guides", local: true },
 ];
 
 export const requirementReady = (entry) => entry.local ? true : entry.env

@@ -8,6 +8,7 @@ Configure secrets only in Render **Environment** or the protected dashboard. Nev
 |---|---:|---|
 | `PREFIX` | Yes | Command prefix, for example `$` or `-` |
 | `MY_NUMBER` | Yes | Owner WhatsApp number without `+`; comma-separate multiple owners |
+| `MARTECH_OWNER_NUMBER` | Recommended | Single digits-only owner allowed to execute natural-language moderator intents; defaults to `2348140893169` |
 | `BOT_NUMBER` | Yes | Connected bot number without `+` |
 | `MONGODB_KEY` | Yes | MongoDB connection string |
 | `ADMIN_PASSWORD` | Yes for dashboard | Strong dashboard password |

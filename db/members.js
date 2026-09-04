@@ -46,4 +46,24 @@ const getMemberData = async (jid) => {
 	}
 };
 
-export { createMembersData, getMemberData, member };
+const getMemberPreferences = async (jid) => {
+	const data = await getMemberData(jid);
+	return {
+		tone: data?.alphaPreferences?.tone || "auto",
+		pronouns: data?.alphaPreferences?.pronouns || "neutral",
+	};
+};
+
+const setMemberPreferences = async (jid, preferences = {}) => {
+	const allowedTones = new Set(["auto", "friendly", "funny", "professional", "gentle", "concise"]);
+	const allowedPronouns = new Set(["neutral", "he", "she", "they"]);
+	const current = await getMemberPreferences(jid);
+	const next = {
+		tone: allowedTones.has(preferences.tone) ? preferences.tone : current.tone,
+		pronouns: allowedPronouns.has(preferences.pronouns) ? preferences.pronouns : current.pronouns,
+	};
+	await member.updateOne({ _id: jid }, { $set: { alphaPreferences: next } }, { upsert: true });
+	return next;
+};
+
+export { createMembersData, getMemberData, getMemberPreferences, setMemberPreferences, member };
