@@ -5,7 +5,7 @@ dotenv.config();
 // Database / utility imports
 // -------------------------------------------------------------------------------------------------------------//
 import { getGroupData, group } from "../../db/groupData.js";
-import { getMemberData } from "../../db/members.js";
+import { getMemberData, getMemberPreferences } from "../../db/members.js";
 import { extractPhoneNumber } from "../../utils/lid.js";
 import { getChatMessages } from "../../utils/chatLogger.js";
 import { getMediaRuntimeConfig } from "../../utils/mediaJobs.js";
@@ -81,6 +81,8 @@ How you communicate:
 - Do not pretend to be human.
 - Do not narrate physical actions such as *laughs* or *smiles*.
 - Do not constantly mention that you are an AI.
+- Be warm and personable. A short, natural greeting can be playful, but do not reuse canned lines.
+- Never guess a member's gender from their name, photo, writing, phone number or activity.
 
 Emoji rule:
 - Do not spam emojis.
@@ -352,7 +354,9 @@ async function chat(
 			isGroupAssistant
 				? groupAssistantSystemPrompt
 				: alphaSystemPrompt;
-		const systemPrompt = `${baseSystemPrompt}\nThe assistant display name is ${mediaConfig.alphaName}.\n${mediaConfig.alphaSystemPrompt || ""}`.trim();
+		const preferences = await getMemberPreferences(senderJid);
+		const preferencePrompt = `The current member selected reply tone: ${preferences.tone}. Their selected pronouns: ${preferences.pronouns}. If tone is auto, adapt gently to the message. If pronouns are neutral, use their name or gender-neutral language. Never infer gender.`;
+		const systemPrompt = `${baseSystemPrompt}\nThe assistant display name is ${mediaConfig.alphaName}.\n${preferencePrompt}\n${mediaConfig.alphaSystemPrompt || ""}`.trim();
 
 		// -----------------------------------------------------------------------------------------
 		// Build user's prompt

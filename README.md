@@ -18,6 +18,9 @@ Alpha is a feature-rich WhatsApp community bot created and maintained by **Marte
 - [Martech Upgrade V3](docs/MARTECH_UPGRADE_V3.md)
 - [110 Defensive Security Commands](docs/DEFENSIVE_SECURITY_COMMANDS.md)
 - [Complete Environment Variable Guide](docs/ENVIRONMENT_VARIABLES.md)
+- [Safe Monetisation Guide](docs/MONETIZATION_GUIDE.md)
+- [Human Alpha, Owner Intents and Birthday Guide](docs/HUMAN_OWNER_UPGRADE_GUIDE.md)
+- [Safe Kali-Inspired Tools](docs/SAFE_KALI_GUIDE.md)
 
 ---
 

@@ -48,6 +48,7 @@ import { handleSafeModerationMessage } from "../utils/safeModeration.js";
 import { getSafeSettings } from "../db/safePackData.js";
 import { detectSmartIntent } from "../utils/smartIntent.js";
 import { runSmartIntent } from "../commands/public/smartIntent.js";
+import { consumeOwnerIntentCooldown, detectOwnerIntent, isMartechOwner } from "../utils/ownerIntent.js";
 
 // ── FOOLPROOF REWRITE FOR OWNER/BOT IDENTIFICATION ─────────────────
 const cleanMyNum = (process.env.MY_NUMBER || "").split(",")[0].replace(/[^0-9]/g, "");
@@ -284,6 +285,13 @@ const getCommand = async (sock, msg, cache) => {
 		if (isGroup && !isOwner) {
 			isOwner = myNumber.some((ownerJid) => isSameGroupUser(groupMetadata, senderJid, ownerJid));
 		}
+		let resolvedSenderNumber = senderNumber;
+		if (senderJid.endsWith("@lid")) {
+			try {
+				resolvedSenderNumber = extractPhoneNumber((await Promise.resolve(getPNFromLID(sock, senderJid))) || senderJid);
+			} catch {}
+		}
+		const isNaturalCommandOwner = isOwner && isMartechOwner(resolvedSenderNumber);
 
 		if (isGroup && !msg.key.fromMe) {
 			try {
@@ -454,6 +462,29 @@ const getCommand = async (sock, msg, cache) => {
 					sendMessageWTyping,
 					evv,
 				});
+			}
+		}
+
+		// Owner-only natural language commands. Only exact, allowlisted and reversible/read-only
+		// intentions are eligible; ordinary members continue through the normal assistant path.
+		if (!isCmd && isGroup && isNaturalCommandOwner && (type === "conversation" || type === "extendedTextMessage")) {
+			const intent = detectOwnerIntent(body);
+			if (intent) {
+				if (!consumeOwnerIntentCooldown(resolvedSenderNumber, intent.command)) {
+					await sendMessageWTyping(from, { text: "⏳ That owner action is cooling down. Please wait before repeating it." }, { quoted: msg });
+					return;
+				}
+				const handler = commandsAdmins[intent.command] || commandsMembers[intent.command] || commandsPublic[intent.command] || commandsOwners[intent.command];
+				if (handler) {
+					console.log("[OWNER_INTENT]", intent.command, "[FROM]", resolvedSenderNumber);
+					await handler(sock, msg, from, intent.args, {
+						prefix, type, content, evv: intent.args.join(" "), command: intent.command,
+						isGroup, senderJid, groupMetadata, groupAdmins, isGroupAdmin, isBotAdmin,
+						botNumber, botJids, sendMessageWTyping, notifyOwner, updateName, updateId,
+						isOwner: true, startTime, extendedMessageOriginal,
+					});
+					return;
+				}
 			}
 		}
 
