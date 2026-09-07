@@ -20,6 +20,7 @@ Alpha is a feature-rich WhatsApp community bot created and maintained by **Marte
 - [Complete Environment Variable Guide](docs/ENVIRONMENT_VARIABLES.md)
 - [Safe Monetisation Guide](docs/MONETIZATION_GUIDE.md)
 - [Human Alpha, Owner Intents and Birthday Guide](docs/HUMAN_OWNER_UPGRADE_GUIDE.md)
+- [Remote Customer Pairing and Direct Media Guide](docs/REMOTE_CUSTOMER_PAIRING_AND_MEDIA.md)
 - [Safe Kali-Inspired Tools](docs/SAFE_KALI_GUIDE.md)
 
 ---

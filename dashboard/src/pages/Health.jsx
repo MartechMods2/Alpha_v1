@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { getHealth, fmtUptime, fmtBytes, requestPair, clearAuth, logoutBot, reconnectBot, restartBot } from '../lib/api.js'
+import { getHealth, fmtUptime, fmtBytes, requestPair, createPairInvite, clearAuth, logoutBot, reconnectBot, restartBot } from '../lib/api.js'
 import { useToast } from '../App.jsx'
 
 /* ── tiny helpers ──────────────────────────────────────────────────────────── */
@@ -101,6 +101,8 @@ export default function Health() {
   const [pairLoading, setPairLoading] = useState(false)
   const [pairCode,    setPairCode]    = useState('')
   const [pairErr,     setPairErr]     = useState('')
+  const [inviteUrl,   setInviteUrl]   = useState('')
+  const [inviteBusy,  setInviteBusy]  = useState(false)
 
   // Reconnect state — show a live "waiting for QR" hint while reconnecting
   const [reconnecting, setReconnecting] = useState(false)
@@ -166,6 +168,17 @@ export default function Health() {
       toast('Pairing code ready!')
     } catch (err) { setPairErr(err.message) }
     finally { setPairLoading(false) }
+  }
+
+  async function handleInvite() {
+    setInviteBusy(true); setInviteUrl('')
+    try {
+      const result = await createPairInvite()
+      setInviteUrl(result.url)
+      await navigator.clipboard.writeText(result.url).catch(() => {})
+      toast('One-time pairing link created and copied. It expires in 15 minutes.')
+    } catch (err) { toast(err.message, false) }
+    finally { setInviteBusy(false) }
   }
 
   if (loading) return <div className="loading-state"><span className="spinner" /></div>
@@ -252,6 +265,25 @@ export default function Health() {
                 : '🔄 Reconnect'}
             </button>
           </div>
+        </div>
+
+        <div className="divider" style={{ margin: 0 }} />
+
+        {/* ── Remote customer pairing invitation ───────────────────────────── */}
+        <div>
+          <p style={{ fontSize: '0.88rem', fontWeight: 600, marginBottom: 4 }}>🔗 Remote Pairing Invitation</p>
+          <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.6 }}>
+            For a new, unpaired customer deployment only. Creates a one-use link that expires in 15 minutes. Never share your dashboard password or session database.
+          </p>
+          <button className="btn btn-primary" onClick={handleInvite} disabled={inviteBusy || connected}>
+            {inviteBusy ? 'Creating…' : 'Create One-Time Pairing Link'}
+          </button>
+          {inviteUrl && (
+            <div style={{ marginTop: 10, padding: 12, background: 'var(--accent-dim)', borderRadius: 'var(--r)', wordBreak: 'break-all' }}>
+              <p style={{ fontSize: '0.74rem' }}>{inviteUrl}</p>
+              <button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={() => { navigator.clipboard.writeText(inviteUrl); toast('Copied!') }}>Copy Link</button>
+            </div>
+          )}
         </div>
 
         <div className="divider" style={{ margin: 0 }} />

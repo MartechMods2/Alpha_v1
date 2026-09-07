@@ -232,9 +232,9 @@ export const findOpenAudio = async (query) =>
 	(await searchAudiusTrack(query).catch(() => null)) ||
 	(await searchAudiomackTrack(query).catch(() => null)) ||
 	(await searchJamendoTrack(query).catch(() => null)) ||
-	(await searchArchiveMedia(query, "audio").catch(() => null)) ||
 	(await searchApplePreview(query, "audio").catch(() => null)) ||
-	(await searchDeezerPreview(query).catch(() => null));
+	(await searchDeezerPreview(query).catch(() => null)) ||
+	(await searchArchiveMedia(query, "audio").catch(() => null));
 
 export const findOfficialPreview = async (query) =>
 	(await searchApplePreview(query, "audio").catch(() => null)) ||
