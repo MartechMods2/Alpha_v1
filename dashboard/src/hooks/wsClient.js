@@ -19,9 +19,20 @@ export function removeWsListener(type, fn) {
 
 let reconnectTimer = null
 
-function connect() {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const ws    = new WebSocket(`${proto}//${location.host}`)
+async function connect() {
+  let ws
+  try {
+    const response = await fetch('/api/admin/ws-ticket', { method: 'POST', credentials: 'same-origin' })
+    if (!response.ok) throw new Error('Dashboard authentication required')
+    const { token } = await response.json()
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    ws = new WebSocket(`${proto}//${location.host}/admin-ws?ticket=${encodeURIComponent(token)}`)
+  } catch (_) {
+    emit('_status', { status: 'disconnected' })
+    clearTimeout(reconnectTimer)
+    reconnectTimer = setTimeout(connect, 5000)
+    return
+  }
 
   ws.onopen  = () => emit('_status', { status: 'connecting' })
   ws.onclose = () => {
