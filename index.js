@@ -10,6 +10,8 @@ import { getBotData } from "./db/botData.js";
 import { setMediaRuntimeConfig } from "./utils/mediaJobs.js";
 import { startSafePackScheduler } from "./utils/safePackScheduler.js";
 import { ensureYtDlp, resolveYtDlpJsRuntime } from "./utils/ytdlp.js";
+import { consumeAdminWebsocketTicket } from "./utils/adminWebsocket.js";
+import { authenticateIntegrationRequest, consumeIntegrationRateLimit, integrationRecipientAllowed } from "./utils/integrationApi.js";
 
 // ── Console interceptor — feeds log ring buffer + deduplication ──────────────
 const _log   = console.log.bind(console);
@@ -152,9 +154,21 @@ app.on("error", (error) => {
 });
 
 const wss = new WebSocketServer({
-	server,
+	noServer: true,
 	maxPayload: 10 * 1024 * 1024,
 	perMessageDeflate: true,
+});
+
+server.on("upgrade", (request, socket, head) => {
+	try {
+		const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+		if (url.pathname !== "/admin-ws" || !consumeAdminWebsocketTicket(url.searchParams.get("ticket"))) {
+			socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+			socket.destroy();
+			return;
+		}
+		wss.handleUpgrade(request, socket, head, (ws) => wss.emit("connection", ws, request));
+	} catch (_) { socket.destroy(); }
 });
 
 // ── Bot connection state ───────────────────────────────────────────────────────
@@ -240,28 +254,8 @@ wss.on("connection", (ws) => {
 
 	ws.on("pong", () => {});
 
-	ws.on("message", async (raw) => {
-		try {
-			const { to, message } = JSON.parse(raw);
-			if (!to || !message) {
-				ws.send(JSON.stringify({ type: "error", error: "Invalid request" }));
-				return;
-			}
-			if (message.length > 4096) {
-				ws.send(JSON.stringify({ type: "error", error: "Message too long" }));
-				return;
-			}
-			// Always use the live sock reference (fixes stale-sock bug for messages too)
-			const sock = app.locals.sock;
-			const jid = await normalizeJID(sock, to);
-			await messageQueue.enqueue(jid, () => sock.sendMessage(jid, { text: message }), 0);
-			console.log("Message sent to", to, ":", message);
-			ws.send(JSON.stringify({ type: "success", success: "Message sent" }));
-		} catch (err) {
-			console.error("Error handling WebSocket message:", err);
-			ws.send(JSON.stringify({ type: "error", error: "Failed to send message" }));
-		}
-	});
+	// Dashboard sockets are read-only. Mutations use authenticated HTTP routes.
+	ws.on("message", () => ws.send(JSON.stringify({ type: "error", error: "Dashboard WebSocket is read-only." })));
 
 	ws.on("close", () => clearInterval(heartbeat));
 	ws.on("error", (err) => { console.error("WebSocket error:", err); clearInterval(heartbeat); });
@@ -291,20 +285,31 @@ async function startServer() {
 	// so app.locals.sock and connection.update listener are both set up there.
 
 	app.post("/send", async (req, res) => {
+		const auth = authenticateIntegrationRequest(req.headers.authorization);
+		if (!auth.ok) return res.status(auth.status).send({ message: auth.error });
+		const quota = consumeIntegrationRateLimit(req.ip);
+		if (!quota.ok) {
+			res.set("Retry-After", String(quota.retryAfter));
+			return res.status(429).send({ message: "Integration rate limit exceeded." });
+		}
 		const { to, message } = req.body;
 		if (!to || !message) {
 			return res.status(400).send({ message: "Invalid request" });
 		}
+		if (typeof message !== "string" || message.length > 4096) return res.status(400).send({ message: "Message must be 1-4096 characters." });
+		if (Array.isArray(to) && to.length > 3) return res.status(400).send({ message: "Maximum three allowlisted recipients per request." });
 
 		try {
 			const sock = app.locals.sock; // live reference
 			if (Array.isArray(to)) {
 				const jids = await Promise.all(to.map((r) => normalizeJID(sock, r)));
+				if (jids.some((jid) => !integrationRecipientAllowed(jid))) return res.status(403).send({ message: "Recipient is not allowlisted." });
 				await Promise.all(jids.map((jid) => messageQueue.enqueue(jid, () => sock.sendMessage(jid, { text: message }), 0)));
 				console.log("Message queued for multiple recipients");
 				return res.send({ message: "Messages queued" });
 			} else {
 				const recipientJid = await normalizeJID(sock, to);
+				if (!integrationRecipientAllowed(recipientJid)) return res.status(403).send({ message: "Recipient is not allowlisted." });
 				await messageQueue.enqueue(recipientJid, () => sock.sendMessage(recipientJid, { text: message }), 0);
 				console.log("Message queued for:", to);
 				return res.send({ message: "Message queued" });
