@@ -60,6 +60,9 @@ export const broadcast = (message, targetJids) =>
 export const requestPair = (phoneNumber) =>
   api.post('/api/admin/request-pair', { phoneNumber })
 
+export const createPairInvite = () =>
+  api.post('/api/admin/pair-invite')
+
 // Clear WhatsApp auth (forces re-login)
 export const clearAuth = () =>
   api.post('/api/admin/clear-auth')

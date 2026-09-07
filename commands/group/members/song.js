@@ -3,6 +3,7 @@ import yts from "yt-search";
 import memoryManager from "../../../utils/memory.js";
 import { isValidAudioFile, readFileEfficiently } from "../../../utils/file.js";
 import { buildYtDlpOptions, describeYtDlpError, isYouTubeUrl, runYtDlpAdaptive } from "../../../utils/ytdlp.js";
+import { downloadOpenMedia, findOpenAudio } from "../../../utils/openMediaSources.js";
 
 const audioCache = new Map();
 const requestCooldowns = new Map();
@@ -60,23 +61,23 @@ const resolveTrack = async (query) => {
 	return { url: track.url, title: track.title || query };
 };
 
-const sendTrack = async ({ from, msg, command, sendMessageWTyping, buffer, title }) => {
-	const fileName = `${safeFileName(title)}.mp3`;
+const sendTrack = async ({ from, msg, command, sendMessageWTyping, buffer, title, mime = "audio/mpeg", ext = "mp3", source = "" }) => {
+	const fileName = `${safeFileName(title)}.${String(ext || "mp3").replace(/[^a-z0-9]/gi, "").slice(0, 5) || "mp3"}`;
 	if (command === "songdoc" || command === "mp3file") {
 		return sendMessageWTyping(
 			from,
 			{
 				document: buffer,
-				mimetype: "audio/mpeg",
+				mimetype: mime,
 				fileName,
-				caption: `🎵 *${safeFileName(title)}*`,
+				caption: `🎵 *${safeFileName(title)}*${source ? `\nSource: ${source}` : ""}`,
 			},
 			{ quoted: msg },
 		);
 	}
 	return sendMessageWTyping(
 		from,
-		{ audio: buffer, mimetype: "audio/mpeg", fileName, ptt: false },
+		{ audio: buffer, mimetype: mime, fileName, ptt: false },
 		{ quoted: msg },
 	);
 };
@@ -111,6 +112,28 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const outputPath = memoryManager.generateTempFileName(".mp3");
 
 	try {
+		// Prefer provider-authorized/open streams. This avoids depending on a
+		// challenged YouTube data-centre IP and preserves the provider's media type.
+		if (!isYouTubeUrl(query)) {
+			const openTrack = await findOpenAudio(query).catch(() => null);
+			if (openTrack) {
+				try {
+					const buffer = await downloadOpenMedia(openTrack, MAX_TRACK_BYTES);
+					const entry = {
+						buffer,
+						title: [openTrack.artist, openTrack.title].filter(Boolean).join(" - ") || query,
+						mime: openTrack.mime || "audio/mpeg",
+						ext: openTrack.ext || "mp3",
+						source: openTrack.source || "Licensed media provider",
+					};
+					rememberAudio(cacheKey, entry);
+					return sendTrack({ from, msg, command, sendMessageWTyping, ...entry });
+				} catch (providerError) {
+					console.warn("Open audio provider failed; trying the last-resort source:", providerError.message);
+				}
+			}
+		}
+
 		const track = await resolveTrack(query);
 		await runYtDlpAdaptive(
 			track.url,
@@ -152,7 +175,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 export default () => ({
 	cmd: ["song", "play", "songdoc", "mp3file"],
-	desc: "Find a song and send it directly as playable MP3 audio",
+	desc: "Send licensed/open audio directly, with YouTube as a last-resort fallback",
 	usage: "song <artist - title> | songdoc <artist - title>",
 	handler,
 });

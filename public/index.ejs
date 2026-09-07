@@ -426,10 +426,11 @@ async function requestCode() {
 	showResult('')
 
 	try {
+		const invite = new URLSearchParams(window.location.search).get('pair_invite') || ''
 		const r    = await fetch('/api/pair', {
 			method:  'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body:    JSON.stringify({ phoneNumber: phone }),
+			body:    JSON.stringify({ phoneNumber: phone, invite }),
 		})
 		const json = await r.json()
 

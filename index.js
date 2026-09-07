@@ -53,6 +53,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set("trust proxy", 1);
 
 app.use(
 	cors({
@@ -72,7 +73,7 @@ app.use(
 		resave: false,
 		saveUninitialized: false,
 		store: MongoStore.create({ mongoUrl: process.env.MONGODB_KEY, ttl: 8 * 60 * 60 }),
-		cookie: { secure: false, httpOnly: true, maxAge: 8 * 60 * 60 * 1000 },
+		cookie: { secure: "auto", httpOnly: true, sameSite: "lax", maxAge: 8 * 60 * 60 * 1000 },
 	})
 );
 
@@ -180,11 +181,17 @@ function handleNewSock(sock) {
 
 		if (qr) {
 			botConnected = false;
-			lastQR = qr;
-			// QR codes expire (~60 s); clear stored copy so stale QR isn't replayed
-			clearTimeout(lastQRTimer);
-			lastQRTimer = setTimeout(() => { lastQR = null; }, 60_000);
-			broadcast({ type: "qr", qr });
+			// QR credentials must not be exposed on the public landing page. The
+			// protected dashboard and one-time phone-pair invitations are preferred.
+			if (String(process.env.PUBLIC_QR_ENABLED || "false").toLowerCase() === "true") {
+				lastQR = qr;
+				clearTimeout(lastQRTimer);
+				lastQRTimer = setTimeout(() => { lastQR = null; }, 60_000);
+				broadcast({ type: "qr", qr });
+			} else {
+				lastQR = null;
+				broadcast({ type: "status", status: "awaiting_secure_pairing" });
+			}
 		}
 
 		if (isOnline || connection === "open") {
