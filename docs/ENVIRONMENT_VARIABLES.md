@@ -109,6 +109,9 @@ Cookies and PO tokens cannot guarantee success when a deployment IP is challenge
 | `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION` | S3/R2/MinIO/Backblaze destination |
 | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Storage credentials |
 | `OUTBOUND_WEBHOOK_URL`, `OUTBOUND_WEBHOOK_SECRET` | Allowlisted signed operational webhook |
+| `INTEGRATION_API_KEY` | Enables authenticated `POST /send`; blank keeps it disabled |
+| `INTEGRATION_ALLOWED_RECIPIENTS` | Comma-separated destination numbers explicitly allowed for integrations |
+| `INTEGRATION_RATE_LIMIT` | Requests per minute, bounded to 1-60; default `10` |
 
 Legacy aliases `S3_ACCESS_KEY` and `S3_SECRET_KEY` are recognised; prefer the standard names.
 
