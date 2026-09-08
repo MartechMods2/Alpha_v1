@@ -1,243 +1,194 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Chart as ChartJS,
   ArcElement,
-  RadialLinearScale,
   BarElement,
   CategoryScale,
   LinearScale,
   Tooltip,
   Legend,
 } from 'chart.js'
-import { PolarArea, Bar } from 'react-chartjs-2'
-import { getStats, getAnalytics, getActivity, fmtUptime } from '../lib/api.js'
+import { Bar, Doughnut } from 'react-chartjs-2'
+import { getStats, getAnalytics, getActivity, getCommandStats, getHealth, fmtBytes, fmtUptime } from '../lib/api.js'
 import { useWebSocket } from '../hooks/useWebSocket.js'
 import { useWsEvent } from '../hooks/useWsEvent.js'
 import { useToast } from '../App.jsx'
+import AlphaMark from '../components/AlphaMark.jsx'
+import { DASHBOARD_OPERATIONS, operationCount } from '../lib/operations.js'
 
-ChartJS.register(ArcElement, RadialLinearScale, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
+ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
-const PIE_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444']
-
+const CHART_COLORS = ['#8b5cf6', '#22d3ee', '#a78bfa', '#38bdf8', '#f59e0b']
 const TOOLTIP = {
-  backgroundColor: '#0d1420',
-  borderColor: 'rgba(255,255,255,0.12)',
+  backgroundColor: '#111224',
+  borderColor: 'rgba(167,139,250,.25)',
   borderWidth: 1,
-  titleColor: '#94a3b8',
-  bodyColor: '#e2e8f0',
-  padding: 10,
-  cornerRadius: 8,
+  titleColor: '#c4b5fd',
+  bodyColor: '#f8fafc',
+  padding: 12,
+  cornerRadius: 12,
   boxWidth: 8,
   boxHeight: 8,
 }
 
-function StatCard({ icon, value, label, accent }) {
-  return (
-    <div className="stat-card">
-      <span className="stat-icon">{icon}</span>
-      <div className="stat-body">
-        <strong style={accent ? { color: accent } : {}}>{value ?? '—'}</strong>
-        <span>{label}</span>
-      </div>
-    </div>
-  )
-}
-
 const ACTIVITY_META = {
-  command_used:      { icon: '⚙️', label: 'Command',   color: '#0ea5e9' },
-  member_blocked:    { icon: '🚫', label: 'Blocked',   color: '#ef4444' },
-  member_unblocked:  { icon: '✅', label: 'Unblocked', color: '#10b981' },
-  broadcast_sent:    { icon: '📢', label: 'Broadcast', color: '#f59e0b' },
-  dm_sent:           { icon: '✉️', label: 'DM Sent',   color: '#8b5cf6' },
+  command_used: { icon: '⌘', label: 'Command', color: '#8b5cf6' },
+  member_blocked: { icon: '⊘', label: 'Blocked', color: '#fb7185' },
+  member_unblocked: { icon: '✓', label: 'Unblocked', color: '#34d399' },
+  broadcast_sent: { icon: '↗', label: 'Broadcast', color: '#f59e0b' },
+  dm_sent: { icon: '✉', label: 'DM', color: '#22d3ee' },
 }
 
 function fmtAgo(ts) {
-  const s = Math.floor((Date.now() - ts) / 1000)
-  if (s < 60)   return `${s}s ago`
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000))
+  if (s < 60) return `${s}s ago`
   if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  return `${Math.floor(s / 3600)}h ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
 }
 
 function ActivityDetail({ kind, detail }) {
-  if (kind === 'command_used') return <span><code style={{ fontFamily: 'monospace', color: '#0ea5e9' }}>{detail.cmd}</code> by {detail.name || detail.from?.split('@')[0]} in {detail.group}</span>
-  if (kind === 'member_blocked' || kind === 'member_unblocked') return <code style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{detail.jid}</code>
-  if (kind === 'broadcast_sent') return <span>{detail.sent}/{detail.total} sent — "{detail.preview}"</span>
-  if (kind === 'dm_sent') return <span>to <code style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{detail.to}</code></span>
+  if (kind === 'command_used') return <span><code>{detail.cmd}</code> by {detail.name || detail.from?.split('@')[0]} in {detail.group}</span>
+  if (kind === 'member_blocked' || kind === 'member_unblocked') return <code>{detail.jid}</code>
+  if (kind === 'broadcast_sent') return <span>{detail.sent}/{detail.total} sent — “{detail.preview}”</span>
+  if (kind === 'dm_sent') return <span>to <code>{detail.to}</code></span>
   return <span>{JSON.stringify(detail)}</span>
+}
+
+function Metric({ icon, value, label, hint }) {
+  return <div className="premium-metric"><span className="premium-metric-icon">{icon}</span><div><strong>{value ?? '—'}</strong><span>{label}</span>{hint && <small>{hint}</small>}</div></div>
 }
 
 export default function Dashboard() {
   const toast = useToast()
-  const [stats,     setStats]     = useState(null)
-  const [analytics, setAnalytics] = useState(null)
-  const [loading,   setLoading]   = useState(true)
-  const [activity,  setActivity]  = useState([])
   const wsStatus = useWebSocket()
+  const [stats, setStats] = useState(null)
+  const [analytics, setAnalytics] = useState(null)
+  const [health, setHealth] = useState(null)
+  const [commandStats, setCommandStats] = useState({})
+  const [activity, setActivity] = useState([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([getStats(), getAnalytics(), getActivity()])
-      .then(([s, a, act]) => { setStats(s); setAnalytics(a); setActivity((act.activity || []).slice().reverse()) })
+    Promise.all([getStats(), getAnalytics(), getActivity(), getCommandStats(), getHealth()])
+      .then(([s, a, act, commands, h]) => {
+        setStats(s)
+        setAnalytics(a)
+        setHealth(h)
+        setCommandStats(commands.stats || {})
+        setActivity((act.activity || []).slice().reverse())
+      })
       .catch(() => toast('Failed to load dashboard data', false))
       .finally(() => setLoading(false))
   }, [])
 
-  const handleActivity = useCallback(data => {
-    const ev = data.event || data
-    if (ev?.id) setActivity(prev => [ev, ...prev.slice(0, 19)])
+  const handleActivity = useCallback((data) => {
+    const event = data.event || data
+    if (event?.id) setActivity((prev) => [event, ...prev.slice(0, 19)])
   }, [])
-
-  const handleActivitySnapshot = useCallback(data => {
+  const handleActivitySnapshot = useCallback((data) => {
     if (data.activity?.length) setActivity(data.activity.slice().reverse())
   }, [])
-
   useWsEvent('activity', handleActivity)
   useWsEvent('activity_snapshot', handleActivitySnapshot)
 
-  if (loading) return <div className="loading-state"><span className="spinner" /></div>
+  const topCommands = useMemo(() => Object.entries(commandStats)
+    .map(([name, count]) => ({ name, count: Number(count) || 0 }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5), [commandStats])
 
+  if (loading) return <div className="loading-state premium-loading"><span className="spinner" /><span>Loading Alpha console…</span></div>
+
+  const connected = wsStatus === 'connected' || health?.connected
   const typeData = analytics ? [
-    { name: 'Text',    value: analytics.typeBreakdown.text },
-    { name: 'Image',   value: analytics.typeBreakdown.image },
-    { name: 'Video',   value: analytics.typeBreakdown.video },
+    { name: 'Text', value: analytics.typeBreakdown.text },
+    { name: 'Image', value: analytics.typeBreakdown.image },
+    { name: 'Video', value: analytics.typeBreakdown.video },
     { name: 'Sticker', value: analytics.typeBreakdown.sticker },
-    { name: 'PDF',     value: analytics.typeBreakdown.pdf },
-  ].filter(d => d.value > 0) : []
-
-  const topGroups = analytics?.topGroups?.slice(0, 6) || []
-
-  const polarData = {
-    labels: typeData.map(d => d.name),
-    datasets: [{
-      data: typeData.map(d => d.value),
-      backgroundColor: PIE_COLORS.map(c => c + 'bb'),
-      borderColor: PIE_COLORS,
-      borderWidth: 1.5,
-    }],
-  }
+    { name: 'PDF', value: analytics.typeBreakdown.pdf },
+  ].filter((item) => item.value > 0) : []
+  const topGroups = analytics?.topGroups?.slice(0, 7) || []
+  const memoryPct = health?.memory?.heapTotal ? Math.min(100, Math.round((health.memory.heapUsed / health.memory.heapTotal) * 100)) : 0
 
   const groupBarData = {
-    labels: topGroups.map(g => g.name),
-    datasets: [{ data: topGroups.map(g => g.messages), backgroundColor: '#0ea5e9', borderRadius: 4, barThickness: 22 }],
+    labels: topGroups.map((group) => group.name),
+    datasets: [{ data: topGroups.map((group) => group.messages), backgroundColor: '#8b5cf6', hoverBackgroundColor: '#a78bfa', borderRadius: 8, barThickness: 20 }],
+  }
+  const messageData = {
+    labels: typeData.map((item) => item.name),
+    datasets: [{ data: typeData.map((item) => item.value), backgroundColor: CHART_COLORS, borderColor: '#101124', borderWidth: 4, hoverOffset: 8 }],
   }
 
-  const connected = wsStatus === 'connected'
+  const quickOps = DASHBOARD_OPERATIONS.filter((item) => item.to).slice(1, 9)
 
   return (
-    <div>
-      <div className="page-header">
-        <div>
-          <h2>Dashboard</h2>
-          <p className="sub">Overview of your bot's activity and health.</p>
-        </div>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.82rem', color: connected ? '#10b981' : '#4b5d72' }}>
-          <span className={`conn-dot ${connected ? 'on' : ''}`} />
-          {connected ? 'Bot Online' : wsStatus === 'connecting' ? 'Connecting…' : 'Bot Offline'}
-        </span>
-      </div>
-
-      <div className="stats-grid">
-        <StatCard icon="👥" value={stats?.groupCount}               label="Total Groups" />
-        <StatCard icon="✅" value={analytics?.activeGroups}         label="Active Groups"  accent="#10b981" />
-        <StatCard icon="👤" value={stats?.memberCount}              label="Total Members" />
-        <StatCard icon="🚫" value={analytics?.blockedMembers}       label="Blocked Members" accent="#ef4444" />
-        <StatCard icon="💬" value={analytics?.totalMessages?.toLocaleString()} label="Total Messages" />
-        <StatCard icon="⏱"  value={stats ? fmtUptime(stats.uptime) : null}    label="Uptime" />
-      </div>
-
-      <div className="charts-row">
-        <div className="chart-card">
-          <p className="chart-title">Top Groups by Messages</p>
-          {topGroups.length ? (
-            <div style={{ height: 'clamp(220px, 28vh, 480px)' }}>
-              <Bar
-                data={groupBarData}
-                options={{
-                  indexAxis: 'y',
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: { display: false },
-                    tooltip: { ...TOOLTIP, callbacks: { label: ctx => ` ${ctx.parsed.x.toLocaleString()} msgs` } },
-                  },
-                  scales: {
-                    x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#4b5d72', font: { size: 11 } }, border: { display: false } },
-                    y: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 11 } }, border: { display: false } },
-                  },
-                }}
-              />
+    <div className="premium-page premium-dashboard">
+      <section className="dashboard-hero premium-panel">
+        <div className="dashboard-hero-copy">
+          <div className="hero-mark"><AlphaMark size={58} /></div>
+          <div>
+            <span className="eyebrow">ALPHA BY MARTECH</span>
+            <h2>Command the whole bot from one console.</h2>
+            <p>Premium live overview for community management, automation, security, media and deployment operations.</p>
+            <div className="hero-actions">
+              <Link className="btn btn-primary" to="/operations">✦ Open Operations Hub</Link>
+              <Link className="btn btn-ghost" to="/control-center">⚡ Group Control Center</Link>
             </div>
-          ) : <p className="empty-state">No group data yet.</p>}
-        </div>
-
-        <div className="chart-card">
-          <p className="chart-title">Message Type Breakdown</p>
-          {typeData.length ? (
-            <div style={{ height: 'clamp(220px, 28vh, 480px)' }}>
-              <PolarArea
-                data={polarData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: { labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 10, padding: 12 } },
-                    tooltip: { ...TOOLTIP, callbacks: { label: ctx => ` ${ctx.parsed.r.toLocaleString()} Messages` } },
-                  },
-                  scales: {
-                    r: {
-                      grid: { color: 'rgba(255,255,255,0.07)' },
-                      ticks: { color: '#4b5d72', font: { size: 9 }, backdropColor: 'transparent', maxTicksLimit: 4 },
-                      angleLines: { color: 'rgba(255,255,255,0.07)' },
-                    },
-                  },
-                }}
-              />
-            </div>
-          ) : <p className="empty-state">No message data yet.</p>}
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10, marginBottom: 18 }}>
-        {[
-          { to: '/commands',  icon: '⚙️', label: 'Manage Commands',  sub: `${(stats?.disabledGlobally || []).length} disabled` },
-          { to: '/groups',    icon: '👥', label: 'Manage Groups',    sub: `${analytics?.activeGroups ?? '—'} active` },
-          { to: '/members',   icon: '👤', label: 'View Members',     sub: `${analytics?.blockedMembers ?? '—'} blocked` },
-          { to: '/dm',        icon: '✉️', label: 'Direct Message',   sub: 'Message any user' },
-          { to: '/broadcast', icon: '📢', label: 'Safe Broadcast',   sub: 'Choose up to three groups' },
-          { to: '/logs',      icon: '📋', label: 'Logs',             sub: 'Live bot output' },
-        ].map(({ to, icon, label, sub }) => (
-          <Link key={to} to={to} style={{ textDecoration: 'none' }}>
-            <div className="stat-card" style={{ cursor: 'pointer', gap: 12 }}>
-              <span className="stat-icon">{icon}</span>
-              <div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{label}</div>
-                <div style={{ fontSize: '0.72rem', color: '#4b5d72', marginTop: 2 }}>{sub}</div>
-              </div>
-            </div>
-          </Link>
-        ))}
-      </div>
-
-      <div className="chart-card">
-        <p className="chart-title">Recent Activity</p>
-        {activity.length === 0 ? (
-          <p className="empty-state" style={{ padding: '24px' }}>No activity yet. Use the bot to see live events here.</p>
-        ) : (
-          <div className="activity-list">
-            {activity.map(ev => {
-              const m = ACTIVITY_META[ev.kind] || { icon: '•', label: ev.kind, color: 'var(--text-soft)' }
-              return (
-                <div key={ev.id} className="activity-row">
-                  <span className="activity-icon">{m.icon}</span>
-                  <span className="activity-badge" style={{ color: m.color, background: m.color + '18' }}>{m.label}</span>
-                  <span className="activity-detail"><ActivityDetail kind={ev.kind} detail={ev.detail || {}} /></span>
-                  <span className="activity-time">{fmtAgo(ev.ts)}</span>
-                </div>
-              )
-            })}
           </div>
-        )}
-      </div>
+        </div>
+        <div className="hero-status-cluster">
+          <div className={`hero-live-card ${connected ? 'online' : ''}`}>
+            <span className="status-orb" /><div><strong>{connected ? 'Alpha is live' : 'Alpha is offline'}</strong><small>{stats?.botNumber || 'WhatsApp connection'}</small></div>
+          </div>
+          <div className="hero-operation-count"><strong>{operationCount + 5}</strong><span>dashboard functions</span></div>
+        </div>
+      </section>
+
+      <section className="premium-metric-grid">
+        <Metric icon="👥" value={stats?.groupCount} label="Managed groups" hint={`${analytics?.activeGroups ?? 0} active`} />
+        <Metric icon="👤" value={stats?.memberCount?.toLocaleString?.()} label="Known members" hint={`${analytics?.blockedMembers ?? 0} blocked`} />
+        <Metric icon="💬" value={analytics?.totalMessages?.toLocaleString?.()} label="Tracked messages" hint="Across all media types" />
+        <Metric icon="⏱" value={stats ? fmtUptime(stats.uptime) : '—'} label="Current uptime" hint={health?.nodeVersion || 'Node runtime'} />
+        <Metric icon="⌘" value={Object.keys(commandStats).length} label="Commands used" hint={topCommands[0] ? `Top: ${topCommands[0].name}` : 'Awaiting usage'} />
+        <Metric icon="◒" value={`${memoryPct}%`} label="Heap usage" hint={health?.memory ? `${fmtBytes(health.memory.heapUsed)} used` : 'Runtime memory'} />
+      </section>
+
+      <section className="dashboard-bento">
+        <div className="premium-panel bento-wide chart-card premium-chart-card">
+          <div className="section-heading"><div><span className="eyebrow">ACTIVITY</span><h3>Top groups</h3></div><Link to="/analytics">Open analytics ↗</Link></div>
+          {topGroups.length ? <div className="premium-chart-wrap"><Bar data={groupBarData} options={{ indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { ...TOOLTIP, callbacks: { label: (ctx) => ` ${ctx.parsed.x.toLocaleString()} messages` } } }, scales: { x: { grid: { color: 'rgba(148,163,184,.08)' }, ticks: { color: '#64748b' }, border: { display: false } }, y: { grid: { display: false }, ticks: { color: '#a8b2c7' }, border: { display: false } } } }} /></div> : <div className="empty-state">No group activity yet.</div>}
+        </div>
+
+        <div className="premium-panel bento-small premium-chart-card">
+          <div className="section-heading"><div><span className="eyebrow">MESSAGE MIX</span><h3>Media share</h3></div></div>
+          {typeData.length ? <div className="donut-wrap"><Doughnut data={messageData} options={{ responsive: true, maintainAspectRatio: false, cutout: '72%', plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 7, padding: 14 } }, tooltip: TOOLTIP } }} /><div className="donut-center"><strong>{analytics?.totalMessages?.toLocaleString?.()}</strong><span>messages</span></div></div> : <div className="empty-state">No message data yet.</div>}
+        </div>
+
+        <div className="premium-panel bento-small command-leaderboard">
+          <div className="section-heading"><div><span className="eyebrow">COMMANDS</span><h3>Most used</h3></div><Link to="/commands">Manage ↗</Link></div>
+          <div className="leaderboard-list">
+            {topCommands.length ? topCommands.map((item, index) => <div key={item.name}><span>{String(index + 1).padStart(2, '0')}</span><code>{item.name}</code><strong>{item.count}</strong></div>) : <div className="empty-state">Command usage will appear here.</div>}
+          </div>
+        </div>
+
+        <div className="premium-panel bento-wide quick-actions-panel">
+          <div className="section-heading"><div><span className="eyebrow">FAST ACCESS</span><h3>Premium shortcuts</h3></div><Link to="/operations">All functions ↗</Link></div>
+          <div className="premium-quick-grid">
+            {quickOps.map((item) => <Link key={item.id} to={item.to} className="premium-quick-card"><span>{item.icon}</span><div><strong>{item.label}</strong><small>{item.description}</small></div><em>↗</em></Link>)}
+          </div>
+        </div>
+      </section>
+
+      <section className="premium-panel activity-panel">
+        <div className="section-heading"><div><span className="eyebrow">LIVE FEED</span><h3>Recent activity</h3></div><Link to="/logs">Open logs ↗</Link></div>
+        {activity.length === 0 ? <div className="empty-state">No activity yet. Use Alpha to populate the live feed.</div> : <div className="activity-list premium-activity-list">
+          {activity.slice(0, 12).map((event) => {
+            const meta = ACTIVITY_META[event.kind] || { icon: '•', label: event.kind, color: '#94a3b8' }
+            return <div key={event.id} className="activity-row premium-activity-row"><span className="activity-icon" style={{ color: meta.color }}>{meta.icon}</span><span className="activity-badge" style={{ color: meta.color, background: `${meta.color}16` }}>{meta.label}</span><span className="activity-detail"><ActivityDetail kind={event.kind} detail={event.detail || {}} /></span><span className="activity-time">{fmtAgo(event.ts)}</span></div>
+          })}
+        </div>}
+      </section>
     </div>
   )
 }

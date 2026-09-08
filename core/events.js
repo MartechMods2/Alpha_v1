@@ -4,6 +4,7 @@ import getGroupEvent from "./groupEvent.js";
 import getCallEvent from "./callEvents.js";
 import { handlePassiveCommunityMessage } from "../utils/passiveCommunity.js";
 import { handleInteractivePollUpdate } from "../utils/pollManager.js";
+import { handleOwnerMentionReaction } from "../utils/ownerMentionReaction.js";
 
 const events = async (sock, startSock, cache) => {
 	sock.ev.process(async (event) => {
@@ -40,6 +41,11 @@ const events = async (sock, startSock, cache) => {
 						(msg) => msg && msg.message && msg.key?.remoteJid && Object.keys(msg.message).length > 0,
 					);
 					await Promise.all(validMessages.map(async (msg) => {
+						try {
+							await handleOwnerMentionReaction(sock, msg);
+						} catch (error) {
+							console.error("Owner mention reaction handler failed:", error.message);
+						}
 						try {
 							await handlePassiveCommunityMessage(sock, msg);
 						} catch (error) {
