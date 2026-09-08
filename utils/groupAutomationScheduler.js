@@ -1,9 +1,5 @@
 import { getActionSettings, recordAction } from "../db/actionData.js";
-import {
-	claimAutomationDelivery,
-	listEnabledGroupAutomations,
-	releaseAutomationDelivery,
-} from "../db/groupAutomation.js";
+import { claimAutomationDelivery, listEnabledGroupAutomations, releaseAutomationDelivery } from "../db/groupAutomation.js";
 import { getGroupTools } from "../db/groupTools.js";
 import { getMemberData } from "../db/members.js";
 import { getSock } from "../core/socketRef.js";
@@ -16,53 +12,25 @@ import { imageBufferToSticker } from "./mediaStudio.js";
 import { getSafeSettings } from "../db/safePackData.js";
 import { dailyInsightFor, renderGroupTemplate } from "./groupTemplates.js";
 
-const safeName = (value, jid) => String(value || jid?.split("@")[0] || "Member")
-	.replace(/[\r\n\t*_~`]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
-
-const memberName = async (jid) => {
-	const data = await getMemberData(jid).catch(() => null);
-	return safeName(data && data !== -1 ? data.username : "", jid);
-};
-
+const safeName = (value, jid) => String(value || jid?.split("@")[0] || "Member").replace(/[\r\n\t*_~`]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+const memberName = async (jid) => { const data = await getMemberData(jid).catch(() => null); return safeName(data && data !== -1 ? data.username : "", jid); };
 const sendQueued = (sock, jid, content) => messageQueue.enqueue(jid, () => sock.sendMessage(jid, content), 2);
-
-const groupName = async (sock, jid) => {
-	try {
-		const metadata = await sock.groupMetadata(jid);
-		return safeName(metadata?.subject || "the group");
-	} catch {
-		return "the group";
-	}
-};
+const groupName = async (sock, jid) => { try { const metadata = await sock.groupMetadata(jid); return safeName(metadata?.subject || "the group"); } catch { return "the group"; } };
 
 const sendMorning = async (sock, automation, clock) => {
 	if (!automation.morningEnabled || clock.time !== (automation.morningTime || "06:00")) return;
 	const delivery = { groupJid: automation._id, type: "morning", key: clock.dateKey };
 	if (!await claimAutomationDelivery(delivery)) return;
-	try {
-		const name = await groupName(sock, automation._id);
-		await sendQueued(sock, automation._id, {
-			text: renderGroupTemplate("morning", { group: name, quote: dailyInsightFor(clock.dateKey) }),
-		});
-	} catch (error) {
-		await releaseAutomationDelivery(delivery);
-		throw error;
-	}
+	try { const name = await groupName(sock, automation._id); await sendQueued(sock, automation._id, { text: renderGroupTemplate("morning", { group: name, quote: dailyInsightFor(clock.dateKey) }) }); }
+	catch (error) { await releaseAutomationDelivery(delivery); throw error; }
 };
-
 const sendNight = async (sock, automation, clock) => {
 	if (!automation.nightEnabled || clock.time !== (automation.nightTime || "23:00")) return;
 	const delivery = { groupJid: automation._id, type: "night", key: clock.dateKey };
 	if (!await claimAutomationDelivery(delivery)) return;
-	try {
-		const name = await groupName(sock, automation._id);
-		await sendQueued(sock, automation._id, { text: renderGroupTemplate("night", { group: name }) });
-	} catch (error) {
-		await releaseAutomationDelivery(delivery);
-		throw error;
-	}
+	try { const name = await groupName(sock, automation._id); await sendQueued(sock, automation._id, { text: renderGroupTemplate("night", { group: name }) }); }
+	catch (error) { await releaseAutomationDelivery(delivery); throw error; }
 };
-
 const sendBirthdays = async (sock, automation, tools, clock) => {
 	if (!automation.birthdayEnabled) return;
 	const birthdays = (tools.birthdays || []).filter((item) => Number(item.day) === clock.day && Number(item.month) === clock.month);
@@ -71,104 +39,48 @@ const sendBirthdays = async (sock, automation, tools, clock) => {
 	if (!await claimAutomationDelivery(delivery)) return;
 	const mentions = birthdays.map((item) => item.memberJid).filter(Boolean);
 	const names = birthdays.map((item) => `@${String(item.memberJid || "").split("@")[0] || safeName(item.name)}`);
-	try {
-		const name = await groupName(sock, automation._id);
-		const text = birthdays.length === 1
-			? renderGroupTemplate("birthday", { user: names[0], group: name })
-			: `╭─ 🎂 *HAPPY BIRTHDAY*\n│\n│ ${names.join(", ")} — today we celebrate all of you! 🎉\n│ Wishing you progress, good health and plenty of wins from everyone in *${name}*.\n╰──────────────────`;
-		await sendQueued(sock, automation._id, { text, mentions });
-	} catch (error) {
-		await releaseAutomationDelivery(delivery);
-		throw error;
-	}
+	try { const name = await groupName(sock, automation._id); await sendQueued(sock, automation._id, { text: renderGroupTemplate("birthday", { user: names.join(", "), group: name }), mentions }); }
+	catch (error) { await releaseAutomationDelivery(delivery); throw error; }
 };
-
 const sendEventAlerts = async (sock, automation, tools, clock) => {
 	if (!automation.eventAlertsEnabled) return;
 	for (const event of tools.events || []) {
-		const eventKey = new Date(event.date).toISOString().slice(0, 10);
-		const days = daysBetweenDateKeys(clock.dateKey, eventKey);
+		const eventKey = new Date(event.date).toISOString().slice(0, 10); const days = daysBetweenDateKeys(clock.dateKey, eventKey);
 		if (![30, 7, 1, 0].includes(days)) continue;
-		const deliveryKey = `${event.id}:${clock.dateKey}:${days}`;
-		const delivery = { groupJid: automation._id, type: "event", key: deliveryKey };
+		const delivery = { groupJid: automation._id, type: "event", key: `${event.id}:${clock.dateKey}:${days}` };
 		if (!await claimAutomationDelivery(delivery)) continue;
-		const when = days === 0 ? "is today" : `is in ${days} day${days === 1 ? "" : "s"}`;
-		try {
-			await sendQueued(sock, automation._id, { text: `📅 *Event Reminder*\n\n*${safeName(event.title)}* ${when}.` });
-		} catch (error) {
-			await releaseAutomationDelivery(delivery);
-			throw error;
-		}
+		const when = days === 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`;
+		try { const name = await groupName(sock, automation._id); await sendQueued(sock, automation._id, { text: renderGroupTemplate("event", { group: name, event: safeName(event.title), date: eventKey, when }) }); }
+		catch (error) { await releaseAutomationDelivery(delivery); throw error; }
 	}
 };
-
 const sendDailyAction = async (sock, automation, clock) => {
 	if (!automation.actionDailyEnabled) return;
 	const metadata = await sock.groupMetadata(automation._id);
-	const [settings, safeSettings, botJids] = await Promise.all([
-		getActionSettings(automation._id), getSafeSettings(automation._id), getBotIdentityJids(sock, metadata),
-	]);
+	const [settings, safeSettings, botJids] = await Promise.all([getActionSettings(automation._id), getSafeSettings(automation._id), getBotIdentityJids(sock, metadata)]);
 	if (settings.mode === "off") return;
-	const candidates = (metadata.participants || [])
-		.map((participant) => participantJids(participant)[0])
-		.filter(Boolean)
-		.filter((jid) => !isSameGroupUser(metadata, jid, botJids))
-		.filter((jid) => !(settings.optedOutMembers || []).some((blocked) => isSameGroupUser(metadata, jid, blocked)));
+	const candidates = (metadata.participants || []).map((participant) => participantJids(participant)[0]).filter(Boolean).filter((jid) => !isSameGroupUser(metadata, jid, botJids)).filter((jid) => !(settings.optedOutMembers || []).some((blocked) => isSameGroupUser(metadata, jid, blocked)));
 	if (candidates.length < 2) return;
-	const delivery = { groupJid: automation._id, type: "daily-action", key: clock.dateKey };
-	if (!await claimAutomationDelivery(delivery)) return;
+	const delivery = { groupJid: automation._id, type: "daily-action", key: clock.dateKey }; if (!await claimAutomationDelivery(delivery)) return;
 	try {
-		const actorIndex = Math.floor(Math.random() * candidates.length);
-		let targetIndex = Math.floor(Math.random() * (candidates.length - 1));
-		if (targetIndex >= actorIndex) targetIndex += 1;
-		const actorJid = candidates[actorIndex];
-		const targetJid = candidates[targetIndex];
-		const action = FRIENDLY_ACTIONS[Math.floor(Math.random() * FRIENDLY_ACTIONS.length)];
+		const actorIndex = Math.floor(Math.random() * candidates.length); let targetIndex = Math.floor(Math.random() * (candidates.length - 1)); if (targetIndex >= actorIndex) targetIndex += 1;
+		const actorJid = candidates[actorIndex]; const targetJid = candidates[targetIndex]; const action = FRIENDLY_ACTIONS[Math.floor(Math.random() * FRIENDLY_ACTIONS.length)];
 		const [actorName, targetName] = await Promise.all([memberName(actorJid), memberName(targetJid)]);
-		const sticker = await runMediaJob({
-			feature: "daily-action", groupJid: automation._id, senderJid: `automation:${automation._id}`, retryable: false,
-			task: async () => imageBufferToSticker(await createActionStickerImage({ action, actorName, targetName, style: safeSettings.actionStyle }), {
-				pack: "Alpha Daily Action", author: "Martech", quality: 84,
-			}),
-		});
-		await sendQueued(sock, automation._id, { sticker, mentions: [actorJid, targetJid] });
-		await recordAction({ groupJid: automation._id, actorJid, actorName, targetJid, targetName, action });
-	} catch (error) {
-		await releaseAutomationDelivery(delivery);
-		throw error;
-	}
+		const sticker = await runMediaJob({ feature: "daily-action", groupJid: automation._id, senderJid: `automation:${automation._id}`, retryable: false, task: async () => imageBufferToSticker(await createActionStickerImage({ action, actorName, targetName, style: safeSettings.actionStyle }), { pack: "Alpha Daily Action", author: "Martech", quality: 84 }) });
+		await sendQueued(sock, automation._id, { sticker, mentions: [actorJid, targetJid] }); await recordAction({ groupJid: automation._id, actorJid, actorName, targetJid, targetName, action });
+	} catch (error) { await releaseAutomationDelivery(delivery); throw error; }
 };
-
 export const checkGroupAutomations = async (now = new Date()) => {
-	const sock = getSock();
-	if (!sock?.user) return;
-	let automations;
-	try {
-		automations = await listEnabledGroupAutomations();
-	} catch (error) {
-		console.error("[GROUP AUTOMATION] DB fetch failed:", error.message);
-		return;
-	}
+	const sock = getSock(); if (!sock?.user) return; let automations;
+	try { automations = await listEnabledGroupAutomations(); } catch (error) { console.error("[GROUP AUTOMATION] DB fetch failed:", error.message); return; }
 	for (const automation of automations) {
 		try {
-			const clock = localClock(now, automation.timezone || process.env.BOT_TIMEZONE || "Africa/Lagos");
-			await sendMorning(sock, automation, clock);
-			await sendNight(sock, automation, clock);
+			const clock = localClock(now, automation.timezone || process.env.BOT_TIMEZONE || "Africa/Lagos"); await sendMorning(sock, automation, clock); await sendNight(sock, automation, clock);
 			if (clock.time !== (automation.time || "08:00")) continue;
 			const tools = automation.birthdayEnabled || automation.eventAlertsEnabled ? await getGroupTools(automation._id) : {};
-			await sendBirthdays(sock, automation, tools, clock);
-			await sendEventAlerts(sock, automation, tools, clock);
-			await sendDailyAction(sock, automation, clock);
-		} catch (error) {
-			console.error(`[GROUP AUTOMATION] ${automation._id} failed:`, error.message);
-		}
+			await sendBirthdays(sock, automation, tools, clock); await sendEventAlerts(sock, automation, tools, clock); await sendDailyAction(sock, automation, clock);
+		} catch (error) { console.error(`[GROUP AUTOMATION] ${automation._id} failed:`, error.message); }
 	}
 };
-
 let interval = null;
-export const startGroupAutomationScheduler = () => {
-	if (interval) return;
-	interval = setInterval(() => checkGroupAutomations(), 30_000);
-	checkGroupAutomations();
-	console.log("[GROUP AUTOMATION] Scheduler started");
-};
+export const startGroupAutomationScheduler = () => { if (interval) return; interval = setInterval(() => checkGroupAutomations(), 30_000); checkGroupAutomations(); console.log("[GROUP AUTOMATION] Scheduler started"); };

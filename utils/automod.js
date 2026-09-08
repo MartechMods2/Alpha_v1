@@ -8,91 +8,37 @@ import {
 import { detectSpam } from "./spamTracker.js";
 
 export const handleAutomodMessage = async ({
-	sock,
-	msg,
-	groupJid,
-	senderJid,
-	body,
-	isCommand,
-	isOwner,
-	isGroupAdmin,
-	groupData,
-	groupMetadata,
-	botJids,
-	isBotAdmin,
-	isGroupStatusMention = false,
-	sendMessageWTyping,
+	sock, msg, groupJid, senderJid, body, isCommand, isOwner, isGroupAdmin,
+	groupData, groupMetadata, botJids, isBotAdmin, isGroupStatusMention = false, sendMessageWTyping,
 }) => {
-	if (!groupData || msg.key.fromMe || isOwner || isGroupAdmin) {
-		return { handled: false };
-	}
-	if (isProtectedGroupMember(groupMetadata, senderJid, botJids)) {
-		return { handled: false };
-	}
+	if (!groupData || msg.key.fromMe || isOwner || isGroupAdmin) return { handled: false };
+	if (isProtectedGroupMember(groupMetadata, senderJid, botJids)) return { handled: false };
 
-	const muteResult = await enforceMemberMute({
-		sock,
-		msg,
-		groupJid,
-		memberJid: senderJid,
-		groupData,
-		groupMetadata,
-		botJids,
-		isBotAdmin,
-	});
+	const muteResult = await enforceMemberMute({ sock, msg, groupJid, memberJid: senderJid, groupData, groupMetadata, botJids, isBotAdmin });
 	if (muteResult.handled) return muteResult;
 
 	if (isGroupStatusMention) {
-		return warnStatusMentionMember({
-			sock,
-			msg,
-			groupJid,
-			memberJid: senderJid,
-			groupData,
-			groupMetadata,
-			botJids,
-			isBotAdmin,
-			sendMessageWTyping,
-		});
+		return warnStatusMentionMember({ sock, msg, groupJid, memberJid: senderJid, groupData, groupMetadata, botJids, isBotAdmin, sendMessageWTyping });
 	}
-
 	if (isCommand) return { handled: false };
 
 	const settings = getGroupSafetySettings(groupData);
 	let reason = null;
 	let shouldDelete = false;
-
+	let templateKey = "warning";
 	if (settings.isAntiLinkOn && hasDisallowedLink(body, settings.allowedDomains)) {
-		reason = "Links are not allowed here";
+		reason = "Unapproved link detected";
 		shouldDelete = settings.antiLinkAction === "delete";
+		templateKey = "anti-link";
 	} else if (settings.isAntiSpamOn && body) {
-		reason = detectSpam({
-			key: `${groupJid}:${senderJid}`,
-			body,
-			settings,
-		});
+		reason = detectSpam({ key: `${groupJid}:${senderJid}`, body, settings });
 		shouldDelete = Boolean(reason);
+		templateKey = "anti-spam";
 	}
-
 	if (!reason) return { handled: false };
-
 	if (shouldDelete && isBotAdmin) {
-		await sock.sendMessage(groupJid, { delete: msg.key }).catch((error) =>
-			console.warn("Automod could not delete message:", error.message),
-		);
+		await sock.sendMessage(groupJid, { delete: msg.key }).catch((error) => console.warn("Automod could not delete message:", error.message));
 	}
-
-	const result = await warnGroupMember({
-		sock,
-		msg,
-		groupJid,
-		memberJid: senderJid,
-		groupData,
-		groupMetadata,
-		botJids,
-		isBotAdmin,
-		sendMessageWTyping,
-		reason,
-	});
+	const result = await warnGroupMember({ sock, msg, groupJid, memberJid: senderJid, groupData, groupMetadata, botJids, isBotAdmin, sendMessageWTyping, reason, templateKey });
 	return { handled: true, ...result };
 };
