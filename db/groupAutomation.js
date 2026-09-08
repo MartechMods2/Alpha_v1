@@ -7,7 +7,11 @@ export const DEFAULT_GROUP_AUTOMATION = Object.freeze({
 	birthdayEnabled: false,
 	eventAlertsEnabled: false,
 	actionDailyEnabled: false,
+	morningEnabled: false,
+	nightEnabled: false,
 	time: "08:00",
+	morningTime: "06:00",
+	nightTime: "23:00",
 	timezone: process.env.BOT_TIMEZONE || "Africa/Lagos",
 });
 
@@ -23,7 +27,7 @@ const cleanTimezone = (value) => {
 
 const cleanTime = (value) => {
 	const match = String(value || "").trim().match(/^([01]\d|2[0-3]):([0-5]\d)$/);
-	if (!match) throw new Error("Invalid time. Use 24-hour HH:MM, for example 08:00");
+	if (!match) throw new Error("Invalid time. Use 24-hour HH:MM, for example 06:00");
 	return `${match[1]}:${match[2]}`;
 };
 
@@ -33,19 +37,22 @@ export const getGroupAutomation = async (groupJid) => ({
 });
 
 export const setGroupAutomationToggle = async (groupJid, field, enabled) => {
-	if (!["birthdayEnabled", "eventAlertsEnabled", "actionDailyEnabled"].includes(field)) throw new Error("Unknown automation");
+	if (!["birthdayEnabled", "eventAlertsEnabled", "actionDailyEnabled", "morningEnabled", "nightEnabled"].includes(field)) throw new Error("Unknown automation");
 	await groupAutomations.updateOne(
 		{ _id: groupJid },
-		{ $set: { [field]: Boolean(enabled), updatedAt: new Date() }, $setOnInsert: { createdAt: new Date(), time: "08:00", timezone: DEFAULT_GROUP_AUTOMATION.timezone } },
+		{ $set: { [field]: Boolean(enabled), updatedAt: new Date() }, $setOnInsert: {
+			createdAt: new Date(), time: "08:00", morningTime: "06:00", nightTime: "23:00", timezone: DEFAULT_GROUP_AUTOMATION.timezone,
+		} },
 		{ upsert: true },
 	);
 };
 
-export const setGroupAutomationTime = async (groupJid, value) => {
+export const setGroupAutomationTime = async (groupJid, value, field = "time") => {
+	if (!["time", "morningTime", "nightTime"].includes(field)) throw new Error("Unknown automation time field");
 	const time = cleanTime(value);
 	await groupAutomations.updateOne(
 		{ _id: groupJid },
-		{ $set: { time, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date(), timezone: DEFAULT_GROUP_AUTOMATION.timezone } },
+		{ $set: { [field]: time, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date(), timezone: DEFAULT_GROUP_AUTOMATION.timezone } },
 		{ upsert: true },
 	);
 	return time;
@@ -55,7 +62,7 @@ export const setGroupAutomationTimezone = async (groupJid, value) => {
 	const timezone = cleanTimezone(value);
 	await groupAutomations.updateOne(
 		{ _id: groupJid },
-		{ $set: { timezone, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date(), time: "08:00" } },
+		{ $set: { timezone, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date(), time: "08:00", morningTime: "06:00", nightTime: "23:00" } },
 		{ upsert: true },
 	);
 	return timezone;
@@ -63,21 +70,14 @@ export const setGroupAutomationTimezone = async (groupJid, value) => {
 
 export const listEnabledGroupAutomations = () => groupAutomations.find({
 	$or: [
-		{ birthdayEnabled: true },
-		{ eventAlertsEnabled: true },
-		{ actionDailyEnabled: true },
+		{ birthdayEnabled: true }, { eventAlertsEnabled: true }, { actionDailyEnabled: true },
+		{ morningEnabled: true }, { nightEnabled: true },
 	],
 }).toArray();
 
 export const claimAutomationDelivery = async ({ groupJid, type, key }) => {
 	try {
-		await automationDeliveries.insertOne({
-			_id: `${groupJid}:${type}:${key}`,
-			groupJid,
-			type,
-			key,
-			createdAt: new Date(),
-		});
+		await automationDeliveries.insertOne({ _id: `${groupJid}:${type}:${key}`, groupJid, type, key, createdAt: new Date() });
 		return true;
 	} catch (error) {
 		if (error?.code === 11000) return false;
