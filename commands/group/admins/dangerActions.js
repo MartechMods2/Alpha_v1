@@ -97,7 +97,8 @@ const previewRows = (members, limit = 20) => {
 };
 
 const removalSucceeded = (entry) => {
-	const raw = entry?.status ?? entry?.content?.status;
+	if (!entry) return false;
+	const raw = entry.status ?? entry.content?.status;
 	if (raw === undefined || raw === null) return true;
 	const status = Number(raw);
 	return Number.isFinite(status) ? status >= 200 && status < 300 : String(raw) === "200";
