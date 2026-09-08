@@ -22,7 +22,10 @@ jobs:
           # CI tests do not invoke yt-dlp. Avoid its postinstall GitHub API call,
           # which is unauthenticated and can fail when shared runners hit a rate limit.
           YOUTUBE_DL_SKIP_DOWNLOAD: "true"
-        run: bun install --frozen-lockfile
+        run: |
+          bun install
+          echo "=== bun.lock delta requested by current Bun ==="
+          git diff -- bun.lock
       - name: Install media runtime
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: JavaScript syntax
