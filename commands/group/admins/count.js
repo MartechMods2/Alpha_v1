@@ -1,5 +1,6 @@
 import { group } from "../../../db/groupData.js";
 import { alphaPanel, safeDisplayName } from "../../../utils/alphaStyle.js";
+import { saveCountReview } from "../../../utils/countReview.js";
 import { mergeLiveGroupActivity, summarizeGroupActivity } from "../../../utils/groupActivity.js";
 import { parseDayToken } from "../../../utils/dangerGroupActions.js";
 import {
@@ -54,8 +55,36 @@ const sendRows = async ({ rows, sendMessageWTyping, from, msg }) => {
 	}
 };
 
+const saveReviewAndSuggest = async ({
+	from,
+	senderJid,
+	members,
+	label,
+	sendMessageWTyping,
+	msg,
+}) => {
+	saveCountReview({ groupJid: from, senderJid, members, label });
+	return sendMessageWTyping(from, {
+		text: alphaPanel({
+			icon: members.length ? "🧹" : "✅",
+			title: "Count Review Actions",
+			lines: members.length ? [
+				`Saved review: *${label}*`,
+				`Members in this review: *${members.length}*`,
+				"Kick the removable ordinary members shown by this review: `kickcount`",
+				"Mute the ordinary members shown by this review for 7 days: `mutecount`",
+				"Choose mute length: `mutecount 30d` or `mutecount forever`",
+			] : [
+				`Saved review: *${label}*`,
+				"No members matched this count review, so there is nothing to kick or mute from it.",
+			],
+			footer: "This saved review lasts 5 minutes. Kick/mute commands re-check the live roster and protect admins, Alpha, configured owner and moderators, then require confirmation.",
+		}),
+	}, { quoted: msg });
+};
+
 const handler = async (sock, msg, from, args, msgInfoObj) => {
-	const { sendMessageWTyping, groupMetadata, botJids = [], command } = msgInfoObj;
+	const { sendMessageWTyping, groupMetadata, botJids = [], command, senderJid } = msgInfoObj;
 	const directInactiveMode = command === "countinactive";
 	const res = await group.findOne({ _id: from });
 	if (!res) {
@@ -112,7 +141,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 					`Proven inactive ${days}+ days: *${inactive.length}*`,
 					`Unknown/no last-message date excluded: *${unknown.length}*`,
 				],
-				footer: "This uses the same proven-inactivity rule as kickinactive/muteinactive. Admins, Alpha, configured owner and moderators are excluded from cleanup actions.",
+				footer: "This uses proven last-message timestamps. Unknown-history members are excluded rather than guessed inactive.",
 			}),
 		}, { quoted: msg });
 
@@ -123,20 +152,14 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			await sendRows({ rows, sendMessageWTyping, from, msg });
 		}
 
-		return sendMessageWTyping(from, {
-			text: alphaPanel({
-				icon: "🧹",
-				title: "Suggested Cleanup Actions",
-				lines: inactive.length ? [
-					`Kick this same inactivity class: \`kickinactive ${days}d\``,
-					`Mute this same inactivity class for 7 days: \`muteinactive ${days}d\``,
-					`Choose mute length: \`muteinactive ${days}d 30d\` or \`muteinactive ${days}d forever\``,
-				] : [
-					"No proven inactive ordinary members matched, so there is nothing to kick or mute from this review.",
-				],
-				footer: "Kick and bulk-mute actions show their own preview and confirmation code before anything changes.",
-			}),
-		}, { quoted: msg });
+		return saveReviewAndSuggest({
+			from,
+			senderJid,
+			members: inactive,
+			label: `countinactive ${days}d`,
+			sendMessageWTyping,
+			msg,
+		});
 	}
 
 	const words = args.map((arg) => String(arg).toLowerCase());
@@ -159,11 +182,13 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 					"`count all` — full media breakdown for every member",
 					"`count summary` — cleanup overview and activity buckets",
 					"`count zero` — members with 0 tracked messages",
-					"`countinactive 60d` — members proven inactive for 60+ days + cleanup suggestions",
+					"`count inactive` — zero-message inactivity review",
+					"`countinactive 60d` — members proven inactive for 60+ days",
 					"`count member min 20` — everyone below 20 messages",
 					"`count inactive 20 7d` — below 20 and inactive for 7+ days",
+					"After any count review: `kickcount` or `mutecount`",
 				],
-				footer: "For cleanup by days, prefer `countinactive 60d` because it uses the same strict rule as the action commands.",
+				footer: "Every non-help count view saves its reviewed member set for 5 minutes so you can act on exactly that result.",
 			}),
 		}, { quoted: msg });
 	}
@@ -218,16 +243,26 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 				`Matched: *${low.length}/${members.length} members*`,
 				...(!hasLiveRoster ? ["⚠️ Live WhatsApp roster unavailable; showing stored Alpha members only."] : []),
 			],
-			footer: "Review manually before removing anyone. 👑 marks a group admin; Alpha does not auto-kick from this report.",
+			footer: "👑 marks a group admin. Count actions will re-check live roles and protected accounts before changing anything.",
 		});
 		await sendMessageWTyping(from, { text: header }, { quoted: msg });
-		if (!low.length) return;
 
-		const rows = low.map((member, index) =>
-			`${index + 1}. *${safeDisplayName(member.name, member.id)}*${roleMark(member)} — ${Number(member.count || 0)} msgs · ${lastSeenLabel(member.lastMessageAt)}`,
-		);
-		await sendRows({ rows, sendMessageWTyping, from, msg });
-		return;
+		if (low.length) {
+			const rows = low.map((member, index) =>
+				`${index + 1}. *${safeDisplayName(member.name, member.id)}*${roleMark(member)} — ${Number(member.count || 0)} msgs · ${lastSeenLabel(member.lastMessageAt)}`,
+			);
+			await sendRows({ rows, sendMessageWTyping, from, msg });
+		}
+
+		const label = `count${args.length ? ` ${args.join(" ")}` : ""}`;
+		return saveReviewAndSuggest({
+			from,
+			senderJid,
+			members: low,
+			label,
+			sendMessageWTyping,
+			msg,
+		});
 	}
 
 	await sendMessageWTyping(from, {
@@ -248,22 +283,36 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 				`🎭 Stickers ${totalSticker} · 📄 Docs ${totalPdf}`,
 				...(!hasLiveRoster ? ["⚠️ Live WhatsApp roster unavailable; zero-message members may be missing."] : []),
 			],
-			footer: "0 means no message recorded by Alpha since tracking began. For age-based cleanup use `countinactive 60d`. 👑 = admin.",
+			footer: "0 means no message recorded by Alpha since tracking began. 👑 = admin.",
 		}),
 	}, { quoted: msg });
 
-	if (showSummaryOnly) return;
+	if (!showSummaryOnly) {
+		const rows = members.map((member, index) => showAllBreakdown
+			? `${index + 1}. *${safeDisplayName(member.name, member.id)}*${roleMark(member)}\n   Total ${Number(member.count || 0)} · 💬 ${Number(member.texttotal || 0)} · 🖼️ ${Number(member.imagetotal || 0)} · 🎥 ${Number(member.videototal || 0)} · 🎭 ${Number(member.stickertotal || 0)} · 📄 ${Number(member.pdftotal || 0)}\n   Last: ${lastSeenLabel(member.lastMessageAt)}`
+			: `${index + 1}. ${Number(member.count || 0)} — *${safeDisplayName(member.name, member.id)}*${roleMark(member)} · ${lastSeenLabel(member.lastMessageAt)}`,
+		);
+		await sendRows({ rows, sendMessageWTyping, from, msg });
+	}
 
-	const rows = members.map((member, index) => showAllBreakdown
-		? `${index + 1}. *${safeDisplayName(member.name, member.id)}*${roleMark(member)}\n   Total ${Number(member.count || 0)} · 💬 ${Number(member.texttotal || 0)} · 🖼️ ${Number(member.imagetotal || 0)} · 🎥 ${Number(member.videototal || 0)} · 🎭 ${Number(member.stickertotal || 0)} · 📄 ${Number(member.pdftotal || 0)}\n   Last: ${lastSeenLabel(member.lastMessageAt)}`
-		: `${index + 1}. ${Number(member.count || 0)} — *${safeDisplayName(member.name, member.id)}*${roleMark(member)} · ${lastSeenLabel(member.lastMessageAt)}`,
-	);
-	await sendRows({ rows, sendMessageWTyping, from, msg });
+	const fullLabel = mode === "all"
+		? "count all"
+		: mode === "summary"
+			? "count summary (all current members)"
+			: "count";
+	return saveReviewAndSuggest({
+		from,
+		senderJid,
+		members,
+		label: fullLabel,
+		sendMessageWTyping,
+		msg,
+	});
 };
 
 export default () => ({
 	cmd: ["count", "countinactive"],
-	desc: "Show full group activity or review members inactive for a chosen number of days",
-	usage: "count | countinactive 60d | count all | count summary | count zero | count member min 20 | count help",
+	desc: "Show group activity, save the reviewed set, and suggest kick/mute follow-up actions",
+	usage: "count | countinactive 60d | count all | count summary | count zero | count inactive | count member min 20 | count help",
 	handler,
 });
