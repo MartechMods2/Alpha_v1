@@ -5,6 +5,7 @@ import { getStats, logout, fmtUptime } from '../lib/api.js'
 import { useWebSocket } from '../hooks/useWebSocket.js'
 import AlphaMark from './AlphaMark.jsx'
 import CommandPalette from './CommandPalette.jsx'
+import { loadPersonalization, notifyPersonalization, savePersonalization } from '../lib/personalization.js'
 
 const NAV_SECTIONS = [
   {
@@ -12,6 +13,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/', icon: '◫', label: 'Overview', end: true },
       { to: '/operations', icon: '✦', label: 'Operations Hub' },
+      { to: '/management', icon: '▦', label: 'Management Suite' },
       { to: '/control-center', icon: '⚡', label: 'Control Center' },
       { to: '/analytics', icon: '◒', label: 'Analytics' },
     ],
@@ -36,6 +38,7 @@ const NAV_SECTIONS = [
   {
     label: 'System',
     items: [
+      { to: '/customize', icon: '✎', label: 'Customize Alpha' },
       { to: '/safe-pack', icon: '🛡', label: 'Safe Pack' },
       { to: '/logs', icon: '≡', label: 'Logs' },
       { to: '/health', icon: '♡', label: 'Bot Health' },
@@ -53,30 +56,52 @@ export default function Layout({ children }) {
   const location = useLocation()
   const wsStatus = useWebSocket()
   const [stats, setStats] = useState(null)
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('alpha-sidebar') === 'collapsed')
-  const [theme, setTheme] = useState(() => localStorage.getItem('alpha-theme') || 'royal')
+  const [prefs, setPrefs] = useState(() => loadPersonalization())
+  const [collapsed, setCollapsed] = useState(() => {
+    const saved = localStorage.getItem('alpha-sidebar')
+    if (saved === 'collapsed' || saved === 'expanded') return saved === 'collapsed'
+    return loadPersonalization().sidebarDefault === 'collapsed'
+  })
   const [paletteOpen, setPaletteOpen] = useState(false)
 
   useEffect(() => {
     getStats().then(setStats).catch(() => {})
-    const timer = setInterval(() => getStats().then(setStats).catch(() => {}), 30_000)
+    const timer = setInterval(() => getStats().then(setStats).catch(() => {}), Math.max(15, prefs.refreshSeconds || 30) * 1000)
     return () => clearInterval(timer)
+  }, [prefs.refreshSeconds])
+
+  useEffect(() => {
+    const root = document.documentElement
+    root.dataset.alphaTheme = prefs.theme
+    root.dataset.alphaAccent = prefs.accent
+    root.dataset.alphaFontScale = prefs.fontScale
+    root.dataset.alphaDensity = prefs.density
+    root.dataset.alphaRadius = prefs.cornerStyle
+    root.dataset.alphaMotion = prefs.motion
+    root.dataset.alphaContrast = prefs.highContrast ? 'high' : 'normal'
+    root.dataset.alphaVisuals = prefs.quietVisuals ? 'quiet' : 'full'
+    root.dataset.alphaTopbar = prefs.compactTopbar ? 'compact' : 'normal'
+  }, [prefs])
+
+  useEffect(() => {
+    const update = (event) => setPrefs(event?.detail || loadPersonalization())
+    const storageUpdate = (event) => {
+      if (!event.key || event.key.includes('alpha-dashboard-personalization')) setPrefs(loadPersonalization())
+    }
+    window.addEventListener('alpha-personalization-change', update)
+    window.addEventListener('storage', storageUpdate)
+    return () => {
+      window.removeEventListener('alpha-personalization-change', update)
+      window.removeEventListener('storage', storageUpdate)
+    }
   }, [])
 
-  useEffect(() => {
-    document.documentElement.dataset.alphaTheme = theme
-    localStorage.setItem('alpha-theme', theme)
-  }, [theme])
-
-  useEffect(() => {
-    localStorage.setItem('alpha-sidebar', collapsed ? 'collapsed' : 'expanded')
-  }, [collapsed])
+  useEffect(() => { localStorage.setItem('alpha-sidebar', collapsed ? 'collapsed' : 'expanded') }, [collapsed])
 
   useEffect(() => {
     const onKey = (event) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault()
-        setPaletteOpen((value) => !value)
+        event.preventDefault(); setPaletteOpen((value) => !value)
       }
       if (event.key === 'Escape') setPaletteOpen(false)
     }
@@ -85,39 +110,37 @@ export default function Layout({ children }) {
   }, [])
 
   async function handleLogout() {
-    try {
-      await logout()
-      setAuth(false)
-      navigate('/login')
-    } catch {
-      toast('Logout failed', false)
-    }
+    try { await logout(); setAuth(false); navigate('/login') }
+    catch { toast('Logout failed', false) }
   }
 
   const connected = wsStatus === 'connected'
-  const activePage = useMemo(() => {
-    const current = FLAT_NAV.find((item) => item.to === location.pathname)
-    return current?.label || 'Alpha Console'
-  }, [location.pathname])
+  const activePage = useMemo(() => FLAT_NAV.find((item) => item.to === location.pathname)?.label || 'Alpha Console', [location.pathname])
 
-  const cycleTheme = () => setTheme((value) => value === 'royal' ? 'electric' : value === 'electric' ? 'obsidian' : 'royal')
+  const cycleTheme = () => {
+    const nextTheme = prefs.theme === 'royal' ? 'electric' : prefs.theme === 'electric' ? 'obsidian' : 'royal'
+    const next = savePersonalization({ ...prefs, theme: nextTheme })
+    setPrefs(next); notifyPersonalization(next)
+  }
+
+  const showMetric = prefs.showSidebarMetrics && (prefs.showGroupCount || prefs.showMemberCount || prefs.showUptime)
 
   return (
     <div className={`shell premium-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className="sidebar premium-sidebar">
         <div className="brand premium-brand">
-          <div className="brand-mark-wrap"><AlphaMark size={42} /></div>
+          <div className="brand-mark-wrap">{prefs.avatarDataUrl ? <img src={prefs.avatarDataUrl} alt={`${prefs.displayName} avatar`} className="brand-avatar-small" /> : <AlphaMark size={42} />}</div>
           <div className="brand-text premium-brand-copy">
-            <h1>Alpha</h1>
-            <p>Martech Operations</p>
+            <h1>{prefs.displayName}</h1>
+            <p>{prefs.tagline}</p>
           </div>
           <button className="sidebar-collapse" onClick={() => setCollapsed((value) => !value)} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>{collapsed ? '›' : '‹'}</button>
         </div>
 
-        <div className="sidebar-status-card">
+        {prefs.showConnection && <div className="sidebar-status-card">
           <span className={`status-orb ${connected ? 'online' : ''}`} />
-          <div><strong>{connected ? 'System online' : wsStatus === 'connecting' ? 'Connecting' : 'System offline'}</strong><small>{stats?.botNumber || 'WhatsApp runtime'}</small></div>
-        </div>
+          <div><strong>{connected ? 'System online' : wsStatus === 'connecting' ? 'Connecting' : 'System offline'}</strong><small>{prefs.showBotNumber ? (stats?.botNumber || 'WhatsApp runtime') : prefs.ownerBadge}</small></div>
+        </div>}
 
         <nav className="nav premium-nav">
           {NAV_SECTIONS.map((section) => (
@@ -125,9 +148,7 @@ export default function Layout({ children }) {
               <div className="nav-section-label">{section.label}</div>
               {section.items.map(({ to, icon, label, end }) => (
                 <NavLink key={to} to={to} end={end} className={({ isActive }) => `nav-item premium-nav-item${isActive ? ' active' : ''}`} title={collapsed ? label : undefined}>
-                  <span className="nav-icon">{icon}</span>
-                  <span className="nav-label">{label}</span>
-                  <span className="nav-active-dot" />
+                  <span className="nav-icon">{icon}</span><span className="nav-label">{label}</span><span className="nav-active-dot" />
                 </NavLink>
               ))}
             </div>
@@ -135,22 +156,22 @@ export default function Layout({ children }) {
         </nav>
 
         <div className="sidebar-footer premium-sidebar-footer">
-          <div className="sidebar-metrics">
-            <div><span>Groups</span><strong>{stats?.groupCount ?? '—'}</strong></div>
-            <div><span>Members</span><strong>{stats?.memberCount ?? '—'}</strong></div>
-            <div><span>Uptime</span><strong>{stats ? fmtUptime(stats.uptime) : '—'}</strong></div>
-          </div>
+          {showMetric && <div className="sidebar-metrics">
+            {prefs.showGroupCount && <div><span>Groups</span><strong>{stats?.groupCount ?? '—'}</strong></div>}
+            {prefs.showMemberCount && <div><span>Members</span><strong>{stats?.memberCount ?? '—'}</strong></div>}
+            {prefs.showUptime && <div><span>Uptime</span><strong>{stats ? fmtUptime(stats.uptime) : '—'}</strong></div>}
+          </div>}
           <button className="btn-logout" onClick={handleLogout}><span>⇥</span><span className="nav-label">Sign Out</span></button>
         </div>
       </aside>
 
       <section className="workspace">
         <header className="premium-topbar">
-          <div className="topbar-title"><span className="topbar-kicker">ALPHA /</span><strong>{activePage}</strong></div>
+          <div className="topbar-title">{prefs.showPageKicker && <span className="topbar-kicker">{prefs.workspaceLabel} /</span>}<strong>{activePage}</strong></div>
           <div className="topbar-actions">
-            <button className="topbar-command" onClick={() => setPaletteOpen(true)}><span>⌕</span><span>Search tools</span><kbd>Ctrl K</kbd></button>
+            {prefs.showQuickSearch && <button className="topbar-command" onClick={() => setPaletteOpen(true)}><span>⌕</span><span>Search tools</span><kbd>Ctrl K</kbd></button>}
             <button className="topbar-icon-btn" onClick={cycleTheme} title="Change dashboard color theme">◐</button>
-            <span className={`premium-status-pill ${connected ? 'online' : ''}`}><span className="status-orb" />{connected ? 'Live' : 'Offline'}</span>
+            {prefs.showConnection && <span className={`premium-status-pill ${connected ? 'online' : ''}`}><span className="status-orb" />{connected ? 'Live' : 'Offline'}</span>}
           </div>
         </header>
         <main className="main premium-main">{children}</main>

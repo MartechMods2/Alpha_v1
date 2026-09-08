@@ -16,6 +16,7 @@ import { useWsEvent } from '../hooks/useWsEvent.js'
 import { useToast } from '../App.jsx'
 import AlphaMark from '../components/AlphaMark.jsx'
 import { DASHBOARD_OPERATIONS, operationCount } from '../lib/operations.js'
+import { loadPersonalization } from '../lib/personalization.js'
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
@@ -48,6 +49,19 @@ function fmtAgo(ts) {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+function fmtEventTime(ts, style) {
+  if (style !== 'clock') return fmtAgo(ts)
+  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+  catch { return fmtAgo(ts) }
+}
+
+function formatNumber(value, style) {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '—'
+  if (style === 'compact' && Math.abs(n) >= 1000) return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(n)
+  return n.toLocaleString()
+}
+
 function ActivityDetail({ kind, detail }) {
   if (kind === 'command_used') return <span><code>{detail.cmd}</code> by {detail.name || detail.from?.split('@')[0]} in {detail.group}</span>
   if (kind === 'member_blocked' || kind === 'member_unblocked') return <code>{detail.jid}</code>
@@ -63,6 +77,7 @@ function Metric({ icon, value, label, hint }) {
 export default function Dashboard() {
   const toast = useToast()
   const wsStatus = useWebSocket()
+  const [prefs, setPrefs] = useState(() => loadPersonalization())
   const [stats, setStats] = useState(null)
   const [analytics, setAnalytics] = useState(null)
   const [health, setHealth] = useState(null)
@@ -73,20 +88,22 @@ export default function Dashboard() {
   useEffect(() => {
     Promise.all([getStats(), getAnalytics(), getActivity(), getCommandStats(), getHealth()])
       .then(([s, a, act, commands, h]) => {
-        setStats(s)
-        setAnalytics(a)
-        setHealth(h)
-        setCommandStats(commands.stats || {})
-        setActivity((act.activity || []).slice().reverse())
+        setStats(s); setAnalytics(a); setHealth(h); setCommandStats(commands.stats || {}); setActivity((act.activity || []).slice().reverse())
       })
       .catch(() => toast('Failed to load dashboard data', false))
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    const update = (event) => setPrefs(event?.detail || loadPersonalization())
+    window.addEventListener('alpha-personalization-change', update)
+    return () => window.removeEventListener('alpha-personalization-change', update)
+  }, [])
+
   const handleActivity = useCallback((data) => {
     const event = data.event || data
-    if (event?.id) setActivity((prev) => [event, ...prev.slice(0, 19)])
-  }, [])
+    if (event?.id) setActivity((prev) => [event, ...prev.slice(0, Math.max(9, prefs.activityRows - 1))])
+  }, [prefs.activityRows])
   const handleActivitySnapshot = useCallback((data) => {
     if (data.activity?.length) setActivity(data.activity.slice().reverse())
   }, [])
@@ -98,7 +115,7 @@ export default function Dashboard() {
     .sort((a, b) => b.count - a.count)
     .slice(0, 5), [commandStats])
 
-  if (loading) return <div className="loading-state premium-loading"><span className="spinner" /><span>Loading Alpha console…</span></div>
+  if (loading) return <div className="loading-state premium-loading"><span className="spinner" /><span>Loading {prefs.displayName} console…</span></div>
 
   const connected = wsStatus === 'connected' || health?.connected
   const typeData = analytics ? [
@@ -110,6 +127,7 @@ export default function Dashboard() {
   ].filter((item) => item.value > 0) : []
   const topGroups = analytics?.topGroups?.slice(0, 7) || []
   const memoryPct = health?.memory?.heapTotal ? Math.min(100, Math.round((health.memory.heapUsed / health.memory.heapTotal) * 100)) : 0
+  const animation = prefs.chartAnimations && prefs.motion !== 'reduced'
 
   const groupBarData = {
     labels: topGroups.map((group) => group.name),
@@ -126,68 +144,57 @@ export default function Dashboard() {
     <div className="premium-page premium-dashboard">
       <section className="dashboard-hero premium-panel">
         <div className="dashboard-hero-copy">
-          <div className="hero-mark"><AlphaMark size={58} /></div>
+          <div className="hero-mark">{prefs.avatarDataUrl ? <img src={prefs.avatarDataUrl} alt={`${prefs.displayName} avatar`} className="alpha-avatar-preview" style={{width:68,height:68,borderRadius:20}} /> : <AlphaMark size={58} />}</div>
           <div>
-            <span className="eyebrow">ALPHA BY MARTECH</span>
-            <h2>Command the whole bot from one console.</h2>
-            <p>Premium live overview for community management, automation, security, media and deployment operations.</p>
-            <div className="hero-actions">
-              <Link className="btn btn-primary" to="/operations">✦ Open Operations Hub</Link>
-              <Link className="btn btn-ghost" to="/control-center">⚡ Group Control Center</Link>
-            </div>
+            <span className="eyebrow">{prefs.workspaceLabel} · {prefs.ownerBadge}</span>
+            <h2>{prefs.displayName} operations console.</h2>
+            <p>{prefs.dashboardNote}</p>
+            <div className="hero-actions"><Link className="btn btn-primary" to="/management">▦ Open Management Suite</Link><Link className="btn btn-ghost" to="/customize">✎ Customize Alpha</Link></div>
           </div>
         </div>
         <div className="hero-status-cluster">
-          <div className={`hero-live-card ${connected ? 'online' : ''}`}>
-            <span className="status-orb" /><div><strong>{connected ? 'Alpha is live' : 'Alpha is offline'}</strong><small>{stats?.botNumber || 'WhatsApp connection'}</small></div>
-          </div>
+          <div className={`hero-live-card ${connected ? 'online' : ''}`}><span className="status-orb" /><div><strong>{connected ? `${prefs.displayName} is live` : `${prefs.displayName} is offline`}</strong><small>{prefs.showBotNumber ? (stats?.botNumber || 'WhatsApp connection') : prefs.tagline}</small></div></div>
           <div className="hero-operation-count"><strong>{operationCount + 5}</strong><span>dashboard functions</span></div>
         </div>
       </section>
 
       <section className="premium-metric-grid">
-        <Metric icon="👥" value={stats?.groupCount} label="Managed groups" hint={`${analytics?.activeGroups ?? 0} active`} />
-        <Metric icon="👤" value={stats?.memberCount?.toLocaleString?.()} label="Known members" hint={`${analytics?.blockedMembers ?? 0} blocked`} />
-        <Metric icon="💬" value={analytics?.totalMessages?.toLocaleString?.()} label="Tracked messages" hint="Across all media types" />
+        <Metric icon="👥" value={formatNumber(stats?.groupCount, prefs.numberStyle)} label="Managed groups" hint={`${analytics?.activeGroups ?? 0} active`} />
+        <Metric icon="👤" value={formatNumber(stats?.memberCount, prefs.numberStyle)} label="Known members" hint={`${analytics?.blockedMembers ?? 0} blocked`} />
+        <Metric icon="💬" value={formatNumber(analytics?.totalMessages, prefs.numberStyle)} label="Tracked messages" hint="Across all media types" />
         <Metric icon="⏱" value={stats ? fmtUptime(stats.uptime) : '—'} label="Current uptime" hint={health?.nodeVersion || 'Node runtime'} />
-        <Metric icon="⌘" value={Object.keys(commandStats).length} label="Commands used" hint={topCommands[0] ? `Top: ${topCommands[0].name}` : 'Awaiting usage'} />
+        <Metric icon="⌘" value={formatNumber(Object.keys(commandStats).length, prefs.numberStyle)} label="Commands used" hint={topCommands[0] ? `Top: ${topCommands[0].name}` : 'Awaiting usage'} />
         <Metric icon="◒" value={`${memoryPct}%`} label="Heap usage" hint={health?.memory ? `${fmtBytes(health.memory.heapUsed)} used` : 'Runtime memory'} />
       </section>
 
       <section className="dashboard-bento">
         <div className="premium-panel bento-wide chart-card premium-chart-card">
           <div className="section-heading"><div><span className="eyebrow">ACTIVITY</span><h3>Top groups</h3></div><Link to="/analytics">Open analytics ↗</Link></div>
-          {topGroups.length ? <div className="premium-chart-wrap"><Bar data={groupBarData} options={{ indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { ...TOOLTIP, callbacks: { label: (ctx) => ` ${ctx.parsed.x.toLocaleString()} messages` } } }, scales: { x: { grid: { color: 'rgba(148,163,184,.08)' }, ticks: { color: '#64748b' }, border: { display: false } }, y: { grid: { display: false }, ticks: { color: '#a8b2c7' }, border: { display: false } } } }} /></div> : <div className="empty-state">No group activity yet.</div>}
+          {topGroups.length ? <div className="premium-chart-wrap"><Bar data={groupBarData} options={{ animation, indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { ...TOOLTIP, callbacks: { label: (ctx) => ` ${ctx.parsed.x.toLocaleString()} messages` } } }, scales: { x: { grid: { color: 'rgba(148,163,184,.08)' }, ticks: { color: '#64748b' }, border: { display: false } }, y: { grid: { display: false }, ticks: { color: '#a8b2c7' }, border: { display: false } } } }} /></div> : <div className="empty-state">No group activity yet.</div>}
         </div>
 
         <div className="premium-panel bento-small premium-chart-card">
           <div className="section-heading"><div><span className="eyebrow">MESSAGE MIX</span><h3>Media share</h3></div></div>
-          {typeData.length ? <div className="donut-wrap"><Doughnut data={messageData} options={{ responsive: true, maintainAspectRatio: false, cutout: '72%', plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 7, padding: 14 } }, tooltip: TOOLTIP } }} /><div className="donut-center"><strong>{analytics?.totalMessages?.toLocaleString?.()}</strong><span>messages</span></div></div> : <div className="empty-state">No message data yet.</div>}
+          {typeData.length ? <div className="donut-wrap"><Doughnut data={messageData} options={{ animation, responsive: true, maintainAspectRatio: false, cutout: '72%', plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 7, padding: 14 } }, tooltip: TOOLTIP } }} /><div className="donut-center"><strong>{formatNumber(analytics?.totalMessages, prefs.numberStyle)}</strong><span>messages</span></div></div> : <div className="empty-state">No message data yet.</div>}
         </div>
 
         <div className="premium-panel bento-small command-leaderboard">
           <div className="section-heading"><div><span className="eyebrow">COMMANDS</span><h3>Most used</h3></div><Link to="/commands">Manage ↗</Link></div>
-          <div className="leaderboard-list">
-            {topCommands.length ? topCommands.map((item, index) => <div key={item.name}><span>{String(index + 1).padStart(2, '0')}</span><code>{item.name}</code><strong>{item.count}</strong></div>) : <div className="empty-state">Command usage will appear here.</div>}
-          </div>
+          <div className="leaderboard-list">{topCommands.length ? topCommands.map((item, index) => <div key={item.name}><span>{String(index + 1).padStart(2, '0')}</span><code>{item.name}</code><strong>{item.count}</strong></div>) : <div className="empty-state">Command usage will appear here.</div>}</div>
         </div>
 
         <div className="premium-panel bento-wide quick-actions-panel">
           <div className="section-heading"><div><span className="eyebrow">FAST ACCESS</span><h3>Premium shortcuts</h3></div><Link to="/operations">All functions ↗</Link></div>
-          <div className="premium-quick-grid">
-            {quickOps.map((item) => <Link key={item.id} to={item.to} className="premium-quick-card"><span>{item.icon}</span><div><strong>{item.label}</strong><small>{item.description}</small></div><em>↗</em></Link>)}
-          </div>
+          <div className="premium-quick-grid">{quickOps.map((item) => <Link key={item.id} to={item.to} className="premium-quick-card"><span>{item.icon}</span><div><strong>{item.label}</strong><small>{item.description}</small></div><em>↗</em></Link>)}</div>
         </div>
       </section>
 
       <section className="premium-panel activity-panel">
         <div className="section-heading"><div><span className="eyebrow">LIVE FEED</span><h3>Recent activity</h3></div><Link to="/logs">Open logs ↗</Link></div>
-        {activity.length === 0 ? <div className="empty-state">No activity yet. Use Alpha to populate the live feed.</div> : <div className="activity-list premium-activity-list">
-          {activity.slice(0, 12).map((event) => {
-            const meta = ACTIVITY_META[event.kind] || { icon: '•', label: event.kind, color: '#94a3b8' }
-            return <div key={event.id} className="activity-row premium-activity-row"><span className="activity-icon" style={{ color: meta.color }}>{meta.icon}</span><span className="activity-badge" style={{ color: meta.color, background: `${meta.color}16` }}>{meta.label}</span><span className="activity-detail"><ActivityDetail kind={event.kind} detail={event.detail || {}} /></span><span className="activity-time">{fmtAgo(event.ts)}</span></div>
-          })}
-        </div>}
+        {activity.length === 0 ? <div className="empty-state">No activity yet. Use {prefs.displayName} to populate the live feed.</div> : <div className="activity-list premium-activity-list">{activity.slice(0, prefs.activityRows).map((event) => {
+          const meta = ACTIVITY_META[event.kind] || { icon: '•', label: event.kind, color: '#94a3b8' }
+          return <div key={event.id} className="activity-row premium-activity-row"><span className="activity-icon" style={{ color: meta.color }}>{meta.icon}</span><span className="activity-badge" style={{ color: meta.color, background: `${meta.color}16` }}>{meta.label}</span><span className="activity-detail"><ActivityDetail kind={event.kind} detail={event.detail || {}} /></span><span className="activity-time">{fmtEventTime(event.ts, prefs.timeStyle)}</span></div>
+        })}</div>}
       </section>
     </div>
   )
