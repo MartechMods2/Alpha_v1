@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import Layout from './components/Layout.jsx'
 import Login from './pages/Login.jsx'
 import Dashboard from './pages/Dashboard.jsx'
+import OperationsHub from './pages/OperationsHub.jsx'
 import Commands from './pages/Commands.jsx'
 import Groups from './pages/Groups.jsx'
 import Members from './pages/Members.jsx'
@@ -23,22 +24,67 @@ export const AuthCtx = createContext(null)
 export const useAuth = () => useContext(AuthCtx)
 
 function AuthGuard({ children }) {
-  const { auth } = useAuth(); const location = useLocation()
+  const { auth } = useAuth()
+  const location = useLocation()
   if (auth === null) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}><div className="spinner" /></div>
   if (auth === false) return <Navigate to="/login" state={{ from: location }} replace />
   return children
 }
 
 function Toast({ toasts }) {
-  return <div style={{ position: 'fixed', bottom: 24, right: 24, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 1000 }}>{toasts.map(t => <div key={t.id} className={`toast show ${t.ok ? 'ok' : 'err'}`}>{t.msg}</div>)}</div>
+  return <div className="toast-stack">{toasts.map(t => <div key={t.id} className={`toast show ${t.ok ? 'ok' : 'err'}`}>{t.msg}</div>)}</div>
 }
 
 export default function App() {
-  const [auth, setAuth] = useState(null); const [googleAuthEnabled, setGoogleAuthEnabled] = useState(false); const [toasts, setToasts] = useState([]); const toastId = useRef(0)
-  useEffect(() => { fetch('/api/admin/me', { credentials: 'include' }).then(r => r.json()).then(data => { setAuth(data.authenticated === true); setGoogleAuthEnabled(!!data.googleAuthEnabled) }).catch(() => setAuth(false)) }, [])
-  const showToast = useCallback((msg, ok = true) => { const id = ++toastId.current; setToasts(prev => [...prev, { id, msg, ok }]); setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3200) }, [])
-  const base = import.meta.env.BASE_URL; const basename = base === '/' ? '' : base.replace(/\/$/, '')
-  return <AuthCtx.Provider value={{ auth, setAuth, googleAuthEnabled }}><ToastCtx.Provider value={showToast}><BrowserRouter basename={basename}><Routes><Route path="/login" element={<Login />} /><Route path="/*" element={<AuthGuard><Layout><Routes>
-    <Route index element={<Dashboard />} /><Route path="control-center" element={<ControlCenter />} /><Route path="templates" element={<TemplateLibrary />} /><Route path="commands" element={<Commands />} /><Route path="groups" element={<Groups />} /><Route path="members" element={<Members />} /><Route path="analytics" element={<Analytics />} /><Route path="broadcast" element={<Broadcast />} /><Route path="health" element={<Health />} /><Route path="logs" element={<Logs />} /><Route path="dm" element={<DirectMessage />} /><Route path="settings" element={<Settings />} /><Route path="media-studio" element={<MediaStudio />} /><Route path="safe-pack" element={<SafePack />} /><Route path="*" element={<Navigate to="/" replace />} />
-  </Routes></Layout></AuthGuard>} /></Routes></BrowserRouter><Toast toasts={toasts} /></ToastCtx.Provider></AuthCtx.Provider>
+  const [auth, setAuth] = useState(null)
+  const [googleAuthEnabled, setGoogleAuthEnabled] = useState(false)
+  const [toasts, setToasts] = useState([])
+  const toastId = useRef(0)
+
+  useEffect(() => {
+    fetch('/api/admin/me', { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => { setAuth(data.authenticated === true); setGoogleAuthEnabled(!!data.googleAuthEnabled) })
+      .catch(() => setAuth(false))
+  }, [])
+
+  const showToast = useCallback((msg, ok = true) => {
+    const id = ++toastId.current
+    setToasts(prev => [...prev, { id, msg, ok }])
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3200)
+  }, [])
+
+  const base = import.meta.env.BASE_URL
+  const basename = base === '/' ? '' : base.replace(/\/$/, '')
+
+  return (
+    <AuthCtx.Provider value={{ auth, setAuth, googleAuthEnabled }}>
+      <ToastCtx.Provider value={showToast}>
+        <BrowserRouter basename={basename}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/*" element={<AuthGuard><Layout><Routes>
+              <Route index element={<Dashboard />} />
+              <Route path="operations" element={<OperationsHub />} />
+              <Route path="control-center" element={<ControlCenter />} />
+              <Route path="templates" element={<TemplateLibrary />} />
+              <Route path="commands" element={<Commands />} />
+              <Route path="groups" element={<Groups />} />
+              <Route path="members" element={<Members />} />
+              <Route path="analytics" element={<Analytics />} />
+              <Route path="broadcast" element={<Broadcast />} />
+              <Route path="health" element={<Health />} />
+              <Route path="logs" element={<Logs />} />
+              <Route path="dm" element={<DirectMessage />} />
+              <Route path="settings" element={<Settings />} />
+              <Route path="media-studio" element={<MediaStudio />} />
+              <Route path="safe-pack" element={<SafePack />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes></Layout></AuthGuard>} />
+          </Routes>
+        </BrowserRouter>
+        <Toast toasts={toasts} />
+      </ToastCtx.Provider>
+    </AuthCtx.Provider>
+  )
 }
