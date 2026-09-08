@@ -6,7 +6,6 @@ import {
 	removeGroupBirthday,
 	removeGroupNote,
 	removeGroupTodo,
-	setGroupBirthday,
 	setGroupTodoDone,
 } from "../../../db/groupTools.js";
 import {
@@ -15,6 +14,8 @@ import {
 	parseBirthday,
 	parseCountdownDate,
 } from "../../../utils/groupToolHelpers.js";
+import { registerInteractivePoll } from "../../../utils/pollManager.js";
+import { alphaPanel } from "../../../utils/alphaStyle.js";
 
 const writeCooldowns = new Map();
 const WRITE_COOLDOWN_MS = 20_000;
@@ -40,7 +41,6 @@ const handleNotes = async ({ msg, from, args, senderJid, updateName, isGroupAdmi
 	const action = String(args[0] || "list").toLowerCase();
 	const data = await getGroupTools(from);
 	const notes = data.notes || [];
-
 	if (action === "list") {
 		if (!notes.length) return reply("🗒️ No shared notes yet. Use `gnote save Title | text`.");
 		const rows = notes.map((note, index) => `${index + 1}. *${note.title}* — ${safeName(note.authorName, note.authorJid)}`);
@@ -48,9 +48,7 @@ const handleNotes = async ({ msg, from, args, senderJid, updateName, isGroupAdmi
 	}
 	if (action === "read") {
 		const note = resolveNumbered(notes, args[1]);
-		return note
-			? reply(`🗒️ *${note.title}*\n\n${note.text}\n\n_Saved by ${safeName(note.authorName, note.authorJid)}_`)
-			: reply("❌ Note not found. Check `gnote list`.");
+		return note ? reply(`🗒️ *${note.title}*\n\n${note.text}\n\n_Saved by ${safeName(note.authorName, note.authorJid)}_`) : reply("❌ Note not found. Check `gnote list`.");
 	}
 	if (action === "save") {
 		if (!canWrite(senderJid)) return;
@@ -60,10 +58,7 @@ const handleNotes = async ({ msg, from, args, senderJid, updateName, isGroupAdmi
 		const title = cleanGroupToolText(titlePart, 60);
 		const text = cleanGroupToolText(textParts.join("|"), 800);
 		if (!title || !text) return reply("❌ Usage: `gnote save Title | note text`.");
-		await addGroupNote(from, {
-			id: randomUUID(), title, text, authorJid: senderJid,
-			authorName: safeName(updateName, senderJid), createdAt: new Date(),
-		});
+		await addGroupNote(from, { id: randomUUID(), title, text, authorJid: senderJid, authorName: safeName(updateName, senderJid), createdAt: new Date() });
 		return reply("✅ Shared note saved.");
 	}
 	if (action === "delete") {
@@ -84,19 +79,14 @@ const handleTodos = async ({ msg, from, args, senderJid, updateName, isGroupAdmi
 	const todos = data.todos || [];
 	if (action === "list") {
 		if (!todos.length) return reply("✅ The group task board is empty. Use `todo add <task>`. ");
-		const rows = todos.map((todo, index) =>
-			`${todo.done ? "☑️" : "⬜"} ${index + 1}. ${todo.text}${todo.done && todo.completedBy ? ` — _${safeName(todo.completedBy)}_` : ""}`,
-		);
+		const rows = todos.map((todo, index) => `${todo.done ? "☑️" : "⬜"} ${index + 1}. ${todo.text}${todo.done && todo.completedBy ? ` — _${safeName(todo.completedBy)}_` : ""}`);
 		return reply(`📋 *Group Task Board*\n\n${rows.join("\n")}`);
 	}
 	if (action === "add") {
 		if (!canWrite(senderJid)) return;
 		const text = cleanGroupToolText(args.slice(1).join(" "), 240);
 		if (!text) return reply("❌ Usage: `todo add <task>`.");
-		await addGroupTodo(from, {
-			id: randomUUID(), text, done: false, authorJid: senderJid,
-			authorName: safeName(updateName, senderJid), createdAt: new Date(),
-		});
+		await addGroupTodo(from, { id: randomUUID(), text, done: false, authorJid: senderJid, authorName: safeName(updateName, senderJid), createdAt: new Date() });
 		return reply("✅ Task added to the group board.");
 	}
 	if (["done", "undo"].includes(action)) {
@@ -117,23 +107,42 @@ const handleTodos = async ({ msg, from, args, senderJid, updateName, isGroupAdmi
 	return reply("📋 Use: `todo list`, `todo add <task>`, `todo done 1`, `todo undo 1`, or `todo remove 1`.");
 };
 
-const handleBirthdays = async ({ msg, from, args, senderJid, updateName, sendMessageWTyping }) => {
+const handleBirthdays = async ({ sock, msg, from, args, senderJid, updateName, sendMessageWTyping }) => {
 	const reply = (text) => sendMessageWTyping(from, { text }, { quoted: msg });
 	const action = String(args[0] || "list").toLowerCase();
 	if (action === "form" || action === "setup") {
-		return reply("🎂 *Birthday Setup*\n\n1. Send `birthday set DD-MM` (example: `birthday set 24-12`).\n2. Ask an admin to enable `birthdayauto on`.\n3. Alpha will greet you automatically on the date.\n\nOnly day and month are saved. Use `birthday remove` whenever you want to opt out.");
+		return reply(alphaPanel({
+			icon: "🎂", title: "Birthday Setup", lines: [
+				"1. Send `birthday set DD-MM` (example: `birthday set 24-12`).",
+				"2. Alpha creates a confirmation poll for that date.",
+				"3. Vote *Yes, save it* yourself. Only then is the date recorded.",
+				"4. An admin enables `birthdayauto on` for automatic greetings.",
+			], footer: "Only day and month are stored. Use `birthday remove` to opt out.",
+		}));
 	}
 	if (action === "set") {
 		if (!canWrite(senderJid)) return;
 		const birthday = parseBirthday(args[1]);
 		if (!birthday) return reply("🎂 Usage: `birthday set DD-MM` (year is not stored).");
-		await setGroupBirthday(from, {
-			memberJid: senderJid,
-			name: safeName(updateName, senderJid),
-			...birthday,
-			updatedAt: new Date(),
+		const date = `${String(birthday.day).padStart(2, "0")}-${String(birthday.month).padStart(2, "0")}`;
+		const options = ["✅ Yes, save it", "✏️ No, change it"];
+		const poll = await sock.sendMessage(from, {
+			poll: {
+				name: `🎂 Confirm your birthday\nIs ${date} the correct day and month?`,
+				values: options,
+				selectableCount: 1,
+			},
+		}, { quoted: msg });
+		await registerInteractivePoll({
+			sentMessage: poll,
+			groupJid: from,
+			type: "birthday-confirm",
+			ownerJid: senderJid,
+			options,
+			payload: { ...birthday, name: safeName(updateName, senderJid) },
+			ttlMs: 10 * 60_000,
 		});
-		return reply(`🎂 Birthday saved as *${String(birthday.day).padStart(2, "0")}-${String(birthday.month).padStart(2, "0")}*.`);
+		return reply(`🎂 Confirmation poll created for *${date}*. Your birthday is not saved until *you* vote “Yes, save it”.`);
 	}
 	if (["remove", "delete"].includes(action)) {
 		if (!canWrite(senderJid)) return;
@@ -141,9 +150,7 @@ const handleBirthdays = async ({ msg, from, args, senderJid, updateName, sendMes
 		return reply("✅ Your birthday was removed.");
 	}
 	const data = await getGroupTools(from);
-	const allBirthdays = [...(data.birthdays || [])].sort((left, right) =>
-		daysUntilBirthday(left) - daysUntilBirthday(right),
-	);
+	const allBirthdays = [...(data.birthdays || [])].sort((left, right) => daysUntilBirthday(left) - daysUntilBirthday(right));
 	if (!allBirthdays.length) return reply("🎂 No birthdays saved. Use `birthday set DD-MM`.");
 	const birthdays = allBirthdays.slice(0, 50);
 	const rows = birthdays.map((birthday) => {
@@ -169,7 +176,7 @@ const handleCountdown = async ({ msg, from, args, sendMessageWTyping }) => {
 };
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
-	const context = { msg, from, args, ...msgInfoObj };
+	const context = { sock, msg, from, args, ...msgInfoObj };
 	try {
 		if (["gnote", "groupnote"].includes(msgInfoObj.command)) return handleNotes(context);
 		if (["todo", "tasks"].includes(msgInfoObj.command)) return handleTodos(context);
@@ -178,11 +185,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			return handleBirthdays(context);
 		}
 		if (msgInfoObj.command === "countdown") return handleCountdown(context);
-		return msgInfoObj.sendMessageWTyping(
-			from,
-			{ text: "🧰 *Group Toolkit*\n\n`gnote` shared notes\n`todo` task board\n`birthday` birthday list\n`countdown` event countdown" },
-			{ quoted: msg },
-		);
+		return msgInfoObj.sendMessageWTyping(from, { text: "🧰 *Group Toolkit*\n\n`gnote` shared notes\n`todo` task board\n`birthday` birthday list + confirmation poll\n`countdown` event countdown" }, { quoted: msg });
 	} catch (error) {
 		console.error("Group toolkit failed:", error.message);
 		return msgInfoObj.sendMessageWTyping(from, { text: "❌ The group toolkit is temporarily unavailable." }, { quoted: msg });
@@ -191,7 +194,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 export default () => ({
 	cmd: ["groupkit", "gnote", "groupnote", "todo", "tasks", "birthday", "birthdays", "birthdayform", "countdown"],
-	desc: "Persistent shared notes, task board, birthdays and event countdowns",
+	desc: "Persistent shared notes, task board, poll-confirmed birthdays and event countdowns",
 	usage: "groupkit | gnote | todo | birthday | countdown",
 	handler,
 });
