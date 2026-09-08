@@ -4,16 +4,21 @@ const pollSessions = mdClient.db("MyBotDataDB").collection("InteractivePollSessi
 
 export const createPollSession = async (session) => {
 	const now = new Date();
-	const document = {
+	const id = String(session._id);
+	const fields = {
 		...session,
-		_id: String(session._id),
 		votes: [],
 		status: "open",
 		createdAt: now,
 		updatedAt: now,
 	};
-	await pollSessions.updateOne({ _id: document._id }, { $set: document }, { upsert: true });
-	return document;
+	delete fields._id;
+	await pollSessions.updateOne(
+		{ _id: id },
+		{ $set: fields, $setOnInsert: { _id: id } },
+		{ upsert: true },
+	);
+	return { _id: id, ...fields };
 };
 
 export const getPollSession = (id) => pollSessions.findOne({ _id: String(id) });

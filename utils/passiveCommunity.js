@@ -2,7 +2,8 @@ import messageQueue from "../queue/messageQueue.js";
 import { handlePassiveScoredGameAnswer } from "../commands/group/members/scoredGames.js";
 
 const creatorName = String(process.env.ALPHA_CREATOR_NAME || "Martech").trim() || "Martech";
-const creatorNamePattern = new RegExp(`\\b${creatorName.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\b`, "i");
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const creatorNamePattern = new RegExp(`\\b${escapeRegExp(creatorName)}\\b`, "i");
 
 const bodyOf = (msg) => {
 	const message = msg?.message || {};
