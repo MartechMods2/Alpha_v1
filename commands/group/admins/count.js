@@ -1,6 +1,11 @@
 import { group } from "../../../db/groupData.js";
 import { alphaPanel, safeDisplayName } from "../../../utils/alphaStyle.js";
 import { mergeLiveGroupActivity, summarizeGroupActivity } from "../../../utils/groupActivity.js";
+import { parseDayToken } from "../../../utils/dangerGroupActions.js";
+import {
+	selectActionableInactiveMembers,
+	selectUnknownInactiveHistoryMembers,
+} from "../../../utils/inactiveReview.js";
 
 const DEFAULT_LOW_TARGET = 20;
 
@@ -50,14 +55,30 @@ const sendRows = async ({ rows, sendMessageWTyping, from, msg }) => {
 };
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
-	const { sendMessageWTyping, groupMetadata, botJids = [] } = msgInfoObj;
+	const { sendMessageWTyping, groupMetadata, botJids = [], command } = msgInfoObj;
+	const directInactiveMode = command === "countinactive";
 	const res = await group.findOne({ _id: from });
 	if (!res) {
 		return sendMessageWTyping(from, { text: "❌ No activity data found for this group yet." }, { quoted: msg });
 	}
 
-	const participants = Array.isArray(groupMetadata?.participants) ? groupMetadata.participants : [];
+	let effectiveMetadata = groupMetadata;
+	if (directInactiveMode) {
+		try {
+			effectiveMetadata = await sock.groupMetadata(from);
+		} catch (error) {
+			console.warn("[countinactive metadata error]", error.message);
+		}
+	}
+
+	const participants = Array.isArray(effectiveMetadata?.participants) ? effectiveMetadata.participants : [];
 	const hasLiveRoster = participants.length > 0;
+	if (directInactiveMode && !hasLiveRoster) {
+		return sendMessageWTyping(from, {
+			text: "❌ `countinactive` needs the current WhatsApp member list. Try again when Alpha can read the live group roster.",
+		}, { quoted: msg });
+	}
+
 	const members = hasLiveRoster
 		? mergeLiveGroupActivity({ participants, trackedMembers: res.members || [], botJids })
 		: fallbackStoredRoster(res.members || []);
@@ -65,6 +86,56 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	if (!members.length) {
 		return sendMessageWTyping(from, {
 			text: "📊 No current member activity could be resolved for this group yet.",
+		}, { quoted: msg });
+	}
+
+	if (directInactiveMode) {
+		const dayToken = args.find((arg) => parseDayToken(arg));
+		const days = parseDayToken(dayToken);
+		if (!days) {
+			return sendMessageWTyping(from, {
+				text: "📉 Usage: `countinactive 60d` — replace 60 with any number of days.",
+			}, { quoted: msg });
+		}
+
+		const inactive = selectActionableInactiveMembers(members, days, effectiveMetadata)
+			.sort((a, b) => new Date(a.lastMessageAt).getTime() - new Date(b.lastMessageAt).getTime());
+		const unknown = selectUnknownInactiveHistoryMembers(members, effectiveMetadata);
+
+		await sendMessageWTyping(from, {
+			text: alphaPanel({
+				icon: "📉",
+				title: `Inactive Members — ${days}d+`,
+				lines: [
+					`Group: *${safeDisplayName(res.grpName || effectiveMetadata?.subject || "This group")}*`,
+					`Current human members checked: *${members.length}*`,
+					`Proven inactive ${days}+ days: *${inactive.length}*`,
+					`Unknown/no last-message date excluded: *${unknown.length}*`,
+				],
+				footer: "This uses the same proven-inactivity rule as kickinactive/muteinactive. Admins, Alpha, configured owner and moderators are excluded from cleanup actions.",
+			}),
+		}, { quoted: msg });
+
+		if (inactive.length) {
+			const rows = inactive.map((member, index) =>
+				`${index + 1}. *${safeDisplayName(member.name, member.id)}* — ${Number(member.count || 0)} msgs · last ${lastSeenLabel(member.lastMessageAt)}`,
+			);
+			await sendRows({ rows, sendMessageWTyping, from, msg });
+		}
+
+		return sendMessageWTyping(from, {
+			text: alphaPanel({
+				icon: "🧹",
+				title: "Suggested Cleanup Actions",
+				lines: inactive.length ? [
+					`Kick this same inactivity class: \`kickinactive ${days}d\``,
+					`Mute this same inactivity class for 7 days: \`muteinactive ${days}d\``,
+					`Choose mute length: \`muteinactive ${days}d 30d\` or \`muteinactive ${days}d forever\``,
+				] : [
+					"No proven inactive ordinary members matched, so there is nothing to kick or mute from this review.",
+				],
+				footer: "Kick and bulk-mute actions show their own preview and confirmation code before anything changes.",
+			}),
 		}, { quoted: msg });
 	}
 
@@ -88,11 +159,11 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 					"`count all` — full media breakdown for every member",
 					"`count summary` — cleanup overview and activity buckets",
 					"`count zero` — members with 0 tracked messages",
-					"`count inactive` — same as zero-message review",
+					"`countinactive 60d` — members proven inactive for 60+ days + cleanup suggestions",
 					"`count member min 20` — everyone below 20 messages",
 					"`count inactive 20 7d` — below 20 and inactive for 7+ days",
 				],
-				footer: "0 messages means Alpha has recorded no messages from that current member since tracking began.",
+				footer: "For cleanup by days, prefer `countinactive 60d` because it uses the same strict rule as the action commands.",
 			}),
 		}, { quoted: msg });
 	}
@@ -140,7 +211,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			icon: zeroOnly ? "🪫" : "📉",
 			title: zeroOnly ? "Zero-Message Members" : "Low-Activity Review",
 			lines: [
-				`Group: *${safeDisplayName(res.grpName || groupMetadata?.subject || "This group")}*`,
+				`Group: *${safeDisplayName(res.grpName || effectiveMetadata?.subject || "This group")}*`,
 				`Current members checked: *${members.length}*`,
 				zeroOnly ? "Filter: *0 tracked messages*" : `Minimum target: *${threshold} messages*`,
 				...(staleDays !== null ? [`Last activity: *older than ${staleDays} day${staleDays === 1 ? "" : "s"}*`] : []),
@@ -164,7 +235,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			icon: "📈",
 			title: "Full Group Activity",
 			lines: [
-				`Group: *${safeDisplayName(res.grpName || groupMetadata?.subject || "This group")}*`,
+				`Group: *${safeDisplayName(res.grpName || effectiveMetadata?.subject || "This group")}*`,
 				`Current human members: *${summary.totalMembers}*`,
 				`Members with tracked activity: *${summary.activeMembers}* (${summary.coverage}%)`,
 				`🪫 Zero-message members: *${summary.zeroMembers}*`,
@@ -177,7 +248,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 				`🎭 Stickers ${totalSticker} · 📄 Docs ${totalPdf}`,
 				...(!hasLiveRoster ? ["⚠️ Live WhatsApp roster unavailable; zero-message members may be missing."] : []),
 			],
-			footer: "0 means no message recorded by Alpha since tracking began. Use `count zero` or `count member min 20` for cleanup. 👑 = admin.",
+			footer: "0 means no message recorded by Alpha since tracking began. For age-based cleanup use `countinactive 60d`. 👑 = admin.",
 		}),
 	}, { quoted: msg });
 
@@ -191,8 +262,8 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 };
 
 export default () => ({
-	cmd: ["count"],
-	desc: "Show every current group member from most active to zero activity",
-	usage: "count | count all | count summary | count zero | count member min 20 | count inactive 20 7d | count help",
+	cmd: ["count", "countinactive"],
+	desc: "Show full group activity or review members inactive for a chosen number of days",
+	usage: "count | countinactive 60d | count all | count summary | count zero | count member min 20 | count help",
 	handler,
 });
