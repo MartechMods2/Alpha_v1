@@ -4,6 +4,8 @@ import Layout from './components/Layout.jsx'
 import Login from './pages/Login.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import OperationsHub from './pages/OperationsHub.jsx'
+import ManagementSuite from './pages/ManagementSuite.jsx'
+import CustomizationStudio from './pages/CustomizationStudio.jsx'
 import Commands from './pages/Commands.jsx'
 import Groups from './pages/Groups.jsx'
 import Members from './pages/Members.jsx'
@@ -17,6 +19,7 @@ import MediaStudio from './pages/MediaStudio.jsx'
 import SafePack from './pages/SafePack.jsx'
 import ControlCenter from './pages/ControlCenter.jsx'
 import TemplateLibrary from './pages/TemplateLibrary.jsx'
+import { loadPersonalization } from './lib/personalization.js'
 
 export const ToastCtx = createContext(null)
 export const useToast = () => useContext(ToastCtx)
@@ -29,6 +32,11 @@ function AuthGuard({ children }) {
   if (auth === null) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}><div className="spinner" /></div>
   if (auth === false) return <Navigate to="/login" state={{ from: location }} replace />
   return children
+}
+
+function StartupLanding() {
+  const startup = loadPersonalization().startupPage
+  return startup && startup !== '/' ? <Navigate to={startup} replace /> : <Dashboard />
 }
 
 function Toast({ toasts }) {
@@ -64,8 +72,10 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/*" element={<AuthGuard><Layout><Routes>
-              <Route index element={<Dashboard />} />
+              <Route index element={<StartupLanding />} />
               <Route path="operations" element={<OperationsHub />} />
+              <Route path="management" element={<ManagementSuite />} />
+              <Route path="customize" element={<CustomizationStudio />} />
               <Route path="control-center" element={<ControlCenter />} />
               <Route path="templates" element={<TemplateLibrary />} />
               <Route path="commands" element={<Commands />} />
