@@ -96,6 +96,13 @@ const previewRows = (members, limit = 20) => {
 	return visible;
 };
 
+const removalSucceeded = (entry) => {
+	const raw = entry?.status ?? entry?.content?.status;
+	if (raw === undefined || raw === null) return true;
+	const status = Number(raw);
+	return Number.isFinite(status) ? status >= 200 && status < 300 : String(raw) === "200";
+};
+
 const removeInBatches = async ({ sock, from, members }) => {
 	let removed = 0;
 	let failed = 0;
@@ -104,8 +111,15 @@ const removeInBatches = async ({ sock, from, members }) => {
 	for (let index = 0; index < batches.length; index += 1) {
 		const batch = batches[index];
 		try {
-			await sock.groupParticipantsUpdate(from, batch.map((member) => member.id), "remove");
-			removed += batch.length;
+			const response = await sock.groupParticipantsUpdate(from, batch.map((member) => member.id), "remove");
+			if (Array.isArray(response) && response.length) {
+				for (let itemIndex = 0; itemIndex < batch.length; itemIndex += 1) {
+					if (removalSucceeded(response[itemIndex])) removed += 1;
+					else failed += 1;
+				}
+			} else {
+				removed += batch.length;
+			}
 		} catch (error) {
 			failed += batch.length;
 			console.error("[danger group removal error]", error.message);
@@ -130,12 +144,12 @@ const dangerHelp = ({ sendMessageWTyping, from, msg }) => sendMessageWTyping(fro
 			"`kickinactive 120d` — preview members proven inactive for 120+ days",
 			"`kickinactive confirm CODE` — remove only the reviewed stale members",
 			"`muteall` — preview admin-only posting mode",
-			"`muteall confirm CODE` — mute ordinary members; admins can still send",
+			"`muteall confirm CODE` — mute all non-admin members; admins can still send",
 			"`unmuteall` — reopen posting to everyone",
 			"`kickall` — OWNER ONLY preview of all removable ordinary members",
 			"`kickall confirm CODE` — OWNER ONLY bulk removal after review",
 		],
-		footer: "Safeguards: live roster required, Alpha/admins/owner/moderators protected, 2-minute codes, fresh revalidation, paced removal batches.",
+		footer: "Removal safeguards: live roster required; Alpha/admins/owner/moderators protected; 2-minute codes; fresh revalidation; paced batches. Mute-all follows WhatsApp's admin-only posting rule.",
 	}),
 }, { quoted: msg });
 
@@ -207,7 +221,6 @@ const handleKickInactive = async ({ sock, msg, from, args, senderJid, botJids, i
 				`Will remove: *${candidates.length} ordinary member${candidates.length === 1 ? "" : "s"}*`,
 				`Unknown history excluded: *${unknown.length}*`,
 				...rows,
-				"",
 				`Confirm within 2 minutes: \`kickinactive confirm ${code}\``,
 			],
 			footer: "Admins, Alpha, configured owner and moderators are protected automatically.",
@@ -236,16 +249,16 @@ const handleMuteAll = async ({ sock, msg, from, args, senderJid, botJids, isBotA
 	if (metadata.announce === true) {
 		return sendMessageWTyping(from, { text: "🔇 The group is already in admin-only posting mode. Use `unmuteall` to reopen it." }, { quoted: msg });
 	}
-	const ordinary = withoutProtected(selectKickAllCandidates(roster), metadata);
-	const code = savePreview({ from, senderJid, action: "muteall", candidates: ordinary });
+	const nonAdmins = selectKickAllCandidates(roster);
+	const code = savePreview({ from, senderJid, action: "muteall", candidates: nonAdmins });
 	return sendMessageWTyping(from, {
 		text: alphaPanel({
 			icon: "⚠️",
 			title: "Mute-All Preview",
 			lines: [
 				`Current human members: *${roster.length}*`,
-				`Ordinary members affected: *${ordinary.length}*`,
-				"Admins will still be able to send messages.",
+				`Non-admin members affected: *${nonAdmins.length}*`,
+				"Only WhatsApp group admins will still be able to send messages.",
 				`Confirm within 2 minutes: \`muteall confirm ${code}\``,
 			],
 			footer: "This changes the WhatsApp group to admin-only posting mode; it does not individually blacklist members.",
@@ -306,7 +319,6 @@ const handleKickAll = async ({ sock, msg, from, args, senderJid, botJids, isBotA
 				`Will remove: *${candidates.length} ordinary member${candidates.length === 1 ? "" : "s"}*`,
 				"Protected: all current admins, Alpha, configured owner and moderators.",
 				...rows,
-				"",
 				`Confirm within 2 minutes: \`kickall confirm ${code}\``,
 			],
 			footer: "This is destructive. Alpha re-checks the live roster before removal and sends removals in paced batches.",
