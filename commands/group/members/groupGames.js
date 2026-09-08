@@ -1,38 +1,5 @@
-const truthQuestions = [
-	"What is a harmless secret talent most people here do not know about?",
-	"What is the funniest mistake you have made recently?",
-	"Which habit would you most like to improve?",
-	"What is the nicest thing someone in this group has done for you?",
-	"What song do you secretly know every word to?",
-	"What is one goal you want to finish this year?",
-];
-
-const safeDares = [
-	"Send a voice note saying a tongue twister three times fast.",
-	"Describe your day using only three emojis.",
-	"Give a sincere compliment to the last person who messaged before you.",
-	"Change your group nickname to a snack for ten minutes.",
-	"Write a four-line poem about this group.",
-	"Share your best clean joke.",
-];
-
-const wouldYouRather = [
-	"Would you rather always be ten minutes early or twenty minutes late?",
-	"Would you rather explore space or the deepest ocean?",
-	"Would you rather give up music for a month or social media for a year?",
-	"Would you rather have unlimited books or unlimited movies?",
-	"Would you rather be able to speak every language or play every instrument?",
-	"Would you rather relive one great day or skip one difficult day?",
-];
-
-const icebreakers = [
-	"What small thing instantly improves your mood?",
-	"If you could master one skill overnight, what would it be?",
-	"Which food could you happily eat every week?",
-	"What is the best advice you have ever received?",
-	"If this group had a theme song, what should it be?",
-	"What fictional world would you visit for one day?",
-];
+import { generateSocialGamePrompt } from "../../../utils/socialGameGenerator.js";
+import { alphaPanel } from "../../../utils/alphaStyle.js";
 
 const compliments = [
 	"You make conversations better just by showing up.",
@@ -40,21 +7,18 @@ const compliments = [
 	"You have excellent taste in group chats.",
 	"You are doing better than you probably give yourself credit for.",
 	"Your presence adds something good to this group.",
+	"You bring a useful perspective to the room.",
+	"Your consistency deserves more credit than it gets.",
+	"Someone in this group probably learns from the way you handle things.",
 ];
 
 const eightBall = [
-	"Yes — go for it.",
-	"Very likely.",
-	"The signs point to yes.",
-	"Ask again after a snack.",
-	"Hard to tell right now.",
-	"Probably not this time.",
-	"No — choose another route.",
+	"Yes — go for it.", "Very likely.", "The signs point to yes.", "Ask again after a snack.",
+	"Hard to tell right now.", "Probably not this time.", "No — choose another route.",
 ];
 
 const cooldowns = new Map();
 const COOLDOWN_MS = 10_000;
-
 const randomItem = (items) => items[Math.floor(Math.random() * items.length)];
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
@@ -66,21 +30,30 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	if (cooldowns.size > 2000) {
 		for (const [entry, expires] of cooldowns) if (expires <= now) cooldowns.delete(entry);
 	}
+
 	let text;
 	switch (command) {
-		case "truth":
-			text = `🎯 *Truth*\n${randomItem(truthQuestions)}`;
+		case "truth": {
+			const prompt = await generateSocialGamePrompt({ groupJid: from, type: "truth" });
+			text = alphaPanel({ icon: "🎯", title: "Truth", lines: [prompt], footer: "Answer honestly, but only share what you are comfortable sharing." });
 			break;
-		case "dare":
-			text = `🔥 *Safe Dare*\n${randomItem(safeDares)}`;
+		}
+		case "dare": {
+			const prompt = await generateSocialGamePrompt({ groupJid: from, type: "dare" });
+			text = alphaPanel({ icon: "🔥", title: "Safe Dare", lines: [prompt], footer: "Keep it fun, respectful and voluntary." });
 			break;
+		}
 		case "wyr":
-		case "wouldyourather":
-			text = `🤔 *Would You Rather?*\n${randomItem(wouldYouRather)}`;
+		case "wouldyourather": {
+			const prompt = await generateSocialGamePrompt({ groupJid: from, type: "wyr" });
+			text = alphaPanel({ icon: "🤔", title: "Would You Rather?", lines: [prompt], footer: "Pick one and tell the group why." });
 			break;
-		case "icebreaker":
-			text = `🧊 *Icebreaker*\n${randomItem(icebreakers)}`;
+		}
+		case "icebreaker": {
+			const prompt = await generateSocialGamePrompt({ groupJid: from, type: "icebreaker" });
+			text = alphaPanel({ icon: "🧊", title: "Icebreaker", lines: [prompt], footer: "Everyone can answer." });
 			break;
+		}
 		case "compliment":
 			text = `💛 ${randomItem(compliments)}`;
 			break;
@@ -110,20 +83,8 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 };
 
 export default () => ({
-	cmd: [
-		"truth",
-		"dare",
-		"wyr",
-		"wouldyourather",
-		"icebreaker",
-		"compliment",
-		"coinflip",
-		"coin",
-		"dice",
-		"8ball",
-		"choose",
-	],
-	desc: "Low-volume group games and icebreakers",
+	cmd: ["truth", "dare", "wyr", "wouldyourather", "icebreaker", "compliment", "coinflip", "coin", "dice", "8ball", "choose"],
+	desc: "AI-assisted, non-repeating social games and lightweight group fun",
 	usage: "truth | dare | wyr | icebreaker | dice [sides] | choose a | b",
 	handler,
 });
