@@ -67,7 +67,6 @@
   },
   "repository": "https://github.com/MartechMods2/Alpha_v1.git",
   "trustedDependencies": [
-    "@swc/core",
     "baileys",
     "canvas",
     "youtube-dl-exec"
