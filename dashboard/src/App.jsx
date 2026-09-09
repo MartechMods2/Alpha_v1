@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard.jsx'
 import OperationsHub from './pages/OperationsHub.jsx'
 import ManagementSuite from './pages/ManagementSuite.jsx'
 import CustomizationStudio from './pages/CustomizationStudio.jsx'
+import EngagementCenter from './pages/EngagementCenter.jsx'
 import Commands from './pages/Commands.jsx'
 import Groups from './pages/Groups.jsx'
 import Members from './pages/Members.jsx'
@@ -75,6 +76,7 @@ export default function App() {
               <Route index element={<StartupLanding />} />
               <Route path="operations" element={<OperationsHub />} />
               <Route path="management" element={<ManagementSuite />} />
+              <Route path="engagement" element={<EngagementCenter />} />
               <Route path="customize" element={<CustomizationStudio />} />
               <Route path="control-center" element={<ControlCenter />} />
               <Route path="templates" element={<TemplateLibrary />} />
