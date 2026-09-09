@@ -8,10 +8,11 @@ import { delGroupMeta } from "../cache/redisCache.js";
 import { getGroupSafetySettings, renderTemplate } from "../utils/groupSafety.js";
 import { handleSafeJoinEvent } from "../utils/safeModeration.js";
 import { recordSafeAudit } from "../db/safePackData.js";
-import { GROUP_TEMPLATES } from "../utils/groupTemplates.js";
+import { renderGroupTemplate } from "../utils/groupTemplates.js";
 
 const getPhone = (p) => typeof p === "string" ? extractPhoneNumber(p) : extractPhoneNumber(p?.id || p?.jid || p?.phoneNumber || "");
 const getParticipantJid = (participant) => typeof participant === "string" ? participant : participant?.id || participant?.jid || participant?.lid || participant?.phoneNumber || "";
+const renderCommunityTemplate = (custom, key, values) => custom ? renderTemplate(custom, values) : renderGroupTemplate(key, values);
 
 const getGroupEvent = async (sock, events, cache) => {
 	const jid = events.id;
@@ -46,7 +47,7 @@ const getGroupEvent = async (sock, events, cache) => {
 			}), 0).catch(() => {});
 		}
 		if (settings.isWelcomeOn && participantJids.length > 0) {
-			const welcomeText = renderTemplate(groupDataDB.welcome || GROUP_TEMPLATES.welcome, templateValues);
+			const welcomeText = renderCommunityTemplate(groupDataDB.welcome, "welcome", templateValues);
 			await messageQueue.enqueue(jid, () => sock.sendMessage(
 				jid,
 				{ text: welcomeText, mentions: participantJids },
@@ -71,7 +72,7 @@ const getGroupEvent = async (sock, events, cache) => {
 		notifyOwner(null, `➕ <b>Group Update</b>\n━━━━━━━━━━━━━━\n🏠 <b>Group:</b> ${escapeHtml(groupDataDB?.grpName)}\n👤 <b>Joined:</b> ${addedNumbers}`);
 	} else {
 		if (events.action === "remove" && settings.isGoodbyeOn && participantJids.length > 0) {
-			const goodbyeText = renderTemplate(groupDataDB.goodbye || GROUP_TEMPLATES.goodbye, templateValues);
+			const goodbyeText = renderCommunityTemplate(groupDataDB.goodbye, "goodbye", templateValues);
 			await messageQueue.enqueue(jid, () => sock.sendMessage(jid, { text: goodbyeText, mentions: participantJids }), 1);
 		}
 		const actionEmoji = events.action === "remove" ? "➖" : events.action === "promote" ? "⬆️" : events.action === "demote" ? "⬇️" : "🔄";

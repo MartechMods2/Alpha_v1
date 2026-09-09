@@ -14,6 +14,7 @@ const NAV_SECTIONS = [
       { to: '/', icon: '◫', label: 'Overview', end: true },
       { to: '/operations', icon: '✦', label: 'Operations Hub' },
       { to: '/management', icon: '▦', label: 'Management Suite' },
+      { to: '/engagement', icon: '🌚', label: 'Engagement Center' },
       { to: '/control-center', icon: '⚡', label: 'Control Center' },
       { to: '/analytics', icon: '◒', label: 'Analytics' },
     ],
