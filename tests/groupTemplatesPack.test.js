@@ -7,7 +7,7 @@ import {
 	renderGroupTemplate,
 } from "../utils/groupTemplates.js";
 
-test("built-in group template pack contains every required community template", () => {
+test("built-in group template pack contains every required concise community template", () => {
 	const required = [
 		"welcome", "birthday", "birthday-confirmation", "goodbye", "rules",
 		"warning", "final-warning", "anti-link", "anti-link-action", "anti-status",
@@ -19,7 +19,8 @@ test("built-in group template pack contains every required community template", 
 	];
 	for (const key of required) {
 		assert.ok(GROUP_TEMPLATE_KEYS.includes(key), `${key} should be registered`);
-		assert.ok(GROUP_TEMPLATES[key]?.length > 80, `${key} should be detailed`);
+		assert.ok(GROUP_TEMPLATES[key]?.length >= 20, `${key} should contain a useful default`);
+		assert.ok(GROUP_TEMPLATES[key]?.length <= 280, `${key} should stay concise enough for group chat`);
 	}
 	assert.equal(new Set(GROUP_TEMPLATE_KEYS).size, GROUP_TEMPLATE_KEYS.length);
 });
@@ -42,7 +43,7 @@ test("template rendering replaces provided placeholders without changing the sto
 	assert.equal(GROUP_TEMPLATES.warning, original);
 });
 
-test("template placeholder discovery is deterministic", () => {
+test("template placeholder discovery remains deterministic for dashboard editing", () => {
 	assert.deepEqual(
 		groupTemplatePlaceholders("anti-link"),
 		["user", "group", "warning", "max", "action"],

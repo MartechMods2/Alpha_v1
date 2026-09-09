@@ -44,9 +44,7 @@ const POOLS = Object.freeze({
     "{user} left with no farewell speech? 😭",
     "And just like that, {user} is gone. 👀",
   ],
-  rules: [
-    "📜 Quick rules: respect people, no spam/scam links, no unnecessary drama, no status-mention abuse, and listen when admins step in. Simple. 🤝",
-  ],
+  rules: ["📜 Quick rules: respect people, no spam/scam links, no unnecessary drama, no Status-mention abuse, and listen when admins step in. Simple. 🤝"],
   birthday: [
     "Birthday behaviour activated. 🎂🔥 Happy birthday {user}! More wins, less stress. 🥂",
     "{user} added another year of trouble. 😂 Happy birthday! 🥳",
@@ -55,40 +53,40 @@ const POOLS = Object.freeze({
   ],
   "birthday-confirmation": ["🎂 You entered *{date}*. If that’s correct, confirm it; if not, cancel and try again."],
   warning: [
-    "Easy, {user}. 🌚 {reason}. Warning {warning}/{max}.",
-    "Too far, {user}. Pull it back. 🫡 Warning {warning}/{max}.",
-    "{user}, take it easy. 😂 {reason}. {warning}/{max}.",
-    "Boundary spotted, {user}. Respect it. ⚠️ {warning}/{max}.",
+    "Easy, {user}. 🌚 {reason} in {group}. Warning {warning}/{max}. {action}",
+    "Too far, {user}. Pull it back in {group}. 🫡 {warning}/{max}. {action}",
+    "{user}, take it easy in {group}. 😂 {reason}. {warning}/{max}. {action}",
+    "Boundary spotted in {group}, {user}. Respect it. ⚠️ {warning}/{max}. {action}",
   ],
   "final-warning": [
-    "Last warning, {user}. Don’t make us boring. 😭 {reason}. {warning}/{max}.",
-    "{user}, that’s the limit. 🫡 Admins may need to step in now.",
+    "Last warning, {user}. Don’t make us boring. 😭 {reason}. {warning}/{max}. {action}",
+    "{user}, that’s the limit in {group}. 🫡 {warning}/{max}. {action}",
   ],
   "anti-link": [
-    "Link check, {user}. 👀 That one isn’t approved here. Warning {warning}/{max}.",
-    "{user}, suspicious/unapproved link spotted. 🛡️ Please don’t repost it. {warning}/{max}.",
-    "That link failed the vibe check. 😂 {user}, warning {warning}/{max}.",
+    "Link check, {user}. 👀 That one isn’t approved in {group}. {warning}/{max}. {action}",
+    "{user}, unapproved link spotted in {group}. 🛡️ Don’t repost it. {warning}/{max}. {action}",
+    "That link failed the vibe check in {group}. 😂 {user}, {warning}/{max}. {action}",
   ],
-  "anti-link-action": ["{user}, link warning limit reached. 🛡️ {action}"],
+  "anti-link-action": ["{user}, link warning limit reached in {group}. 🛡️ {action}"],
   "anti-status": [
-    "{user}, easy with the Status mentions. 📵 Strike {warning}/{max}.",
-    "Status-tag police here. 😂 {user}, strike {warning}/{max}.",
-    "{user}, don’t drag the whole group into Status. 🌚 {warning}/{max}.",
+    "{user}, easy with the Status mentions in {group}. 📵 {warning}/{max}. {action}",
+    "Status-tag police here. 😂 {user}, {warning}/{max} in {group}. {action}",
+    "{user}, don’t drag the whole group into Status. 🌚 {warning}/{max}. {action}",
   ],
-  "anti-status-final": ["{user}, Status-mention limit reached. 📵 {action}"],
+  "anti-status-final": ["{user}, Status-mention limit reached in {group}. 📵 {action}"],
   "anti-spam": [
-    "Slow down, {user}. 😂 Alpha is seeing spam-like activity. {warning}/{max}.",
-    "Omo, one message at a time. 😭 {user}, warning {warning}/{max}.",
-    "{user}, the keyboard is not running away. 🌚 Ease up. {warning}/{max}.",
+    "Slow down, {user}. 😂 Spam-like activity in {group}. {warning}/{max}. {action}",
+    "Omo, one message at a time. 😭 {user}, {warning}/{max} in {group}. {action}",
+    "{user}, the keyboard isn’t running away. 🌚 Ease up. {warning}/{max}. {action}",
   ],
-  muted: ["🔇 {user} is on a short timeout. Duration: {duration}. Reason: {reason}."],
-  unmuted: ["🔊 {user} is back. Fresh start — don’t waste it. 😌"],
-  removed: ["🚪 {user} has been removed. Reason: {reason}. Keep the group calm, please."],
-  inactivity: ["📊 Activity check done: {count} member(s) reviewed. Don’t spam for numbers — real participation counts."],
-  "inactivity-cleanup": ["🧹 Cleanup review ready: {count} member(s) matched. Admins, check the list before confirming."],
-  "group-locked": ["🔒 House locked for a bit. Admins only. We’ll reopen when the dust settles. 🌚"],
-  "group-reopened": ["🔓 Doors are open again. Come make sensible noise. 😂🔥"],
-  announcement: ["📢 Quick one: {message}"],
+  muted: ["🔇 {user} is on a short timeout in {group}. {duration}. Reason: {reason}."],
+  unmuted: ["🔊 {user} is back in {group}. Fresh start — don’t waste it. 😌"],
+  removed: ["🚪 {user} has been removed from {group}. Reason: {reason}. Keep things calm, please."],
+  inactivity: ["📊 Activity check done in {group}: {count} member(s) reviewed. Don’t spam for numbers — real participation counts."],
+  "inactivity-cleanup": ["🧹 Cleanup review ready in {group}: {count} member(s) matched. Admins, check the list before confirming."],
+  "group-locked": ["🔒 {group} is locked for a bit. Admins only. We’ll reopen when the dust settles. 🌚"],
+  "group-reopened": ["🔓 {group} is open again. Come make sensible noise. 😂🔥"],
+  announcement: ["📢 Quick one for {group}: {message}"],
   morning: [
     "Good morning, troublemakers. 🌚 Doors are open.",
     "Morning, {group}. ☀️ Who’s bringing the first gist? 👀",
@@ -97,23 +95,23 @@ const POOLS = Object.freeze({
   ],
   night: [
     "That’s enough trouble for tonight. 😂 Goodnight, {group}.",
-    "House closed-ish. 🌚 Rest well, people.",
+    "House closed-ish. 🌚 Rest well, {group}.",
     "Night shift is ending. Same madness tomorrow. 😂🥂",
     "Goodnight, people. Charge your phone and your patience. 😭",
   ],
-  game: ["🎮 Game time. Who’s brave?", "Game loading… choose confidence over sense. 😂🔥"],
-  "game-result": ["🏆 Game done. Scores are in. Winner, enjoy your two minutes of fame. 😂"],
+  game: ["🎮 Game time in {group}. Who’s brave?", "Game loading in {group}… choose confidence over sense. 😂🔥"],
+  "game-result": ["🏆 Game done in {group}. Winner: {winner}. Score: {score}. Enjoy your two minutes of fame. 😂"],
   event: [
-    "📅 {event} is {when}. Don’t say Alpha didn’t tell you. 👀",
-    "Quick reminder: *{event}* — {when}. Save yourself from 'I forgot'. 😂",
+    "📅 {event} is {when} in {group}. Don’t say Alpha didn’t tell you. 👀",
+    "Quick reminder for {group}: *{event}* — {when}. Save yourself from 'I forgot'. 😂",
   ],
-  poll: ["📊 Vote and move on. No campaign violence in the replies. 😂"],
-  "game-join": ["🎮 Playing? Vote *Join*. Watching from the fence? Sit this one out. 👀"],
-  "count-report": ["📊 Activity report ready for {count} member(s). Review first; kick/mute only if it actually makes sense."],
-  "kick-count-confirmation": ["⚠️ You’re about to remove the last reviewed set. Check the names once more, then confirm."],
-  "mute-count-confirmation": ["🔇 Bulk mute preview ready. Check the members and duration before confirming."],
-  "security-alert": ["🛡️ Something triggered Alpha’s security check. Admins, review before taking extra action."],
-  "member-cleared": ["✅ {user} is clear for now. Carry on."],
+  poll: ["📊 New poll in {group}: {question}. Vote and move on — no campaign violence. 😂"],
+  "game-join": ["🎮 {group}, playing? Vote *Join*. Watching from the fence? Sit this one out. 👀"],
+  "count-report": ["📊 {group} activity report: {count} member(s) reviewed. Review first; kick/mute only if it actually makes sense."],
+  "kick-count-confirmation": ["⚠️ {group}: you’re about to remove {count} reviewed member(s). Check the names once more, then confirm."],
+  "mute-count-confirmation": ["🔇 {group}: bulk mute preview for {count} member(s), {duration}. Check the list before confirming."],
+  "security-alert": ["🛡️ Something triggered Alpha’s security check in {group}: {reason}. Admins, review before taking extra action."],
+  "member-cleared": ["✅ {user} is clear in {group} for now. Carry on."],
 });
 
 export const GROUP_TEMPLATES = Object.freeze(Object.fromEntries(GROUP_TEMPLATE_KEYS.map((key) => [key, POOLS[key]?.[0] || "Alpha update: {message}"])));
@@ -123,6 +121,10 @@ export const renderGroupTemplate = (key, values = {}) => {
   const seed = `${key}:${values.group || ""}:${values.user || ""}:${values.event || ""}:${values.warning || ""}:${dayKey()}`;
   return fill(pool[hash(seed) % pool.length], values).slice(0, 700);
 };
+
+export const groupTemplatePlaceholders = (key) => [
+  ...new Set((GROUP_TEMPLATES[key]?.match(/\{[a-zA-Z0-9_-]+\}/g) || []).map((value) => value.slice(1, -1))),
+];
 
 const INSIGHTS = [
   "Small consistency beats big promises.",
