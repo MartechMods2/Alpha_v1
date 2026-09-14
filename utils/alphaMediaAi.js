@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import ffmpegPath from "ffmpeg-static";
-import googleTTS from "google-tts-api";
+import * as googleTTS from "google-tts-api";
+import {
+	resolveGoogleTtsMethod,
+	resolveLegacyGoogleTtsFunction,
+	splitGoogleTtsText,
+} from "./googleTtsCompat.js";
 
 const imageUsage = new Map();
 const voiceUsage = new Map();
@@ -100,14 +105,76 @@ const mp3ToOggOpus = async (buffer) => {
 	}
 };
 
+const fetchGoogleSpeechPart = async (rawUrl) => {
+	const url = new URL(String(rawUrl || ""));
+	if (url.protocol !== "https:") throw new Error("Google TTS returned an unsafe audio URL");
+	const response = await fetch(url, {
+		headers: { "User-Agent": "Mozilla/5.0 AlphaBot/1.0" },
+		signal: AbortSignal.timeout(20_000),
+	});
+	if (!response.ok) throw new Error(`Google TTS audio download failed with HTTP ${response.status}`);
+	const length = Number(response.headers.get("content-length") || 0);
+	if (length > 6 * 1024 * 1024) throw new Error("Google TTS audio part is unexpectedly large");
+	const buffer = Buffer.from(await response.arrayBuffer());
+	if (!buffer.length || buffer.length > 6 * 1024 * 1024) throw new Error("Google TTS returned an invalid audio part");
+	return buffer;
+};
+
 const googleSpeechMp3 = async (text, lang) => {
-	if (typeof googleTTS.getAllAudioBase64 === "function") {
-		const parts = await googleTTS.getAllAudioBase64(text, { lang, slow: false });
-		const buffers = (parts || []).map((part) => Buffer.from(part?.base64 || part || "", "base64")).filter((buffer) => buffer.length);
+	const getAllAudioBase64 = resolveGoogleTtsMethod(googleTTS, "getAllAudioBase64");
+	if (getAllAudioBase64) {
+		const parts = await getAllAudioBase64(text, { lang, slow: false });
+		const buffers = (parts || [])
+			.map((part) => Buffer.from(part?.base64 || part || "", "base64"))
+			.filter((buffer) => buffer.length);
 		if (buffers.length) return Buffer.concat(buffers);
 	}
-	const base64 = await googleTTS.getAudioBase64(text, { lang, slow: false });
-	return Buffer.from(base64, "base64");
+
+	const getAudioBase64 = resolveGoogleTtsMethod(googleTTS, "getAudioBase64");
+	if (getAudioBase64) {
+		const buffers = [];
+		for (const chunk of splitGoogleTtsText(text, 180)) {
+			const base64 = await getAudioBase64(chunk, { lang, slow: false, timeout: 15_000 });
+			const buffer = Buffer.from(String(base64 || ""), "base64");
+			if (buffer.length) buffers.push(buffer);
+		}
+		if (buffers.length) return Buffer.concat(buffers);
+	}
+
+	const getAllAudioUrls = resolveGoogleTtsMethod(googleTTS, "getAllAudioUrls");
+	if (getAllAudioUrls) {
+		const parts = await Promise.resolve(getAllAudioUrls(text, { lang, slow: false, splitPunct: ",.!?;:" }));
+		const buffers = [];
+		for (const part of parts || []) {
+			const url = part?.url || part;
+			if (url) buffers.push(await fetchGoogleSpeechPart(url));
+		}
+		if (buffers.length) return Buffer.concat(buffers);
+	}
+
+	const getAudioUrl = resolveGoogleTtsMethod(googleTTS, "getAudioUrl");
+	if (getAudioUrl) {
+		const buffers = [];
+		for (const chunk of splitGoogleTtsText(text, 180)) {
+			const url = await Promise.resolve(getAudioUrl(chunk, { lang, slow: false }));
+			if (url) buffers.push(await fetchGoogleSpeechPart(url));
+		}
+		if (buffers.length) return Buffer.concat(buffers);
+	}
+
+	// google-tts-api@0.0.6 exports one async function with the signature
+	// (text, lang, speed). It returns a temporary Google Translate TTS URL.
+	const legacyTts = resolveLegacyGoogleTtsFunction(googleTTS);
+	if (legacyTts) {
+		const buffers = [];
+		for (const chunk of splitGoogleTtsText(text, 180)) {
+			const url = await legacyTts(chunk, lang, 1);
+			if (url) buffers.push(await fetchGoogleSpeechPart(url));
+		}
+		if (buffers.length) return Buffer.concat(buffers);
+	}
+
+	throw new Error("installed google-tts-api exposes no supported audio method");
 };
 
 export const generateAlphaVoiceNote = async (rawText, options = {}) => {
