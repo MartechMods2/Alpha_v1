@@ -1,12 +1,16 @@
 import { getGroupData, group } from "../../../db/groupData.js";
 import { extractPhoneNumber } from "../../../utils/lid.js";
 import { parseMuteDuration } from "../../../utils/groupSafety.js";
-import { isJidGroupAdmin, isSameGroupUser } from "../../../utils/groupParticipants.js";
+import {
+	isJidGroupAdmin,
+	isSameGroupUser,
+	participantJids,
+} from "../../../utils/groupParticipants.js";
 import {
 	addModeratorAudit,
 	findModeratorMute,
+	getModeratorTargetProtection,
 	isConfiguredModerator,
-	isModeratorProtectedTarget,
 } from "../../../utils/moderatorAuthority.js";
 
 const targetFromContext = (context) => context?.mentionedJid?.[0] || context?.participant || "";
@@ -16,6 +20,24 @@ const cleanReason = (args, skipIndex = -1) => args
 	.join(" ")
 	.trim()
 	.slice(0, 240);
+
+const resolveLiveTarget = (metadata, rawTarget) => {
+	if (!rawTarget) return "";
+	for (const participant of metadata?.participants || []) {
+		const aliases = participantJids(participant);
+		if (!aliases.length || !isSameGroupUser(metadata, rawTarget, aliases)) continue;
+		return aliases.find((jid) => jid.endsWith("@s.whatsapp.net") || jid.endsWith("@hosted"))
+			|| aliases.find((jid) => jid.endsWith("@lid") || jid.endsWith("@hosted.lid"))
+			|| rawTarget;
+	}
+	return rawTarget;
+};
+
+const destructiveProtectionMessage = (reason) => {
+	if (reason === "group-owner") return "🛡️ Moderator Override cannot demote or remove the group owner.";
+	if (reason === "moderator") return "🛡️ Moderator Override cannot demote or remove another protected Moderator.";
+	return "🛡️ Moderator Override cannot target Alpha or the creator account with destructive actions.";
+};
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const {
@@ -39,10 +61,21 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	if (!isConfiguredModerator(metadata, senderCandidates)) {
 		return reply("👑 This is a *Moderator Override* command. Ordinary members and admins cannot use it.");
 	}
-	const target = targetFromContext(extendedMessageOriginal);
-	if (!target) return reply("❌ Tag the target or reply to their message.");
-	if (isModeratorProtectedTarget(metadata, target, botJids)) {
-		return reply("🛡️ Moderator Override cannot target the group owner, Alpha, creator account, or another protected Moderator.");
+	const rawTarget = targetFromContext(extendedMessageOriginal);
+	if (!rawTarget) return reply("❌ Tag the target or reply to their message.");
+	const target = resolveLiveTarget(metadata, rawTarget);
+	const protection = getModeratorTargetProtection(metadata, target, botJids);
+	const softDisciplineCommands = new Set(["modmute", "modrestrict", "modwarn"]);
+	const destructiveCommands = new Set(["moddemote", "modkick", "modban", "modremove"]);
+
+	// Moderator mute/warn are soft override actions. They may target ordinary
+	// members, WhatsApp admins, the group owner and other configured moderators.
+	// Alpha and the configured creator account remain absolutely protected.
+	if (softDisciplineCommands.has(command) && protection.rootProtected) {
+		return reply("🛡️ Moderator mute/warn cannot target Alpha or the creator account.");
+	}
+	if (destructiveCommands.has(command) && protection.destructiveProtected) {
+		return reply(destructiveProtectionMessage(protection.reason));
 	}
 
 	const data = await getGroupData(from);
@@ -69,7 +102,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			{ $push: { moderatorMutedMembers: { $each: [{ member: target, mutedBy: senderJid, mutedAt: new Date(), mutedUntil, reason }], $slice: -100 } } },
 		);
 		await audit("modmute", reason);
-		return reply(`👑 ${mention(target)} is now under *Moderator Mute* for *${parsed.label}*. Admin protection was overridden.\nReason: ${reason}`, [target]);
+		return reply(`👑 ${mention(target)} is now under *Moderator Mute* for *${parsed.label}*.\nReason: ${reason}`, [target]);
 	}
 
 	if (command === "modunmute") {
@@ -153,7 +186,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 export default () => ({
 	cmd: ["modmute", "modrestrict", "modunmute", "modwarn", "modunwarn", "moddemote", "modkick", "modban", "modremove", "modhistory"],
-	desc: "Moderator-only override actions that can discipline ordinary WhatsApp admins while preserving owner/creator/Moderator protections",
-	usage: "modmute @admin 2h [reason] | modwarn @admin [reason] | moddemote @admin [reason] | modkick @admin [reason]",
+	desc: "Moderator-only override actions: soft mute/warn can discipline members and admins while destructive actions keep owner/creator/Moderator protections",
+	usage: "modmute @member 2h [reason] | modwarn @member [reason] | moddemote @admin [reason] | modkick @admin [reason]",
 	handler,
 });

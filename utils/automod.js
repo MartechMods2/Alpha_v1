@@ -14,8 +14,9 @@ export const handleAutomodMessage = async ({
 }) => {
 	if (!groupData || msg.key.fromMe || isOwner) return { handled: false };
 
-	// Moderator override mutes intentionally apply to ordinary WhatsApp admins.
-	// The helper still hard-protects the group owner, Alpha, creator and configured moderators.
+	// Moderator Override mute is checked before the ordinary admin exemption so a
+	// configured moderator can intentionally silence members, admins, the group
+	// owner, or another configured moderator. Alpha and the creator stay exempt.
 	const moderatorMute = await enforceModeratorMute({
 		sock, msg, groupJid, memberJid: senderJid, groupData, groupMetadata, botJids, isBotAdmin,
 	});
