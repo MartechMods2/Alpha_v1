@@ -35,6 +35,12 @@ test("video wording explicitly routes to video search", () => {
 	assert.equal(result.action, "search");
 });
 
+test("plural video wording also routes to video search", () => {
+	const result = detectAlphaDeliveryIntent("teach me web design using videos");
+	assert.equal(result.mode, "video");
+	assert.equal(result.action, "search");
+});
+
 test("explicit text request remains text", () => {
 	const result = detectAlphaDeliveryIntent("reply in text and explain DNS");
 	assert.equal(result.mode, "text");
