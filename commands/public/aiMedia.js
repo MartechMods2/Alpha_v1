@@ -5,34 +5,14 @@ import {
 	generateAlphaImage,
 	generateAlphaVoiceNote,
 } from "../../utils/alphaMediaAi.js";
-
-export const AI_IMAGE_COMMANDS = Object.freeze(["img", "imagegen", "drawai", "aipicture"]);
-export const AI_VOICE_COMMANDS = Object.freeze(["voice", "voiceask", "askvoice", "aivoice", "vnote"]);
-export const RAW_TTS_COMMANDS = Object.freeze(["say", "speak", "tts"]);
-
-export const classifyAlphaMediaCommand = (command) => {
-	const value = String(command || "").toLowerCase();
-	if (AI_IMAGE_COMMANDS.includes(value)) return "image";
-	if (AI_VOICE_COMMANDS.includes(value)) return "voice-ai";
-	if (RAW_TTS_COMMANDS.includes(value)) return "voice-tts";
-	if (["aimedia", "mediaai", "aimediahelp"].includes(value)) return "help";
-	return "unknown";
-};
-
-const quotedText = (context = {}) => {
-	const q = context?.quotedMessage || {};
-	return String(
-		q.conversation ??
-		q.extendedTextMessage?.text ??
-		q.imageMessage?.caption ??
-		q.videoMessage?.caption ??
-		q.documentMessage?.caption ??
-		"",
-	).trim();
-};
-
-export const resolveExplicitMediaPrompt = (args = [], context = {}) =>
-	(String(Array.isArray(args) ? args.join(" ") : args).trim() || quotedText(context)).trim();
+import {
+	AI_IMAGE_COMMANDS,
+	AI_VOICE_COMMANDS,
+	MEDIA_HELP_COMMANDS,
+	RAW_TTS_COMMANDS,
+	classifyAlphaMediaCommand,
+	resolveExplicitMediaPrompt,
+} from "../../utils/explicitMediaMode.js";
 
 const handler = async (_sock, msg, from, args, info) => {
 	const {
@@ -127,7 +107,7 @@ const handler = async (_sock, msg, from, args, info) => {
 
 export default () => ({
 	cmd: [
-		"aimedia", "mediaai", "aimediahelp",
+		...MEDIA_HELP_COMMANDS,
 		...AI_IMAGE_COMMANDS,
 		...AI_VOICE_COMMANDS,
 		...RAW_TTS_COMMANDS,
