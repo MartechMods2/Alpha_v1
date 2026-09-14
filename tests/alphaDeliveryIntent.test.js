@@ -9,24 +9,56 @@ test("Alpha defaults to text when no delivery format is requested", () => {
 	assert.equal(alphaDeliveryDefaults().defaultMode, "text");
 });
 
-test("voice wording explicitly routes to voice", () => {
-	const result = detectAlphaDeliveryIntent("tell me how to create a website using voice");
+test("the exact @Alpha screenshot-style request routes directly to voice", () => {
+	const result = detectAlphaDeliveryIntent("@Alpha tell me how to create a website using voice");
 	assert.equal(result.mode, "voice");
+	assert.equal(result.action, "speak");
 	assert.equal(result.explicit, true);
 	assert.match(result.prompt, /create a website/i);
+	assert.doesNotMatch(result.prompt, /@alpha/i);
+});
+
+test("audio wording is treated as a voice-note delivery request", () => {
+	for (const prompt of [
+		"@Alpha explain DNS as audio",
+		"@Alpha answer with an audio message",
+		"@Alpha send me a voice message explaining DNS",
+		"@Alpha explain DNS using a voice note",
+	]) {
+		const result = detectAlphaDeliveryIntent(prompt);
+		assert.equal(result.mode, "voice", prompt);
+		assert.equal(result.explicit, true, prompt);
+	}
 });
 
 test("image generation wording explicitly routes to generated image", () => {
-	const result = detectAlphaDeliveryIntent("generate an image of a boy running in Lagos");
+	const result = detectAlphaDeliveryIntent("@Alpha generate an image of a boy running in Lagos");
 	assert.equal(result.mode, "image");
 	assert.equal(result.action, "generate");
 	assert.match(result.prompt, /boy running in Lagos/i);
 });
 
-test("image search wording is distinguished from generation", () => {
-	const result = detectAlphaDeliveryIntent("show me a photo of a Nigerian classroom");
-	assert.equal(result.mode, "image");
-	assert.equal(result.action, "search");
+test("ordinary show/send image wording generates with AI", () => {
+	for (const prompt of [
+		"@Alpha show me an image of a Nigerian classroom",
+		"@Alpha send me a picture of a boy running",
+		"@Alpha give me a photo of Lagos at night",
+	]) {
+		const result = detectAlphaDeliveryIntent(prompt);
+		assert.equal(result.mode, "image", prompt);
+		assert.equal(result.action, "generate", prompt);
+	}
+});
+
+test("clearly search-oriented image wording still uses media search", () => {
+	for (const prompt of [
+		"@Alpha find me a real photo of Lagos",
+		"@Alpha search for a stock image of a classroom",
+	]) {
+		const result = detectAlphaDeliveryIntent(prompt);
+		assert.equal(result.mode, "image", prompt);
+		assert.equal(result.action, "search", prompt);
+	}
 });
 
 test("video wording explicitly routes to video search", () => {

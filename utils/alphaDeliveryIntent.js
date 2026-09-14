@@ -10,20 +10,22 @@ const candidates = (text) => {
 	};
 
 	add("voice", "speak", [
-		/\b(?:using|with|by|in|through)\s+(?:a\s+)?voice(?:\s+note)?\b/i,
-		/\b(?:reply|answer|respond|explain|tell\s+me)\s+(?:to\s+me\s+)?(?:in|with|by)\s+(?:a\s+)?voice(?:\s+note)?\b/i,
-		/\b(?:send|give)\s+(?:me\s+)?(?:a\s+)?voice\s+note\b/i,
-		/\b(?:say|speak)\s+(?:the\s+)?answer\b/i,
+		/\b(?:using|with|by|in|through|as)\s+(?:an?\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?)\b/i,
+		/\b(?:reply|answer|respond|explain|tell\s+me)\s+(?:to\s+me\s+)?(?:in|with|by|as)\s+(?:an?\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?)\b/i,
+		/\b(?:send|give)\s+(?:me\s+)?(?:the\s+answer\s+)?(?:as\s+)?(?:an?\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?)\b/i,
+		/\b(?:say|speak|read)\s+(?:the\s+)?(?:answer|response|reply)(?:\s+out\s+loud)?\b/i,
+		/\b(?:say|speak)\s+(?:it|this)\s+(?:out\s+loud|to\s+me)\b/i,
 	]);
 	add("image", "generate", [
-		/\b(?:generate|create|draw|make|design|render)\s+(?:me\s+)?(?:an?\s+)?(?:ai\s+)?(?:image|picture|illustration)\b/i,
-		/\b(?:as|using|with|in)\s+(?:an?\s+)?(?:image|picture|illustration)\b/i,
+		/\b(?:generate|create|draw|make|design|render)\s+(?:me\s+)?(?:an?\s+)?(?:ai\s+)?(?:image|picture|illustration|photo)\b/i,
+		/\b(?:show|send|give)\s+(?:me\s+)?(?:an?\s+)?(?:ai\s+)?(?:image|picture|illustration|photo)\b/i,
+		/\b(?:as|using|with|in)\s+(?:an?\s+)?(?:ai\s+)?(?:image|picture|illustration|photo)\b/i,
 	]);
 	add("image", "search", [
-		/\b(?:show|find|send|get|give)\s+(?:me\s+)?(?:an?\s+)?(?:photo|image|picture)\b/i,
+		/\b(?:find|search(?:\s+for)?|look\s+up|get)\s+(?:me\s+)?(?:an?\s+)?(?:real\s+|stock\s+)?(?:photo|image|picture)\b/i,
 	]);
 	add("video", "search", [
-		/\b(?:show|find|send|get|give|play)\s+(?:me\s+)?(?:an?\s+)?videos?\b/i,
+		/\b(?:show|find|send|get|give|play|search(?:\s+for)?)\s+(?:me\s+)?(?:an?\s+)?videos?\b/i,
 		/\b(?:using|with|by|in)\s+(?:(?:a|some)\s+)?videos?\b/i,
 		/\b(?:answer|explain|teach|show)\s+(?:me\s+)?(?:this\s+)?(?:in|with|by)\s+(?:(?:a|some)\s+)?videos?\b/i,
 	]);
@@ -38,20 +40,22 @@ const candidates = (text) => {
 };
 
 const stripKnownPhrases = (text) => clean(text
-	.replace(/\b(?:using|with|by|in|through)\s+(?:a\s+)?voice(?:\s+note)?\b/gi, " ")
+	.replace(/^\s*@alpha\b[:,]?\s*/i, " ")
+	.replace(/^\s*alpha\b[:,]?\s*/i, " ")
+	.replace(/\b(?:using|with|by|in|through|as)\s+(?:an?\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?)\b/gi, " ")
 	.replace(/\b(?:as|using|with|in)\s+(?:plain\s+)?text\b/gi, " ")
-	.replace(/\b(?:as|using|with|in)\s+(?:an?\s+)?(?:image|picture|illustration)\b/gi, " ")
+	.replace(/\b(?:as|using|with|in)\s+(?:an?\s+)?(?:ai\s+)?(?:image|picture|illustration|photo)\b/gi, " ")
 	.replace(/\b(?:using|with|by|in)\s+(?:(?:a|some)\s+)?videos?\b/gi, " ")
-	.replace(/^\s*(?:please\s+)?(?:generate|create|draw|make|design|render|show|find|send|get|give|play)\s+(?:me\s+)?(?:an?\s+)?(?:ai\s+)?(?:image|picture|illustration|photo|videos?)(?:\s+(?:of|about|for))?\s*/i, " ")
-	.replace(/^\s*(?:please\s+)?(?:reply|answer|respond|explain|tell\s+me)\s+(?:to\s+me\s+)?(?:in|with|by|as)\s+(?:a\s+)?(?:voice\s+note|voice|text)\s*/i, " "));
+	.replace(/^\s*(?:please\s+)?(?:generate|create|draw|make|design|render|show|find|search(?:\s+for)?|send|get|give|play)\s+(?:me\s+)?(?:an?\s+)?(?:ai\s+)?(?:image|picture|illustration|photo|videos?)(?:\s+(?:of|about|for))?\s*/i, " ")
+	.replace(/^\s*(?:please\s+)?(?:reply|answer|respond|explain|tell\s+me)\s+(?:to\s+me\s+)?(?:in|with|by|as)\s+(?:an?\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?|text)\s*/i, " "));
 
 export const detectAlphaDeliveryIntent = (rawText) => {
 	const text = clean(rawText).slice(0, 5000);
 	if (!text) return { mode: "text", action: "text", explicit: false, prompt: "", original: "" };
 	const choices = candidates(text);
 	if (!choices.length) return { mode: "text", action: "text", explicit: false, prompt: text, original: text };
-	// The last explicit delivery instruction wins. This handles prompts such as
-	// “make an image, then explain it using voice” without guessing silently.
+	// The last explicit delivery instruction wins. Alpha never chooses media just
+	// because media could be useful; text remains the default unless requested.
 	const selected = choices.sort((a, b) => a.index - b.index).at(-1);
 	return {
 		mode: selected.mode,
