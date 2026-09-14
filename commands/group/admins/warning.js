@@ -5,6 +5,7 @@ import {
 	isProtectedGroupMember,
 	warnGroupMember,
 } from "../../../utils/moderation.js";
+import { warnDesireMember } from "../../../utils/desireHub.js";
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const {
@@ -52,6 +53,20 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			.join(" ")
 			.trim()
 			.slice(0, 300) || "Admin warning";
+
+		if (groupData?.desireHubEnabled) {
+			return warnDesireMember({
+				sock,
+				msg,
+				groupJid: from,
+				memberJid: taggedJid,
+				groupData,
+				isBotAdmin,
+				sendMessageWTyping,
+				reason,
+			});
+		}
+
 		return warnGroupMember({
 			sock,
 			msg,

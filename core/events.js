@@ -47,7 +47,8 @@ const events = async (sock, startSock, cache) => {
 							console.error("Owner mention reaction handler failed:", error.message);
 						}
 						try {
-							await handlePassiveCommunityMessage(sock, msg);
+							const passiveHandled = await handlePassiveCommunityMessage(sock, msg);
+							if (passiveHandled) return;
 						} catch (error) {
 							console.error("Passive community handler failed:", error.message);
 						}

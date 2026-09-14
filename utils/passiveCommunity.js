@@ -1,10 +1,20 @@
 import messageQueue from "../queue/messageQueue.js";
+import { getGroupData } from "../db/groupData.js";
 import { handlePassiveScoredGameAnswer } from "../commands/group/members/scoredGames.js";
 import { maybeJoinActiveConversation, recordHumanActivity } from "./humanEngagement.js";
+import { handleExplicitAlphaDelivery } from "./alphaDeliveryRouter.js";
+import {
+  formatVibeCheck,
+  generateDesireGame,
+  generateRizzReplies,
+  maybeSendConsentReminder,
+  recordDesireActivity,
+} from "./desireHub.js";
 
 const creatorName = String(process.env.ALPHA_CREATOR_NAME || "Martech").trim() || "Martech";
 const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const creatorNamePattern = new RegExp(`(?:^|\\s|@)${escapeRegExp(creatorName)}(?:\\b|$)`, "i");
+const commandPrefix = String(process.env.PREFIX || "$");
 
 const bodyOf = (msg) => {
   const message = msg?.message || {};
@@ -60,15 +70,39 @@ const reactCreatorMention = async (sock, msg, from, body) => {
   ).catch(() => {});
 };
 
+const handleDesireSlashShortcut = async ({ sock, msg, from, senderJid, body }) => {
+  const match = body.match(/^\/(rizz|rizzcoach|game|desiregame|vibecheck|vibe|energy)(?:\s+([\s\S]*))?$/i);
+  if (!match) return false;
+  const data = await getGroupData(from).catch(() => null);
+  if (!data?.desireHubEnabled) return false;
+  const command = match[1].toLowerCase();
+  const input = String(match[2] || "").trim();
+  let text;
+  if (["vibecheck", "vibe", "energy"].includes(command)) text = formatVibeCheck(from);
+  else if (["rizz", "rizzcoach"].includes(command)) text = await generateRizzReplies({ groupJid: from, senderJid, context: input });
+  else text = await generateDesireGame({ groupJid: from, type: input });
+  await sock.sendMessage(from, { text }, { quoted: msg });
+  return true;
+};
+
 export const handlePassiveCommunityMessage = async (sock, msg) => {
   const from = msg?.key?.remoteJid || "";
   if (!from.endsWith("@g.us") || msg?.key?.fromMe || !msg?.message) return false;
   const body = bodyOf(msg).trim();
   if (!body) return false;
-  const senderJid = msg?.key?.participant || contextInfoOf(msg)?.participant || "";
+  const senderJid = msg?.key?.participant || msg?.key?.participantPn || msg?.key?.participantAlt || contextInfoOf(msg)?.participant || "";
 
-  if (senderJid) recordHumanActivity({ groupJid: from, senderJid, body });
+  if (senderJid) {
+    recordHumanActivity({ groupJid: from, senderJid, body });
+    if (!body.startsWith(commandPrefix) && !body.startsWith("/") && !body.startsWith("#")) {
+      recordDesireActivity({ groupJid: from, senderJid, body });
+    }
+  }
   await reactCreatorMention(sock, msg, from, body);
+  void maybeSendConsentReminder({ sock, groupJid: from, senderJid, body }).catch((error) => console.warn("[DESIRE CONSENT]", error.message));
+
+  if (senderJid && await handleExplicitAlphaDelivery({ sock, msg, groupJid: from, senderJid, body })) return true;
+  if (senderJid && await handleDesireSlashShortcut({ sock, msg, from, senderJid, body })) return true;
 
   if (!body.startsWith("#") || body.length < 2) {
     void maybeJoinActiveConversation({ sock, msg, groupJid: from }).catch((error) => console.warn("[HUMAN ENGAGEMENT] active join skipped:", error.message));

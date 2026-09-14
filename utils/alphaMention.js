@@ -36,7 +36,7 @@ export const normalizeAlphaSettings = (data = {}) => ({
 	alphaVoiceOn: Boolean(data.alphaVoiceOn),
 	alphaDocOn: Boolean(data.alphaDocOn),
 	alphaStickerOn: data.alphaStickerOn !== false,
-	alphaPersonality: ["friendly", "funny", "professional"].includes(data.alphaPersonality) ? data.alphaPersonality : "friendly",
+	alphaPersonality: ["friendly", "funny", "professional", "desire"].includes(data.alphaPersonality) ? data.alphaPersonality : "friendly",
 	alphaResponseLength: ["short", "normal", "detailed"].includes(data.alphaResponseLength) ? data.alphaResponseLength : "short",
 	alphaQuietStart: /^\d{2}:\d{2}$/.test(data.alphaQuietStart || "") ? data.alphaQuietStart : "",
 	alphaQuietEnd: /^\d{2}:\d{2}$/.test(data.alphaQuietEnd || "") ? data.alphaQuietEnd : "",
@@ -131,6 +131,13 @@ export const stripBotMention = (body, mentionedJids = []) => {
 	return text.replace(/\s+/g, " ").trim();
 };
 
+const personalityInstruction = (settings) => {
+	if (settings.alphaPersonality === "desire") {
+		return "Use Desire Hub AFTER DARK personality: roughly 30% teasing, 30% helpful and 40% chaotic. Be short, witty, Nigerian-flavoured and human. Flirting must stay non-explicit, consensual and respectful. Never pressure, degrade, harass or sound like a corporate notice.";
+	}
+	return `Reply in a ${settings.alphaPersonality} style.`;
+};
+
 export const buildAlphaPrompt = async ({ sock, msg, body, mentionedJids, settings }) => {
 	let prompt = stripBotMention(body, mentionedJids);
 	const quoted = quotedText(msg);
@@ -140,6 +147,6 @@ export const buildAlphaPrompt = async ({ sock, msg, body, mentionedJids, setting
 		return "";
 	});
 	if (mediaAnalysis) prompt += `\n\nMedia analysis:\n${mediaAnalysis}`;
-	const style = `Reply in a ${settings.alphaPersonality} style. Keep the response ${settings.alphaResponseLength}.`;
+	const style = `${personalityInstruction(settings)} Keep the response ${settings.alphaResponseLength}. Unless the user explicitly asks for another format, answer as normal text.`;
 	return `${prompt || "Greet me briefly and ask how you can help."}\n\n${style}`;
 };
