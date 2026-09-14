@@ -19,6 +19,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		return reply(
 			"⚡ *Alpha Mention Assistant*\n\n" +
 			`Mode: *${settings.alphaMode}*\nStyle: *${settings.alphaPersonality}*\nLength: *${settings.alphaResponseLength}*\n` +
+			`Default reply: *TEXT* unless voice/image/video is explicitly requested\n` +
 			`Daily quota: *${settings.alphaDailyQuota} per member*\nMemory: *${settings.alphaMemoryLimit} turns*\n` +
 			`Images: *${settings.alphaImageOn ? "on" : "off"}* · Voice: *${settings.alphaVoiceOn ? "on" : "off"}* · Documents: *${settings.alphaDocOn ? "on" : "off"}*\n` +
 			`Access: *${settings.alphaAccessMode}* · Allowed: *${settings.alphaAllowedMembers.length}* · Denied: *${settings.alphaDeniedMembers.length}*\n` +
@@ -76,7 +77,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	}
 	const updates = {};
 	if (command === "alphamode" && ["smart", "text", "mixed", "sticker", "off"].includes(raw)) updates.alphaMode = raw;
-	else if (command === "alphastyle" && ["friendly", "funny", "professional"].includes(raw)) updates.alphaPersonality = raw;
+	else if (command === "alphastyle" && ["friendly", "funny", "professional", "desire"].includes(raw)) updates.alphaPersonality = raw;
 	else if (command === "alphalength" && ["short", "normal", "detailed"].includes(raw)) updates.alphaResponseLength = raw;
 	else if (command === "alphamemory" && Number.isFinite(Number(raw))) updates.alphaMemoryLimit = Math.min(20, Math.max(0, Number(raw)));
 	else if (command === "alphaquota" && Number.isFinite(Number(raw))) updates.alphaDailyQuota = Math.min(50, Math.max(1, Number(raw)));
@@ -105,6 +106,6 @@ export default () => ({
 		"alphafilter", "alphaaccess",
 	],
 	desc: "Configure smart Alpha mention replies and media understanding",
-	usage: "alphastatus | alphamode smart | alphafilter everyone|admins|allowlist|denylist",
+	usage: "alphastatus | alphamode smart | alphastyle desire | alphafilter everyone|admins|allowlist|denylist",
 	handler,
 });
