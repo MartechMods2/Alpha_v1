@@ -5,7 +5,11 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import ffmpegPath from "ffmpeg-static";
 import * as googleTTS from "google-tts-api";
-import { resolveGoogleTtsMethod, splitGoogleTtsText } from "./googleTtsCompat.js";
+import {
+	resolveGoogleTtsMethod,
+	resolveLegacyGoogleTtsFunction,
+	splitGoogleTtsText,
+} from "./googleTtsCompat.js";
 
 const imageUsage = new Map();
 const voiceUsage = new Map();
@@ -153,6 +157,18 @@ const googleSpeechMp3 = async (text, lang) => {
 		const buffers = [];
 		for (const chunk of splitGoogleTtsText(text, 180)) {
 			const url = await Promise.resolve(getAudioUrl(chunk, { lang, slow: false }));
+			if (url) buffers.push(await fetchGoogleSpeechPart(url));
+		}
+		if (buffers.length) return Buffer.concat(buffers);
+	}
+
+	// google-tts-api@0.0.6 exports one async function with the signature
+	// (text, lang, speed). It returns a temporary Google Translate TTS URL.
+	const legacyTts = resolveLegacyGoogleTtsFunction(googleTTS);
+	if (legacyTts) {
+		const buffers = [];
+		for (const chunk of splitGoogleTtsText(text, 180)) {
+			const url = await legacyTts(chunk, lang, 1);
 			if (url) buffers.push(await fetchGoogleSpeechPart(url));
 		}
 		if (buffers.length) return Buffer.concat(buffers);
