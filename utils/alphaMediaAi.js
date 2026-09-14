@@ -14,6 +14,7 @@ import {
 const imageUsage = new Map();
 const voiceUsage = new Map();
 const WINDOW_MS = 10 * 60_000;
+const WHATSAPP_VOICE_MIMETYPE = "audio/ogg; codecs=opus";
 
 const claimWindow = (store, key, limit, now = Date.now()) => {
 	const id = String(key || "unknown");
@@ -83,23 +84,67 @@ export const generateAlphaImage = async (rawPrompt) => {
 	throw new Error("image provider returned no image data");
 };
 
-const runFfmpeg = (args) => new Promise((resolve, reject) => {
-	const executable = ffmpegPath || "ffmpeg";
+const runOneFfmpeg = (executable, args) => new Promise((resolve, reject) => {
 	const child = spawn(executable, args, { stdio: ["ignore", "ignore", "pipe"] });
 	let stderr = "";
 	child.stderr.on("data", (chunk) => { stderr += String(chunk).slice(-4000); });
 	child.once("error", reject);
-	child.once("close", (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg failed (${code}): ${stderr.slice(-500)}`)));
+	child.once("close", (code) => code === 0 ? resolve() : reject(new Error(`${executable} failed (${code}): ${stderr.slice(-500)}`)));
 });
 
-const mp3ToOggOpus = async (buffer) => {
+const runFfmpeg = async (args) => {
+	const candidates = [...new Set([ffmpegPath, "ffmpeg"].filter(Boolean))];
+	const failures = [];
+	for (const executable of candidates) {
+		try {
+			await runOneFfmpeg(executable, args);
+			return;
+		} catch (error) {
+			failures.push(error.message);
+		}
+	}
+	throw new Error(`ffmpeg conversion failed: ${failures.join(" | ").slice(-1200)}`);
+};
+
+export const isWhatsAppVoiceBuffer = (buffer) => {
+	if (!Buffer.isBuffer(buffer) || buffer.length < 64) return false;
+	if (buffer.subarray(0, 4).toString("ascii") !== "OggS") return false;
+	return buffer.includes(Buffer.from("OpusHead", "ascii"));
+};
+
+export const normalizeAudioForWhatsAppVoice = async (buffer, inputFormat = "mp3") => {
+	if (!Buffer.isBuffer(buffer) || !buffer.length) throw new Error("voice provider returned no audio");
+	if (buffer.length > 24 * 1024 * 1024) throw new Error("voice provider audio is unexpectedly large");
+	const safeFormat = String(inputFormat || "mp3").toLowerCase().replace(/[^a-z0-9]/g, "");
+	if (!safeFormat || safeFormat.length > 8) throw new Error("unsupported voice input format");
+
 	const id = randomUUID();
-	const input = path.join(tmpdir(), `alpha-${id}.mp3`);
+	const input = path.join(tmpdir(), `alpha-${id}.${safeFormat}`);
 	const output = path.join(tmpdir(), `alpha-${id}.ogg`);
 	try {
 		await writeFile(input, buffer);
-		await runFfmpeg(["-hide_banner", "-loglevel", "error", "-y", "-i", input, "-vn", "-c:a", "libopus", "-b:a", "48k", "-vbr", "on", "-application", "voip", "-ar", "48000", "-ac", "1", output]);
-		return await readFile(output);
+		await runFfmpeg([
+			"-hide_banner", "-loglevel", "error", "-y",
+			"-fflags", "+genpts",
+			"-i", input,
+			"-map_metadata", "-1",
+			"-vn",
+			"-af", "aresample=async=1:first_pts=0",
+			"-c:a", "libopus",
+			"-application", "voip",
+			"-ar", "48000",
+			"-ac", "1",
+			"-b:a", "32k",
+			"-vbr", "on",
+			"-avoid_negative_ts", "make_zero",
+			"-f", "ogg",
+			output,
+		]);
+		const normalized = await readFile(output);
+		if (!isWhatsAppVoiceBuffer(normalized)) {
+			throw new Error("ffmpeg produced an invalid WhatsApp Ogg/Opus voice file");
+		}
+		return normalized;
 	} finally {
 		await Promise.allSettled([unlink(input), unlink(output)]);
 	}
@@ -135,8 +180,8 @@ const googleSpeechMp3 = async (text, lang) => {
 		const buffers = [];
 		for (const chunk of splitGoogleTtsText(text, 180)) {
 			const base64 = await getAudioBase64(chunk, { lang, slow: false, timeout: 15_000 });
-			const buffer = Buffer.from(String(base64 || ""), "base64");
-			if (buffer.length) buffers.push(buffer);
+			const part = Buffer.from(String(base64 || ""), "base64");
+			if (part.length) buffers.push(part);
 		}
 		if (buffers.length) return Buffer.concat(buffers);
 	}
@@ -162,8 +207,6 @@ const googleSpeechMp3 = async (text, lang) => {
 		if (buffers.length) return Buffer.concat(buffers);
 	}
 
-	// google-tts-api@0.0.6 exports one async function with the signature
-	// (text, lang, speed). It returns a temporary Google Translate TTS URL.
 	const legacyTts = resolveLegacyGoogleTtsFunction(googleTTS);
 	if (legacyTts) {
 		const buffers = [];
@@ -189,24 +232,25 @@ export const generateAlphaVoiceNote = async (rawText, options = {}) => {
 		const response = await fetch("https://api.openai.com/v1/audio/speech", {
 			method: "POST",
 			headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-			body: JSON.stringify({ model, voice, input: text, instructions, response_format: "opus" }),
+			body: JSON.stringify({ model, voice, input: text, instructions, response_format: "mp3" }),
 			signal: AbortSignal.timeout(90_000),
 		});
 		if (response.ok) {
-			const buffer = Buffer.from(await response.arrayBuffer());
-			if (buffer.length) return { buffer, mimetype: "audio/ogg; codecs=opus", provider: "openai", model };
+			try {
+				const mp3 = Buffer.from(await response.arrayBuffer());
+				const buffer = await normalizeAudioForWhatsAppVoice(mp3, "mp3");
+				return { buffer, mimetype: WHATSAPP_VOICE_MIMETYPE, provider: "openai", model };
+			} catch (error) {
+				console.warn(`[ALPHA_TTS] OpenAI audio normalization failed: ${error.message}`);
+			}
+		} else {
+			const detail = await response.text().catch(() => "");
+			console.warn(`[ALPHA_TTS] OpenAI failed ${response.status}: ${detail.slice(0, 240)}`);
 		}
-		const detail = await response.text().catch(() => "");
-		console.warn(`[ALPHA_TTS] OpenAI failed ${response.status}: ${detail.slice(0, 240)}`);
 	}
 
 	const lang = String(options.lang || process.env.GOOGLE_TTS_LANG || "en").trim();
 	const mp3 = await googleSpeechMp3(text, lang);
-	if (!mp3.length) throw new Error("voice provider returned no audio");
-	try {
-		return { buffer: await mp3ToOggOpus(mp3), mimetype: "audio/ogg; codecs=opus", provider: "google-tts", model: "google-tts" };
-	} catch (error) {
-		console.warn("[ALPHA_TTS] opus conversion failed; sending MPEG audio fallback:", error.message);
-		return { buffer: mp3, mimetype: "audio/mpeg", provider: "google-tts", model: "google-tts" };
-	}
+	const buffer = await normalizeAudioForWhatsAppVoice(mp3, "mp3");
+	return { buffer, mimetype: WHATSAPP_VOICE_MIMETYPE, provider: "google-tts", model: "google-tts" };
 };
