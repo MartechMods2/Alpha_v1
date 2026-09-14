@@ -5,13 +5,23 @@ import {
 	warnGroupMember,
 	warnStatusMentionMember,
 } from "./moderation.js";
+import { enforceModeratorMute } from "./moderatorAuthority.js";
 import { detectSpam } from "./spamTracker.js";
 
 export const handleAutomodMessage = async ({
 	sock, msg, groupJid, senderJid, body, isCommand, isOwner, isGroupAdmin,
 	groupData, groupMetadata, botJids, isBotAdmin, isGroupStatusMention = false, sendMessageWTyping,
 }) => {
-	if (!groupData || msg.key.fromMe || isOwner || isGroupAdmin) return { handled: false };
+	if (!groupData || msg.key.fromMe || isOwner) return { handled: false };
+
+	// Moderator override mutes intentionally apply to ordinary WhatsApp admins.
+	// The helper still hard-protects the group owner, Alpha, creator and configured moderators.
+	const moderatorMute = await enforceModeratorMute({
+		sock, msg, groupJid, memberJid: senderJid, groupData, groupMetadata, botJids, isBotAdmin,
+	});
+	if (moderatorMute.handled) return moderatorMute;
+
+	if (isGroupAdmin) return { handled: false };
 	if (isProtectedGroupMember(groupMetadata, senderJid, botJids)) return { handled: false };
 
 	const muteResult = await enforceMemberMute({ sock, msg, groupJid, memberJid: senderJid, groupData, groupMetadata, botJids, isBotAdmin });
