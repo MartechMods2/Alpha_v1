@@ -45,7 +45,6 @@ const botSeedJids = (sock) => {
 		sock?.user?.id,
 		sock?.user?.lid,
 		configured ? `${configured}@s.whatsapp.net` : "",
-		configured ? `${configured}@lid` : "",
 	].filter(Boolean);
 };
 
@@ -96,7 +95,7 @@ const sendGeneratedImage = async ({ sock, msg, groupJid, senderJid, prompt }) =>
 
 const runExistingMediaIntent = async ({ sock, msg, groupJid, senderJid, metadata, intent, prompt }) => {
 	const sendMessageWTyping = (to, content, options) => send(sock, to, content, options);
-	let smart = detectSmartIntent(intent.original, { isGroup: true });
+	const smart = detectSmartIntent(intent.original, { isGroup: true });
 	if (!smart || (intent.mode === "video" && !/video/i.test(smart.label || ""))) {
 		const { commandsPublic } = await import("./commandLoader.js");
 		const command = intent.mode === "video" ? "freevideo" : "freeimage";
