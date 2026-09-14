@@ -13,6 +13,17 @@ export const resolveGoogleTtsMethod = (moduleNamespace, methodName) => {
 	return null;
 };
 
+export const resolveLegacyGoogleTtsFunction = (moduleNamespace) => {
+	for (const candidate of [
+		moduleNamespace,
+		moduleNamespace?.default,
+		moduleNamespace?.default?.default,
+	]) {
+		if (typeof candidate === "function") return candidate;
+	}
+	return null;
+};
+
 export const getGoogleTtsCapabilities = (moduleNamespace) => {
 	const methods = [
 		"getAllAudioBase64",
@@ -21,9 +32,12 @@ export const getGoogleTtsCapabilities = (moduleNamespace) => {
 		"getAudioUrl",
 	];
 
-	return Object.fromEntries(
-		methods.map((name) => [name, Boolean(resolveGoogleTtsMethod(moduleNamespace, name))]),
-	);
+	return {
+		...Object.fromEntries(
+			methods.map((name) => [name, Boolean(resolveGoogleTtsMethod(moduleNamespace, name))]),
+		),
+		legacyFunction: Boolean(resolveLegacyGoogleTtsFunction(moduleNamespace)),
+	};
 };
 
 export const splitGoogleTtsText = (rawText, maxLength = 180) => {
