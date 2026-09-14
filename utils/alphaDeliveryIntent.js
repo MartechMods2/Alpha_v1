@@ -23,9 +23,9 @@ const candidates = (text) => {
 		/\b(?:show|find|send|get|give)\s+(?:me\s+)?(?:an?\s+)?(?:photo|image|picture)\b/i,
 	]);
 	add("video", "search", [
-		/\b(?:show|find|send|get|give|play)\s+(?:me\s+)?(?:an?\s+)?video\b/i,
-		/\b(?:using|with|by|in)\s+(?:a\s+)?video\b/i,
-		/\b(?:answer|explain|teach|show)\s+(?:me\s+)?(?:this\s+)?(?:in|with|by)\s+(?:a\s+)?video\b/i,
+		/\b(?:show|find|send|get|give|play)\s+(?:me\s+)?(?:an?\s+)?videos?\b/i,
+		/\b(?:using|with|by|in)\s+(?:(?:a|some)\s+)?videos?\b/i,
+		/\b(?:answer|explain|teach|show)\s+(?:me\s+)?(?:this\s+)?(?:in|with|by)\s+(?:(?:a|some)\s+)?videos?\b/i,
 	]);
 	add("video", "generate", [
 		/\b(?:generate|create|make|render)\s+(?:me\s+)?(?:an?\s+)?(?:ai\s+)?video\b/i,
@@ -41,8 +41,8 @@ const stripKnownPhrases = (text) => clean(text
 	.replace(/\b(?:using|with|by|in|through)\s+(?:a\s+)?voice(?:\s+note)?\b/gi, " ")
 	.replace(/\b(?:as|using|with|in)\s+(?:plain\s+)?text\b/gi, " ")
 	.replace(/\b(?:as|using|with|in)\s+(?:an?\s+)?(?:image|picture|illustration)\b/gi, " ")
-	.replace(/\b(?:using|with|by|in)\s+(?:a\s+)?video\b/gi, " ")
-	.replace(/^\s*(?:please\s+)?(?:generate|create|draw|make|design|render|show|find|send|get|give|play)\s+(?:me\s+)?(?:an?\s+)?(?:ai\s+)?(?:image|picture|illustration|photo|video)(?:\s+(?:of|about|for))?\s*/i, " ")
+	.replace(/\b(?:using|with|by|in)\s+(?:(?:a|some)\s+)?videos?\b/gi, " ")
+	.replace(/^\s*(?:please\s+)?(?:generate|create|draw|make|design|render|show|find|send|get|give|play)\s+(?:me\s+)?(?:an?\s+)?(?:ai\s+)?(?:image|picture|illustration|photo|videos?)(?:\s+(?:of|about|for))?\s*/i, " ")
 	.replace(/^\s*(?:please\s+)?(?:reply|answer|respond|explain|tell\s+me)\s+(?:to\s+me\s+)?(?:in|with|by|as)\s+(?:a\s+)?(?:voice\s+note|voice|text)\s*/i, " "));
 
 export const detectAlphaDeliveryIntent = (rawText) => {
