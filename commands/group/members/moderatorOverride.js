@@ -23,23 +23,30 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		extendedMessageOriginal,
 		groupMetadata,
 		botJids,
-		isBotAdmin,
 		senderJid,
 		sendMessageWTyping,
 	} = msgInfoObj;
 	const reply = (text, mentions = []) => sendMessageWTyping(from, { text, mentions }, { quoted: msg });
+	let metadata = groupMetadata;
+	try {
+		const fresh = await sock.groupMetadata(from);
+		if (fresh?.participants) metadata = fresh;
+	} catch (error) {
+		console.warn("Moderator Override could not refresh group metadata:", error.message);
+	}
+	const botIsAdmin = isJidGroupAdmin(metadata, botJids);
 	const senderCandidates = [senderJid, msg.key?.participant, msg.key?.participantPn, msg.key?.participantAlt].filter(Boolean);
-	if (!isConfiguredModerator(groupMetadata, senderCandidates)) {
+	if (!isConfiguredModerator(metadata, senderCandidates)) {
 		return reply("👑 This is a *Moderator Override* command. Ordinary members and admins cannot use it.");
 	}
 	const target = targetFromContext(extendedMessageOriginal);
 	if (!target) return reply("❌ Tag the target or reply to their message.");
-	if (isModeratorProtectedTarget(groupMetadata, target, botJids)) {
+	if (isModeratorProtectedTarget(metadata, target, botJids)) {
 		return reply("🛡️ Moderator Override cannot target the group owner, Alpha, creator account, or another protected Moderator.");
 	}
 
 	const data = await getGroupData(from);
-	const matches = (left, right) => isSameGroupUser(groupMetadata, left, right);
+	const matches = (left, right) => isSameGroupUser(metadata, left, right);
 	const audit = async (action, reason = "") => addModeratorAudit(from, {
 		action,
 		target,
@@ -48,12 +55,12 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	});
 
 	if (["modmute", "modrestrict"].includes(command)) {
-		if (!isBotAdmin) return reply("❌ Alpha must be a group admin before Moderator mute can be enforced.");
+		if (!botIsAdmin) return reply("❌ Alpha must be a group admin before Moderator mute can be enforced.");
 		const durationIndex = args.findIndex((arg) => parseMuteDuration(arg).valid && !String(arg).startsWith("@"));
 		const parsed = parseMuteDuration(durationIndex >= 0 ? args[durationIndex] : "forever");
 		if (!parsed.valid) return reply("❌ Duration must look like `30m`, `2h`, `1d`, `1w`, or `forever` (maximum 30 days).");
 		const reason = cleanReason(args, durationIndex) || "Moderator override";
-		const muted = findModeratorMute(data, target, groupMetadata);
+		const muted = findModeratorMute(data, target, metadata);
 		const stored = [muted.entry?.member, ...muted.expiredMembers].filter(Boolean);
 		if (stored.length) await group.updateOne({ _id: from }, { $pull: { moderatorMutedMembers: { member: { $in: stored } } } });
 		const mutedUntil = parsed.milliseconds ? new Date(Date.now() + parsed.milliseconds) : null;
@@ -66,7 +73,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	}
 
 	if (command === "modunmute") {
-		const muted = findModeratorMute(data, target, groupMetadata);
+		const muted = findModeratorMute(data, target, metadata);
 		const stored = [muted.entry?.member, ...muted.expiredMembers].filter(Boolean);
 		if (!stored.length) return reply(`🔊 ${mention(target)} has no Moderator mute.`, [target]);
 		await group.updateOne({ _id: from }, { $pull: { moderatorMutedMembers: { member: { $in: stored } } } });
@@ -103,8 +110,8 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	}
 
 	if (command === "moddemote") {
-		if (!isBotAdmin) return reply("❌ Alpha must be a group admin to demote another admin.");
-		if (!isJidGroupAdmin(groupMetadata, target)) return reply(`ℹ️ ${mention(target)} is not currently a WhatsApp admin.`, [target]);
+		if (!botIsAdmin) return reply("❌ Alpha must be a group admin to demote another admin.");
+		if (!isJidGroupAdmin(metadata, target)) return reply(`ℹ️ ${mention(target)} is not currently a WhatsApp admin.`, [target]);
 		const reason = cleanReason(args) || "Moderator override";
 		await sock.groupParticipantsUpdate(from, [target], "demote");
 		await audit("moddemote", reason);
@@ -112,7 +119,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	}
 
 	if (["modkick", "modban", "modremove"].includes(command)) {
-		if (!isBotAdmin) return reply("❌ Alpha must be a group admin to remove a participant.");
+		if (!botIsAdmin) return reply("❌ Alpha must be a group admin to remove a participant.");
 		const reason = cleanReason(args) || "Moderator override";
 		await sock.groupParticipantsUpdate(from, [target], "remove");
 		await audit(command, reason);
@@ -122,7 +129,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	if (command === "modhistory") {
 		const warning = (Array.isArray(data?.moderatorAdminWarnings) ? data.moderatorAdminWarnings : [])
 			.find((entry) => matches(target, entry.member));
-		const mute = findModeratorMute(data, target, groupMetadata).entry;
+		const mute = findModeratorMute(data, target, metadata).entry;
 		const actions = (Array.isArray(data?.moderatorAudit) ? data.moderatorAudit : [])
 			.filter((entry) => matches(target, entry.target))
 			.slice(-5)
