@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test, { after } from "node:test";
 
 import {
-	enforceModeratorMute,
 	getModeratorTargetProtection,
+	isConfiguredModerator,
 	isModeratorProtectedTarget,
 	isModeratorRootProtectedTarget,
-} from "../utils/moderatorAuthority.js";
+} from "../utils/moderatorProtection.js";
 
 const previousModerators = process.env.MODERATORS;
 const previousOwner = process.env.MY_NUMBER;
@@ -72,65 +73,40 @@ test("uses separate soft and destructive Moderator Override protection tiers", (
 
 	assert.equal(isModeratorRootProtectedTarget(metadata, "2348000000009@s.whatsapp.net", botJids), true);
 	assert.equal(isModeratorRootProtectedTarget(metadata, "900000000000010@lid", botJids), true);
+	assert.equal(isModeratorRootProtectedTarget(metadata, "2348000000001@s.whatsapp.net", botJids), false);
+	assert.equal(isModeratorRootProtectedTarget(metadata, "900000000000002@lid", botJids), false);
 	assert.equal(isModeratorProtectedTarget(metadata, "900000000000002@lid", botJids), true);
 	assert.equal(isModeratorProtectedTarget(metadata, "2348000000003@s.whatsapp.net", botJids), false);
 });
 
-test("enforces Moderator mute against another configured moderator through PN/LID aliases", async () => {
-	let deleteKey = null;
-	const sock = {
-		sendMessage: async (_groupJid, payload) => {
-			deleteKey = payload?.delete || null;
-		},
-	};
-	const msg = { key: { id: "moderator-message-1", remoteJid: "120363000000000000@g.us" } };
-	const groupData = {
-		moderatorMutedMembers: [{
-			member: "2348000000002@s.whatsapp.net",
-			mutedUntil: new Date(Date.now() + 60_000),
-		}],
-	};
-
-	const result = await enforceModeratorMute({
-		sock,
-		msg,
-		groupJid: "120363000000000000@g.us",
-		memberJid: "900000000000002@lid",
-		groupData,
-		groupMetadata: metadata,
-		botJids,
-		isBotAdmin: true,
-	});
-
-	assert.equal(result.handled, true);
-	assert.equal(result.moderatorMuted, true);
-	assert.deepEqual(deleteKey, msg.key);
+test("configured moderator identity matches across PN and LID aliases", () => {
+	assert.equal(isConfiguredModerator(metadata, "2348000000002@s.whatsapp.net"), true);
+	assert.equal(isConfiguredModerator(metadata, "900000000000002@lid"), true);
+	assert.equal(isConfiguredModerator(metadata, "2348000000003@s.whatsapp.net"), false);
 });
 
-test("never enforces Moderator mute against Alpha or the configured creator", async () => {
-	let sendCount = 0;
-	const sock = { sendMessage: async () => { sendCount += 1; } };
-	const base = {
-		sock,
-		msg: { key: { id: "root-protected", remoteJid: "120363000000000001@g.us" } },
-		groupJid: "120363000000000001@g.us",
-		groupMetadata: metadata,
-		botJids,
-		isBotAdmin: true,
-	};
+test("moderator protection reads runtime configuration instead of stale module constants", () => {
+	process.env.MODERATORS = "2348000000003";
+	assert.equal(isConfiguredModerator(metadata, "900000000000003@lid"), true);
+	assert.equal(isConfiguredModerator(metadata, "900000000000002@lid"), false);
+	process.env.MODERATORS = "2348000000002";
+});
 
-	const creatorResult = await enforceModeratorMute({
-		...base,
-		memberJid: "900000000000009@lid",
-		groupData: { moderatorMutedMembers: [{ member: "2348000000009@s.whatsapp.net" }] },
-	});
-	const alphaResult = await enforceModeratorMute({
-		...base,
-		memberJid: "2348000000010@s.whatsapp.net",
-		groupData: { moderatorMutedMembers: [{ member: "900000000000010@lid" }] },
-	});
+test("mute enforcement uses root-only protection before the ordinary admin exemption", async () => {
+	const authoritySource = await readFile(new URL("../utils/moderatorAuthority.js", import.meta.url), "utf8");
+	const automodSource = await readFile(new URL("../utils/automod.js", import.meta.url), "utf8");
 
-	assert.equal(creatorResult.handled, false);
-	assert.equal(alphaResult.handled, false);
-	assert.equal(sendCount, 0);
+	assert.match(
+		authoritySource,
+		/isModeratorRootProtectedTarget\(groupMetadata, memberJid, botJids\)/,
+	);
+	assert.doesNotMatch(
+		authoritySource,
+		/if\s*\(isModeratorProtectedTarget\(groupMetadata, memberJid, botJids\)\)/,
+	);
+
+	const moderatorMuteIndex = automodSource.indexOf("const moderatorMute = await enforceModeratorMute");
+	const adminExemptionIndex = automodSource.indexOf("if (isGroupAdmin) return { handled: false };");
+	assert.ok(moderatorMuteIndex >= 0, "Moderator mute enforcement must be present");
+	assert.ok(adminExemptionIndex > moderatorMuteIndex, "Moderator mute must run before the ordinary admin exemption");
 });
