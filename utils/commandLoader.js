@@ -97,6 +97,7 @@ const wrapCommandHandler = (originalHandler, registeredCommand) => async (sock, 
 					await reply(`⏳ Skipped *${prefix}${segment.command}*: command cooldown reached.`);
 					continue;
 				}
+			}
 		}
 
 		const childInfo = {
