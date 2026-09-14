@@ -10,9 +10,9 @@ const candidates = (text) => {
 	};
 
 	add("voice", "speak", [
-		/\b(?:using|with|by|in|through|as)\s+(?:a\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?)\b/i,
-		/\b(?:reply|answer|respond|explain|tell\s+me)\s+(?:to\s+me\s+)?(?:in|with|by|as)\s+(?:a\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?)\b/i,
-		/\b(?:send|give)\s+(?:me\s+)?(?:the\s+answer\s+)?(?:as\s+)?(?:a\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?)\b/i,
+		/\b(?:using|with|by|in|through|as)\s+(?:an?\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?)\b/i,
+		/\b(?:reply|answer|respond|explain|tell\s+me)\s+(?:to\s+me\s+)?(?:in|with|by|as)\s+(?:an?\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?)\b/i,
+		/\b(?:send|give)\s+(?:me\s+)?(?:the\s+answer\s+)?(?:as\s+)?(?:an?\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?)\b/i,
 		/\b(?:say|speak|read)\s+(?:the\s+)?(?:answer|response|reply)(?:\s+out\s+loud)?\b/i,
 		/\b(?:say|speak)\s+(?:it|this)\s+(?:out\s+loud|to\s+me)\b/i,
 	]);
@@ -42,12 +42,12 @@ const candidates = (text) => {
 const stripKnownPhrases = (text) => clean(text
 	.replace(/^\s*@alpha\b[:,]?\s*/i, " ")
 	.replace(/^\s*alpha\b[:,]?\s*/i, " ")
-	.replace(/\b(?:using|with|by|in|through|as)\s+(?:a\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?)\b/gi, " ")
+	.replace(/\b(?:using|with|by|in|through|as)\s+(?:an?\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?)\b/gi, " ")
 	.replace(/\b(?:as|using|with|in)\s+(?:plain\s+)?text\b/gi, " ")
 	.replace(/\b(?:as|using|with|in)\s+(?:an?\s+)?(?:ai\s+)?(?:image|picture|illustration|photo)\b/gi, " ")
 	.replace(/\b(?:using|with|by|in)\s+(?:(?:a|some)\s+)?videos?\b/gi, " ")
 	.replace(/^\s*(?:please\s+)?(?:generate|create|draw|make|design|render|show|find|search(?:\s+for)?|send|get|give|play)\s+(?:me\s+)?(?:an?\s+)?(?:ai\s+)?(?:image|picture|illustration|photo|videos?)(?:\s+(?:of|about|for))?\s*/i, " ")
-	.replace(/^\s*(?:please\s+)?(?:reply|answer|respond|explain|tell\s+me)\s+(?:to\s+me\s+)?(?:in|with|by|as)\s+(?:a\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?|text)\s*/i, " "));
+	.replace(/^\s*(?:please\s+)?(?:reply|answer|respond|explain|tell\s+me)\s+(?:to\s+me\s+)?(?:in|with|by|as)\s+(?:an?\s+)?(?:voice(?:\s+(?:note|message))?|audio(?:\s+message)?|text)\s*/i, " "));
 
 export const detectAlphaDeliveryIntent = (rawText) => {
 	const text = clean(rawText).slice(0, 5000);
