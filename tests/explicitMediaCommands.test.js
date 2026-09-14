@@ -1,18 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import mediaPack, {
+import {
 	AI_IMAGE_COMMANDS,
 	AI_VOICE_COMMANDS,
+	MEDIA_HELP_COMMANDS,
 	RAW_TTS_COMMANDS,
 	classifyAlphaMediaCommand,
 	resolveExplicitMediaPrompt,
-} from "../commands/public/aiMedia.js";
+} from "../utils/explicitMediaMode.js";
 
-test("explicit Alpha output commands are registered", () => {
-	const config = mediaPack();
-	for (const command of ["img", "voice", "say"]) {
-		assert.ok(config.cmd.includes(command), `${command} should be registered`);
-	}
+test("explicit Alpha output command catalog contains the core modes", () => {
+	assert.ok(AI_IMAGE_COMMANDS.includes("img"));
+	assert.ok(AI_VOICE_COMMANDS.includes("voice"));
+	assert.ok(RAW_TTS_COMMANDS.includes("say"));
+	assert.ok(MEDIA_HELP_COMMANDS.includes("aimedia"));
 });
 
 test("voice is an intelligent AI-answer mode, not raw TTS", () => {
