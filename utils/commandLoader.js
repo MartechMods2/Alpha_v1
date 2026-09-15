@@ -5,9 +5,11 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { checkRateLimit } from "../cache/redisCache.js";
 import { getBotData } from "../db/botData.js";
 import { getGroupData } from "../db/groupData.js";
+import { getMemberPreferences } from "../db/members.js";
 import { getSafeSettings } from "../db/safePackData.js";
 import { isSameGroupUser } from "./groupParticipants.js";
 import { isConfiguredModerator } from "./moderatorAuthority.js";
+import { applyAlphaTextStyle } from "./alphaPresentation.js";
 import { contextForCommandSegment, extractMessageBody, parseCommandChain } from "./multiCommand.js";
 
 const readdir = util.promisify(fs.readdir);
@@ -55,12 +57,39 @@ const commandAvailable = async ({ command, from, info }) => {
 	return { ok: true };
 };
 
+const styleAlphaTextPayload = (text, style) => {
+	const value = String(text || "");
+	if (!value || style === "normal") return value;
+	const newline = value.indexOf("\n");
+	if (newline > 0 && /^⚡[^\n]{1,80}⚡$/.test(value.slice(0, newline).trim())) {
+		return `${value.slice(0, newline + 1)}${applyAlphaTextStyle(value.slice(newline + 1), style)}`;
+	}
+	return applyAlphaTextStyle(value, style);
+};
+
+const withAlphaPresentation = async (info, command) => {
+	if (!["alpha", "gemini"].includes(String(command || "").toLowerCase())) return info;
+	if (!info?.senderJid || typeof info.sendMessageWTyping !== "function") return info;
+	const prefs = await getMemberPreferences(info.senderJid).catch(() => ({ textStyle: "normal" }));
+	if (!prefs?.textStyle || prefs.textStyle === "normal") return info;
+	const originalSend = info.sendMessageWTyping;
+	return {
+		...info,
+		sendMessageWTyping: (to, payload, options) => {
+			if (!payload || typeof payload.text !== "string") return originalSend(to, payload, options);
+			return originalSend(to, { ...payload, text: styleAlphaTextPayload(payload.text, prefs.textStyle) }, options);
+		},
+	};
+};
+
 const wrapCommandHandler = (originalHandler, registeredCommand) => async (sock, msg, from, args, info = {}) => {
-	if (info.multiCommandChild) return originalHandler(sock, msg, from, args, info);
+	const currentCommand = String(info.command || registeredCommand).toLowerCase();
+	const presentedInfo = await withAlphaPresentation(info, currentCommand);
+	if (info.multiCommandChild) return originalHandler(sock, msg, from, args, presentedInfo);
 	const prefix = info.prefix || process.env.PREFIX || "$";
 	const chain = parseCommandChain(extractMessageBody(msg), prefix, 6);
-	if (chain.commands.length <= 1 || chain.commands[0]?.command !== String(info.command || registeredCommand).toLowerCase()) {
-		return originalHandler(sock, msg, from, args, info);
+	if (chain.commands.length <= 1 || chain.commands[0]?.command !== currentCommand) {
+		return originalHandler(sock, msg, from, args, presentedInfo);
 	}
 
 	const moderator = isConfiguredModerator(info.groupMetadata, [
