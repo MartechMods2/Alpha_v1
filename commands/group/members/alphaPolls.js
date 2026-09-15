@@ -53,9 +53,9 @@ const handler = async (_sock, msg, from, args, info) => {
 		);
 	}
 
-	if (command === "poll" || command === "multipoll") {
-		const poll = parsePipePoll(args.join(" "), { multi: command === "multipoll" });
-		if (!poll) return reply(`❌ Use: ${prefix}${command} Question | Option A | Option B`);
+	if (command === "multipoll") {
+		const poll = parsePipePoll(args.join(" "), { multi: true });
+		if (!poll) return reply(`❌ Use: ${prefix}multipoll Question | Option A | Option B`);
 		return sendPoll(poll);
 	}
 
@@ -113,8 +113,8 @@ const handler = async (_sock, msg, from, args, info) => {
 };
 
 export default () => ({
-	cmd: ["pollhelp", "polls", "poll", "multipoll", "aipoll", "decisionpoll", "quizpoll", "pollanswer", "agreepoll", "ratingpoll", "attendancepoll", "thisorthat"],
-	desc: "Native WhatsApp polls, AI decision polls and quiz polls",
+	cmd: ["pollhelp", "polls", "multipoll", "aipoll", "decisionpoll", "quizpoll", "pollanswer", "agreepoll", "ratingpoll", "attendancepoll", "thisorthat"],
+	desc: "Native WhatsApp AI decision polls, multi-select polls and quiz polls",
 	usage: "poll Question | A | B | aipoll <topic> | quizpoll <topic> | thisorthat A | B",
 	handler,
 });
