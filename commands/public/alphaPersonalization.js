@@ -1,0 +1,86 @@
+import { getMemberPreferences, setMemberPreferences } from "../../db/members.js";
+import {
+	ALPHA_TEXT_STYLES,
+	ALPHA_VOICE_PROFILES,
+	applyAlphaTextStyle,
+	normalizeTextStyle,
+	normalizeVoiceProfile,
+} from "../../utils/alphaPresentation.js";
+
+const VOICE_EXAMPLES = Object.freeze({
+	default: "balanced",
+	man: "adult masculine",
+	woman: "adult feminine",
+	boy: "youthful light",
+	girl: "youthful bright",
+	funny: "playful comic",
+	deep: "deep grounded",
+	calm: "calm reassuring",
+	energetic: "upbeat energetic",
+	storyteller: "storytelling",
+	radio: "radio host",
+	nigerian: "natural Nigerian English",
+});
+
+const handler = async (_sock, msg, from, args, info) => {
+	const { command, prefix = "$", senderJid, sendMessageWTyping } = info;
+	const reply = (text) => sendMessageWTyping(from, { text }, { quoted: msg });
+
+	if (["alphavoices", "voiceprofiles"].includes(command)) {
+		const lines = ALPHA_VOICE_PROFILES.map((name) => `• *${name}* — ${VOICE_EXAMPLES[name] || name}`);
+		return reply(
+			`🎙️ *Alpha Voice Profiles*\n\n${lines.join("\n")}\n\n` +
+			`Set yours: *${prefix}setvoice woman*\n` +
+			`One message only: *${prefix}voice funny explain DNS*\n\n` +
+			`_Distinct character voices use the premium speech provider when configured; the Google fallback may sound more generic._`,
+		);
+	}
+
+	if (["alphafonts", "fontstyles"].includes(command)) {
+		const sample = "Alpha keeps the vibe smart 123";
+		const previews = ALPHA_TEXT_STYLES.map((style) => `• *${style}* — ${applyAlphaTextStyle(sample, style)}`);
+		return reply(
+			`✍️ *Alpha Text Styles*\n\n${previews.join("\n")}\n\n` +
+			`Set yours: *${prefix}setfont script*\n` +
+			`Reset: *${prefix}setfont normal*\n\n` +
+			`_These are WhatsApp-safe Unicode styles, not downloadable font files. Links, code and @mentions stay readable._`,
+		);
+	}
+
+	if (command === "setvoice") {
+		const requested = String(args[0] || "").toLowerCase();
+		if (!ALPHA_VOICE_PROFILES.includes(requested)) {
+			return reply(`❌ Choose: ${ALPHA_VOICE_PROFILES.map((name) => `*${name}*`).join(", ")}\nTry *${prefix}alphavoices* for previews.`);
+		}
+		const next = await setMemberPreferences(senderJid, { voiceProfile: normalizeVoiceProfile(requested) });
+		return reply(`🎙️ Alpha voice set to *${next.voiceProfile}*.\nUse *${prefix}voice <question>* and Alpha will keep that profile.`);
+	}
+
+	if (command === "setfont") {
+		const requested = String(args[0] || "").toLowerCase();
+		if (!ALPHA_TEXT_STYLES.includes(requested)) {
+			return reply(`❌ Choose: ${ALPHA_TEXT_STYLES.map((name) => `*${name}*`).join(", ")}\nTry *${prefix}alphafonts* for previews.`);
+		}
+		const next = await setMemberPreferences(senderJid, { textStyle: normalizeTextStyle(requested) });
+		return reply(`✍️ Alpha reply style set to *${next.textStyle}*.\n${applyAlphaTextStyle("Your next Alpha answer will use this style.", next.textStyle)}`);
+	}
+
+	if (["alphaprefs", "myprefs"].includes(command)) {
+		const prefs = await getMemberPreferences(senderJid);
+		return reply(
+			`⚡ *Your Alpha Preferences*\n\n` +
+			`Voice: *${prefs.voiceProfile}*\n` +
+			`Text style: *${prefs.textStyle}*\n` +
+			`Tone: *${prefs.tone}*\n` +
+			`Pronouns: *${prefs.pronouns}*\n\n` +
+			`${prefix}setvoice <profile> · ${prefix}setfont <style>`,
+		);
+	}
+};
+
+export default () => ({
+	cmd: ["alphavoices", "voiceprofiles", "setvoice", "alphafonts", "fontstyles", "setfont", "alphaprefs", "myprefs"],
+	desc: "Personalize Alpha voice character and WhatsApp text style",
+	usage: "alphavoices | setvoice woman | alphafonts | setfont script | alphaprefs",
+	handler,
+});
