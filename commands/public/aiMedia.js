@@ -3,10 +3,9 @@ import { getMemberPreferences } from "../../db/members.js";
 import {
 	claimImageQuota,
 	claimVoiceQuota,
-	generateAlphaImage,
 	generateAlphaVoiceNote,
-	imageProviderStatus,
 } from "../../utils/alphaMediaAi.js";
+import { generateAlphaImage, imageProviderStatus } from "../../utils/alphaImage.js";
 import {
 	getVoiceProfile,
 	parseVoiceProfileArgs,
@@ -36,13 +35,14 @@ const handler = async (_sock, msg, from, args, info) => {
 
 	if (IMAGE_STATUS_COMMANDS.includes(command)) {
 		const status = imageProviderStatus();
-		const ready = status.openai || status.pollinations;
+		const ready = status.openai || status.gemini || status.pollinations;
 		return reply(
 			`🎨 *Alpha Image Status*\n\n` +
 			`Overall: *${ready ? "READY ✅" : "NOT CONFIGURED ❌"}*\n` +
 			`OpenAI: *${status.openai ? "configured" : "missing key"}* — ${status.openaiModel}\n` +
+			`Gemini: *${status.gemini ? "configured" : "missing key"}* — ${status.geminiModel}\n` +
 			`Pollinations fallback: *${status.pollinations ? "configured" : "missing key"}* — ${status.pollinationsModel}\n\n` +
-			`${ready ? `Try *${prefix}img a futuristic Lagos skyline at night*` : "Admin: configure OPENAI_API_KEY or POLLINATIONS_API_KEY on the host, then restart Alpha."}`,
+			`${ready ? `Try *${prefix}img a futuristic Lagos skyline at night*` : "Admin: configure GOOGLE_API_KEY, OPENAI_API_KEY or POLLINATIONS_API_KEY on the host, then restart Alpha."}`,
 		);
 	}
 
@@ -142,7 +142,7 @@ export default () => ({
 		...RAW_TTS_COMMANDS,
 		...IMAGE_STATUS_COMMANDS,
 	],
-	desc: "Explicit Alpha output modes with image diagnostics and configurable voice profiles",
+	desc: "Explicit Alpha output modes with multi-provider image generation and configurable voice profiles",
 	usage: "alpha <question> | voice [profile] <question> | img <prompt> | imgstatus | say [profile] <exact text>",
 	handler,
 });
