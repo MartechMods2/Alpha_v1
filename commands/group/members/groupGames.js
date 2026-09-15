@@ -1,4 +1,5 @@
 import { generateSocialGamePrompt } from "../../../utils/socialGameGenerator.js";
+import { parseWouldYouRatherPoll } from "../../../utils/alphaPolls.js";
 import { alphaPanel } from "../../../utils/alphaStyle.js";
 
 const compliments = [
@@ -21,7 +22,7 @@ const cooldowns = new Map();
 const COOLDOWN_MS = 10_000;
 const randomItem = (items) => items[Math.floor(Math.random() * items.length)];
 
-const handler = async (sock, msg, from, args, msgInfoObj) => {
+const handler = async (_sock, msg, from, args, msgInfoObj) => {
 	const { command, senderJid, sendMessageWTyping } = msgInfoObj;
 	const key = `${from}:${senderJid}:${command}`;
 	const now = Date.now();
@@ -46,6 +47,8 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		case "wyr":
 		case "wouldyourather": {
 			const prompt = await generateSocialGamePrompt({ groupJid: from, type: "wyr" });
+			const poll = parseWouldYouRatherPoll(prompt);
+			if (poll) return sendMessageWTyping(from, { poll }, { quoted: msg });
 			text = alphaPanel({ icon: "🤔", title: "Would You Rather?", lines: [prompt], footer: "Pick one and tell the group why." });
 			break;
 		}
@@ -84,7 +87,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 export default () => ({
 	cmd: ["truth", "dare", "wyr", "wouldyourather", "icebreaker", "compliment", "coinflip", "coin", "dice", "8ball", "choose"],
-	desc: "AI-assisted, non-repeating social games and lightweight group fun",
+	desc: "AI-assisted social games; Would You Rather automatically opens as a native poll",
 	usage: "truth | dare | wyr | icebreaker | dice [sides] | choose a | b",
 	handler,
 });
