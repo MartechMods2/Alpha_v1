@@ -1,4 +1,6 @@
 import { askSafeAi, useSafeAiBudget } from "../../utils/safeAi.js";
+import { getMemberPreferences } from "../../db/members.js";
+import { applyAlphaTextStyle } from "../../utils/alphaPresentation.js";
 import {
 	AI_FEATURE_CATEGORIES,
 	AI_FEATURE_COMMANDS,
@@ -75,7 +77,9 @@ const handler = async (_sock, msg, from, args, info) => {
 			systemPrompt,
 			messages: [{ role: "user", content: input }],
 		});
-		return reply(text || "Alpha returned no text for that workflow.");
+		const prefs = await getMemberPreferences(senderJid).catch(() => ({ textStyle: "normal" }));
+		const response = text || "Alpha returned no text for that workflow.";
+		return reply(applyAlphaTextStyle(response, prefs.textStyle));
 	} catch (error) {
 		console.error(`[AI_FEATURE:${command}]`, error.message);
 		return reply(`❌ Alpha AI could not complete *${command}*: ${error.message}`);
