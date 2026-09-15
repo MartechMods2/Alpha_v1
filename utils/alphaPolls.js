@@ -58,11 +58,14 @@ export const inferTwoChoicePoll = (rawText) => {
 	if (!decisionSignal) return null;
 	const stripped = text
 		.replace(/^(?:please\s+)?(?:make|create|start|run)?\s*(?:a\s+)?(?:poll|vote)\s*(?:for|on|about)?\s*/i, "")
+		.replace(/^(?:please\s+)?(?:help\s+(?:us|me)\s+)?(?:choose|decide)\s+between\s+/i, "")
+		.replace(/^(?:which|what)\s+should\s+we\s+choose\s*[:\-]?\s*/i, "")
+		.replace(/^(?:let(?:'s| us)\s+vote\s+(?:between\s+)?)?/i, "")
 		.trim();
 	const match = stripped.match(/^(.+?)\s+(?:or|vs\.?|versus)\s+(.+?)[?.!]*$/i);
 	if (!match) return null;
 	return normalizeNativePoll({
-		name: text.endsWith("?") ? text : `Which one should we choose?`,
+		name: text.endsWith("?") ? text : "Which one should we choose?",
 		values: [match[1], match[2]],
 		selectableCount: 1,
 	});
