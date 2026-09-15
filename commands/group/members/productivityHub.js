@@ -3,6 +3,7 @@ import {
 	getMemberBookmarks, getProductivityGroup, removeFaqEntry, removeGroupTask,
 	removeMemberBookmark, setAfkStatus, setGroupTaskState,
 } from "../../../db/productivityData.js";
+import { invalidateAfkGroupCache } from "../../../utils/afkPresence.js";
 import { findBestFaq, makeProductivityId, parseTaskInput, quotedTextFromContext, safeDisplayName } from "../../../utils/groupProductivity.js";
 
 const targetFromContext = (context) => (Array.isArray(context?.mentionedJid) ? context.mentionedJid[0] : context?.mentionedJid) || context?.participant || "";
@@ -83,6 +84,7 @@ const handler = async (_sock, msg, from, args, info) => {
 	if (command === "faqdel") {
 		if (!adminish(info)) return reply("🛡️ Only admins can remove official group FAQs.");
 		const id = String(args[0] || "");
+		if (!id) return reply(`❌ Use: ${prefix}faqdel <id>`);
 		await removeFaqEntry(from, id);
 		return reply(`🗑️ FAQ *${id}* removed.`);
 	}
@@ -90,10 +92,12 @@ const handler = async (_sock, msg, from, args, info) => {
 	if (command === "afk") {
 		const reason = args.join(" ").trim().slice(0, 180) || "Away for a bit";
 		await setAfkStatus({ groupJid: from, memberJid: senderJid, reason, name: safeDisplayName(updateName, senderJid) });
+		invalidateAfkGroupCache(from);
 		return reply(`🌙 AFK set for @${senderJid.split("@")[0]} — ${reason}`, [senderJid]);
 	}
 	if (command === "back") {
 		await clearAfkStatus(from, senderJid);
+		invalidateAfkGroupCache(from);
 		return reply(`👋 Welcome back, @${senderJid.split("@")[0]}. AFK cleared.`, [senderJid]);
 	}
 
