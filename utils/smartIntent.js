@@ -1,5 +1,4 @@
 const clean = (value) => String(value || "").replace(/@[0-9]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 500);
-const stripLead = (text, pattern) => clean(text.replace(pattern, ""));
 
 const LANGUAGE_CODES = {
 	english:"en",french:"fr",spanish:"es",german:"de",arabic:"ar",chinese:"zh",japanese:"ja",korean:"ko",portuguese:"pt",russian:"ru",italian:"it",turkish:"tr",hindi:"hi",yoruba:"yo",igbo:"ig",hausa:"ha",
@@ -10,6 +9,7 @@ export const SMART_INTENT_EXAMPLES = [
 	"find a funny reaction GIF", "send an African classroom photo", "play an applause sound effect",
 	"weather in Lagos", "calculate 25 * 8", "translate to French good morning",
 	"remind me in 2h to call Tunde", "search Wikipedia for Nigerian history", "show my rank",
+	"help us decide the best day for game night", "start would you rather",
 ];
 
 export const detectSmartIntent = (rawText, { isGroup = false } = {}) => {
@@ -53,13 +53,23 @@ export const detectSmartIntent = (rawText, { isGroup = false } = {}) => {
 	if (/^(?:show|open|send)\s+(?:me\s+)?(?:the\s+)?(?:help|commands|menu)$/i.test(text)) return { command: "smarthelp", args: [], label: "help" };
 
 	if (isGroup) {
-		match = text.match(/^(?:start|play)\s+(trivia|math\s+game|scramble|riddle|tic\s*tac\s*toe|connect\s*four)$/i);
+		match = text.match(/^(?:start|play)\s+(trivia|math\s+game|scramble|riddle|tic\s*tac\s*toe|connect\s*four|would\s+you\s+rather|wyr|truth|dare|icebreaker)$/i);
 		if (match) {
-			const routes = { trivia:"trivia", "math game":"mathgame", scramble:"scramble", riddle:"riddle", "tic tac toe":"ttt", "connect four":"connect4" };
+			const routes = { trivia:"trivia", "math game":"mathgame", scramble:"scramble", riddle:"riddle", "tic tac toe":"ttt", "connect four":"connect4", "would you rather":"wyr", wyr:"wyr", truth:"truth", dare:"dare", icebreaker:"icebreaker" };
 			return { command: routes[match[1].toLowerCase().replace(/\s+/g," ")], args: [], label: "game", groupOnly: true };
 		}
+
 		match = text.match(/^create\s+(?:a\s+)?poll\s+(.+)$/i);
-		if (match) return { command: "poll", args: clean(match[1]).split(/\s+/), label: "poll", groupOnly: true };
+		if (match && match[1].includes("|")) return { command: "poll", args: clean(match[1]).split(/\s+/), label: "poll", groupOnly: true };
+		if (match) return { command: "aipoll", args: clean(match[1]).split(/\s+/), label: "AI poll", groupOnly: true };
+
+		match = text.match(/^(?:please\s+)?(?:make|create|start|run|build)\s+(?:a\s+)?(?:vote|poll)\s+(?:for|on|about)?\s*(.+)$/i);
+		if (match) return { command: "aipoll", args: clean(match[1]).split(/\s+/), label: "AI poll", groupOnly: true };
+		match = text.match(/^(?:please\s+)?(?:help\s+us\s+decide|ask\s+(?:the\s+)?group\s+to\s+(?:choose|vote)|let(?:'s|\s+us)\s+vote)\s*(?:on|between|about)?\s*(.+)$/i);
+		if (match) return { command: "aipoll", args: clean(match[1]).split(/\s+/), label: "AI poll", groupOnly: true };
+		match = text.match(/^(?:which|what)\s+should\s+we\s+(?:choose|pick)\s*[,:-]?\s*(.+)$/i);
+		if (match) return { command: "aipoll", args: clean(match[1]).split(/\s+/), label: "AI poll", groupOnly: true };
+
 		if (/^show\s+(?:the\s+)?(?:game\s+)?leaderboard$/i.test(text)) return { command: "gameboard", args: [], label: "leaderboard", groupOnly: true };
 	}
 	return null;
@@ -68,5 +78,5 @@ export const detectSmartIntent = (rawText, { isGroup = false } = {}) => {
 export const smartIntentSummary = () => ({
 	media: ["music", "lyrics", "music videos", "videos", "GIFs", "images", "sound effects"],
 	utilities: ["weather", "calculation", "translation", "reminders", "Wikipedia", "web search", "rank"],
-	groups: ["polls", "trivia", "math games", "scramble", "riddles", "tic-tac-toe", "Connect Four", "leaderboards"],
+	groups: ["native polls", "AI decision polls", "Would You Rather", "truth/dare", "icebreakers", "trivia", "math games", "scramble", "riddles", "tic-tac-toe", "Connect Four", "leaderboards"],
 });
