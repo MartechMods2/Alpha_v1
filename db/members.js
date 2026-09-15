@@ -1,4 +1,5 @@
 import mdClient from "./client.js";
+import { normalizeTextStyle, normalizeVoiceProfile } from "../utils/alphaPresentation.js";
 
 const member = mdClient.db("MyBotDataDB").collection("Members");
 
@@ -51,6 +52,8 @@ const getMemberPreferences = async (jid) => {
 	return {
 		tone: data?.alphaPreferences?.tone || "auto",
 		pronouns: data?.alphaPreferences?.pronouns || "neutral",
+		voiceProfile: normalizeVoiceProfile(data?.alphaPreferences?.voiceProfile),
+		textStyle: normalizeTextStyle(data?.alphaPreferences?.textStyle),
 	};
 };
 
@@ -61,6 +64,12 @@ const setMemberPreferences = async (jid, preferences = {}) => {
 	const next = {
 		tone: allowedTones.has(preferences.tone) ? preferences.tone : current.tone,
 		pronouns: allowedPronouns.has(preferences.pronouns) ? preferences.pronouns : current.pronouns,
+		voiceProfile: preferences.voiceProfile === undefined
+			? current.voiceProfile
+			: normalizeVoiceProfile(preferences.voiceProfile, current.voiceProfile),
+		textStyle: preferences.textStyle === undefined
+			? current.textStyle
+			: normalizeTextStyle(preferences.textStyle, current.textStyle),
 	};
 	await member.updateOne({ _id: jid }, { $set: { alphaPreferences: next } }, { upsert: true });
 	return next;
