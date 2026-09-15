@@ -5,6 +5,7 @@ import getCallEvent from "./callEvents.js";
 import { handlePassiveCommunityMessage } from "../utils/passiveCommunity.js";
 import { handleInteractivePollUpdate } from "../utils/pollManager.js";
 import { handleOwnerMentionReaction } from "../utils/ownerMentionReaction.js";
+import { handleAfkPresence } from "../utils/afkPresence.js";
 
 const events = async (sock, startSock, cache) => {
 	sock.ev.process(async (event) => {
@@ -45,6 +46,11 @@ const events = async (sock, startSock, cache) => {
 							await handleOwnerMentionReaction(sock, msg);
 						} catch (error) {
 							console.error("Owner mention reaction handler failed:", error.message);
+						}
+						try {
+							await handleAfkPresence(sock, msg);
+						} catch (error) {
+							console.error("AFK presence handler failed:", error.message);
 						}
 						try {
 							const passiveHandled = await handlePassiveCommunityMessage(sock, msg);
