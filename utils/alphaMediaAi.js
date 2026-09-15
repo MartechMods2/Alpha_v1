@@ -15,6 +15,7 @@ const imageUsage = new Map();
 const voiceUsage = new Map();
 const WINDOW_MS = 10 * 60_000;
 const WHATSAPP_VOICE_MIMETYPE = "audio/ogg; codecs=opus";
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 
 const claimWindow = (store, key, limit, now = Date.now()) => {
 	const id = String(key || "unknown");
@@ -43,45 +44,113 @@ const imagePromptSafety = (prompt) => {
 	return text;
 };
 
-const fetchImageBuffer = async (url) => {
-	const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-	if (!response.ok) throw new Error(`image download failed with HTTP ${response.status}`);
-	const length = Number(response.headers.get("content-length") || 0);
-	if (length > 20 * 1024 * 1024) throw new Error("generated image is unexpectedly large");
-	const bytes = Buffer.from(await response.arrayBuffer());
-	if (!bytes.length || bytes.length > 20 * 1024 * 1024) throw new Error("invalid generated image payload");
-	return bytes;
+export const imageMimeFromBuffer = (buffer) => {
+	if (!Buffer.isBuffer(buffer) || buffer.length < 12) return "";
+	if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+	if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+	if (buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+	return "";
 };
 
-export const generateAlphaImage = async (rawPrompt) => {
-	const prompt = imagePromptSafety(rawPrompt);
-	const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
-	if (!apiKey) throw new Error("OPENAI_API_KEY is not configured for image generation");
+const validateImageBuffer = (buffer) => {
+	if (!Buffer.isBuffer(buffer) || !buffer.length) throw new Error("image provider returned an empty image");
+	if (buffer.length > MAX_IMAGE_BYTES) throw new Error("generated image is unexpectedly large");
+	const mimetype = imageMimeFromBuffer(buffer);
+	if (!mimetype) throw new Error("image provider returned data that is not a supported PNG, JPEG or WebP image");
+	return { buffer, mimetype };
+};
+
+const fetchImageBuffer = async (url) => {
+	const parsed = new URL(String(url || ""));
+	if (parsed.protocol !== "https:") throw new Error("image provider returned an unsafe image URL");
+	const response = await fetch(parsed, { signal: AbortSignal.timeout(30_000) });
+	if (!response.ok) throw new Error(`image download failed with HTTP ${response.status}`);
+	const length = Number(response.headers.get("content-length") || 0);
+	if (length > MAX_IMAGE_BYTES) throw new Error("generated image is unexpectedly large");
+	return validateImageBuffer(Buffer.from(await response.arrayBuffer()));
+};
+
+const readableProviderError = async (response, label) => {
+	let detail = "";
+	try {
+		const raw = await response.text();
+		try {
+			const parsed = JSON.parse(raw);
+			detail = String(parsed?.error?.message || parsed?.message || "").replace(/\s+/g, " ").trim();
+		} catch {
+			detail = String(raw || "").replace(/\s+/g, " ").trim();
+		}
+	} catch {}
+	const safeDetail = detail.slice(0, 220);
+	return `${label} image provider HTTP ${response.status}${safeDetail ? `: ${safeDetail}` : ""}`;
+};
+
+const imageFromJson = async (data) => {
+	const first = data?.data?.[0];
+	if (first?.b64_json) return validateImageBuffer(Buffer.from(first.b64_json, "base64"));
+	if (first?.url) return fetchImageBuffer(first.url);
+	throw new Error("image provider returned no image data");
+};
+
+const generateOpenAiImage = async (prompt, apiKey) => {
 	const model = String(process.env.OPENAI_IMAGE_MODEL || "gpt-image-2").trim();
 	const size = String(process.env.OPENAI_IMAGE_SIZE || "1024x1024").trim();
 	const quality = String(process.env.OPENAI_IMAGE_QUALITY || "low").trim();
 	const response = await fetch("https://api.openai.com/v1/images/generations", {
 		method: "POST",
-		headers: {
-			Authorization: `Bearer ${apiKey}`,
-			"Content-Type": "application/json",
-		},
+		headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
 		body: JSON.stringify({ model, prompt, size, quality }),
 		signal: AbortSignal.timeout(120_000),
 	});
-	if (!response.ok) {
-		const error = await response.text().catch(() => "");
-		throw new Error(`image provider HTTP ${response.status}${error ? `: ${error.slice(0, 240)}` : ""}`);
+	if (!response.ok) throw new Error(await readableProviderError(response, "OpenAI"));
+	const image = await imageFromJson(await response.json());
+	return { ...image, provider: "openai", model };
+};
+
+const generatePollinationsImage = async (prompt, apiKey) => {
+	const baseUrl = String(process.env.POLLINATIONS_BASE_URL || "https://gen.pollinations.ai").replace(/\/+$/, "");
+	const url = new URL(`${baseUrl}/v1/images/generations`);
+	if (url.protocol !== "https:") throw new Error("Pollinations base URL must use HTTPS");
+	const model = String(process.env.POLLINATIONS_IMAGE_MODEL || "flux").trim();
+	const size = String(process.env.OPENAI_IMAGE_SIZE || "1024x1024").trim();
+	const response = await fetch(url, {
+		method: "POST",
+		headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+		body: JSON.stringify({ model, prompt, size, n: 1 }),
+		signal: AbortSignal.timeout(120_000),
+	});
+	if (!response.ok) throw new Error(await readableProviderError(response, "Pollinations"));
+	const image = await imageFromJson(await response.json());
+	return { ...image, provider: "pollinations", model };
+};
+
+export const imageProviderStatus = () => ({
+	openai: Boolean(String(process.env.OPENAI_API_KEY || "").trim()),
+	pollinations: Boolean(String(process.env.POLLINATIONS_API_KEY || "").trim()),
+	openaiModel: String(process.env.OPENAI_IMAGE_MODEL || "gpt-image-2").trim(),
+	pollinationsModel: String(process.env.POLLINATIONS_IMAGE_MODEL || "flux").trim(),
+});
+
+export const generateAlphaImage = async (rawPrompt) => {
+	const prompt = imagePromptSafety(rawPrompt);
+	const openAiKey = String(process.env.OPENAI_API_KEY || "").trim();
+	const pollinationsKey = String(process.env.POLLINATIONS_API_KEY || "").trim();
+	const providers = [];
+	if (openAiKey) providers.push(() => generateOpenAiImage(prompt, openAiKey));
+	if (pollinationsKey) providers.push(() => generatePollinationsImage(prompt, pollinationsKey));
+	if (!providers.length) {
+		throw new Error("image generation is not configured. Ask the admin to add OPENAI_API_KEY or POLLINATIONS_API_KEY, then use $imgstatus to verify it");
 	}
-	const data = await response.json();
-	const first = data?.data?.[0];
-	if (first?.b64_json) {
-		const buffer = Buffer.from(first.b64_json, "base64");
-		if (!buffer.length) throw new Error("image provider returned an empty image");
-		return { buffer, provider: "openai", model };
+
+	const failures = [];
+	for (const provider of providers) {
+		try {
+			return await provider();
+		} catch (error) {
+			failures.push(String(error?.message || error));
+		}
 	}
-	if (first?.url) return { buffer: await fetchImageBuffer(first.url), provider: "openai", model };
-	throw new Error("image provider returned no image data");
+	throw new Error(failures.join(" | ").slice(0, 650));
 };
 
 const runOneFfmpeg = (executable, args) => new Promise((resolve, reject) => {
@@ -239,7 +308,7 @@ export const generateAlphaVoiceNote = async (rawText, options = {}) => {
 			try {
 				const mp3 = Buffer.from(await response.arrayBuffer());
 				const buffer = await normalizeAudioForWhatsAppVoice(mp3, "mp3");
-				return { buffer, mimetype: WHATSAPP_VOICE_MIMETYPE, provider: "openai", model };
+				return { buffer, mimetype: WHATSAPP_VOICE_MIMETYPE, provider: "openai", model, voice };
 			} catch (error) {
 				console.warn(`[ALPHA_TTS] OpenAI audio normalization failed: ${error.message}`);
 			}
@@ -252,5 +321,5 @@ export const generateAlphaVoiceNote = async (rawText, options = {}) => {
 	const lang = String(options.lang || process.env.GOOGLE_TTS_LANG || "en").trim();
 	const mp3 = await googleSpeechMp3(text, lang);
 	const buffer = await normalizeAudioForWhatsAppVoice(mp3, "mp3");
-	return { buffer, mimetype: WHATSAPP_VOICE_MIMETYPE, provider: "google-tts", model: "google-tts" };
+	return { buffer, mimetype: WHATSAPP_VOICE_MIMETYPE, provider: "google-tts", model: "google-tts", voice: "default" };
 };
