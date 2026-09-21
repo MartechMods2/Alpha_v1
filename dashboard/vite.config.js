@@ -19,5 +19,12 @@ export default defineConfig(({ command }) => ({
   build: {
     outDir: '../public/app',
     emptyOutDir: true,
+    sourcemap: false,
+    minify: 'esbuild',
+    cssMinify: true,
+    reportCompressedSize: false,
+  },
+  esbuild: {
+    legalComments: 'none',
   },
 }))
