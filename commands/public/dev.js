@@ -3,13 +3,8 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 	const text = `*👨‍💻 Creator — Martech*
 
-╭───────────────────────────
-│ *🔗 GitHub*
-│ github.com/MartechMods2
-│
-│ *🤖 Project*
-│ github.com/MartechMods2/Alpha_v1
-╰───────────────────────────`;
+Alpha is created and maintained by Martech.
+Use the official Alpha interface and support channels for product information.`;
 
 	await sendMessageWTyping(from, { text }, { quoted: msg });
 };

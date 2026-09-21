@@ -64,7 +64,7 @@ ${adminCmd.map((cmd) => `*${prefix}${cmd.cmd.join(", ")}* - ${cmd.desc}\nUsage: 
 ${ownerCmd.map((cmd) => `*${prefix}${cmd.cmd.join(", ")}* - ${cmd.desc}\nUsage: ${prefix}${cmd.usage}`).join("\n\n")}
 
 
-⚡ Created and maintained by Martech\n github.com/MartechMods2/Alpha_v1`;
+⚡ Created and maintained by Martech`;
 
 	const helpInDm = `
 ─「 *Dm Commands* 」─
@@ -77,7 +77,7 @@ ${directCommands
 	.map((cmd) => `*${prefix}${cmd.cmd.join(", ")}* - ${cmd.desc}\nUsage: ${prefix}${cmd.usage}`)
 	.join("\n\n")}
 
-⚡ Created and maintained by Martech\n github.com/MartechMods2/Alpha_v1`;
+⚡ Created and maintained by Martech`;
 
 	await sendMessageWTyping(from, {
 		text: isGroup ? help : helpInDm,
