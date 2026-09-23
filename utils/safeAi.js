@@ -635,7 +635,6 @@ export const resetAiProviderHealth = () => {
 };
 
 export const getAiRuntimeStatus = () => {
-  pruneUsage();
   const providers = {};
   const order = providerOrder();
   for (const name of PROVIDERS) {
