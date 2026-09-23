@@ -19,17 +19,6 @@ import {
 	speakerAwareHistory,
 } from "../../utils/alphaBrain.js";
 
-// -------------------------------------------------------------------------------------------------------------
-// NVIDIA AI CONFIGURATION
-// -------------------------------------------------------------------------------------------------------------//
-
-const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || "";
-
-const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
-
-// NVIDIA free/serverless model
-const NVIDIA_MODEL = "openai/gpt-oss-20b";
-
 // Maximum input size
 const MAX_INPUT_WORDS = 500;
 
@@ -51,16 +40,6 @@ const MAX_HISTORY_MESSAGES = 20;
 
 const ALLOW_PRIVATE_CHAT =
 	String(process.env.ALPHA_PRIVATE_CHAT || "false").toLowerCase() === "true";
-
-// -------------------------------------------------------------------------------------------------------------
-// NVIDIA GENERATION CONFIG
-// -------------------------------------------------------------------------------------------------------------//
-
-const generationConfig = {
-	temperature: 0.8,
-	topP: 0.95,
-	maxTokens: 650,
-};
 
 // -------------------------------------------------------------------------------------------------------------
 // ALPHA SYSTEM PROMPT
@@ -153,66 +132,6 @@ Formatting:
 
 You are ⚡Alpha⚡.
 `;
-
-// -------------------------------------------------------------------------------------------------------------
-// NVIDIA API FUNCTION
-// -------------------------------------------------------------------------------------------------------------//
-
-async function askNvidia(systemPrompt, messages) {
-	if (!NVIDIA_API_KEY) {
-		throw new Error("NVIDIA_API_KEY is not configured.");
-	}
-
-	const response = await fetch(
-		`${NVIDIA_BASE_URL}/chat/completions`,
-		{
-			method: "POST",
-
-			headers: {
-				Authorization: `Bearer ${NVIDIA_API_KEY}`,
-				"Content-Type": "application/json",
-				Accept: "application/json",
-			},
-
-			body: JSON.stringify({
-				model: NVIDIA_MODEL,
-
-				messages: [
-					{
-						role: "system",
-						content: systemPrompt,
-					},
-					...messages,
-				],
-
-				temperature: generationConfig.temperature,
-				top_p: generationConfig.topP,
-				max_tokens: generationConfig.maxTokens,
-
-				stream: false,
-			}),
-		}
-	);
-
-	if (!response.ok) {
-		const errorText = await response.text();
-
-		throw new Error(
-			`NVIDIA API Error ${response.status}: ${errorText}`
-		);
-	}
-
-	const result = await response.json();
-
-	const text =
-		result?.choices?.[0]?.message?.content?.trim() || "";
-
-	if (!text) {
-		throw new Error("NVIDIA returned an empty response.");
-	}
-
-	return text;
-}
 
 // -------------------------------------------------------------------------------------------------------------
 // CONVERT STORED HISTORY TO NVIDIA FORMAT
@@ -471,7 +390,7 @@ ${chatContext}
 		}
 
 		// -----------------------------------------------------------------------------------------
-		// Send request to NVIDIA
+		// Send request through resilient AI provider router
 		// -----------------------------------------------------------------------------------------
 
 		const messages = compactAlphaMessages([
