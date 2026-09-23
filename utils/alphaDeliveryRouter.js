@@ -1,11 +1,11 @@
 import { getGroupData } from "../db/groupData.js";
-import { askSafeAi, useSafeAiBudget } from "./safeAi.js";
+import { consumeAlphaUsage } from "../db/alphaUsage.js";
+import { askSafeAi } from "./safeAi.js";
 import {
 	buildAlphaPrompt,
 	canUseAlphaMention,
 	isAlphaQuiet,
 	normalizeAlphaSettings,
-	useAlphaQuota,
 } from "./alphaMention.js";
 import {
 	claimImageQuota,
@@ -14,6 +14,7 @@ import {
 	generateAlphaVoiceNote,
 } from "./alphaMediaAi.js";
 import { detectAlphaDeliveryIntent } from "./alphaDeliveryIntent.js";
+import { isConfiguredModerator } from "./moderatorAuthority.js";
 import { getBotIdentityJids, isJidGroupAdmin, isSameGroupUser } from "./groupParticipants.js";
 import { detectSmartIntent } from "./smartIntent.js";
 import { runSmartIntent } from "../commands/public/smartIntent.js";
@@ -76,10 +77,6 @@ const sendVoiceAnswer = async ({ sock, msg, groupJid, senderJid, prompt, setting
 	const quota = claimVoiceQuota(senderJid);
 	if (!quota.allowed) {
 		await send(sock, groupJid, { text: `⏳ Voice-note limit reached. Try again in about ${Math.ceil(quota.retryAfterSeconds / 60)} minute(s).` }, { quoted: msg });
-		return true;
-	}
-	if (!await useSafeAiBudget(groupJid, senderJid).catch(() => true)) {
-		await send(sock, groupJid, { text: "⏳ Your Alpha AI limit for today has been reached." }, { quoted: msg });
 		return true;
 	}
 	const built = await buildAlphaPrompt({ sock, msg, body: prompt, mentionedJids: [], settings });
@@ -175,7 +172,32 @@ export const handleExplicitAlphaDelivery = async ({ sock, msg, groupJid, senderJ
 		matches: (left, right) => isSameGroupUser(metadata, left, right),
 	})) return true;
 	if (settings.alphaMode === "off" || isAlphaQuiet(settings)) return true;
-	if (!useAlphaQuota(groupJid, senderJid, settings.alphaDailyQuota)) return true;
+
+	// Use the same persistent daily quota as the normal Alpha command path.
+	// Only the configured creator/Moderator is unlimited; ordinary group admins
+	// still consume their daily allowance.
+	const unlimitedAi = Boolean(
+		isOwner ||
+		isConfiguredModerator(metadata, [
+			senderJid,
+			msg?.key?.participantPn,
+			msg?.key?.participantAlt,
+		].filter(Boolean))
+	);
+	const quotaStatus = await consumeAlphaUsage({
+		groupJid,
+		memberJid: senderJid,
+		limit: settings.alphaDailyQuota,
+		unlimited: unlimitedAi,
+	});
+	if (!quotaStatus.allowed) {
+		await send(sock, groupJid, {
+			text:
+				`⚡Alpha⚡ daily AI limit reached (*${quotaStatus.used}/${quotaStatus.limit}*).\n` +
+				`Use *${process.env.PREFIX || "$"}alphaquota* to check your remaining allowance.`,
+		}, { quoted: msg }).catch(() => {});
+		return true;
+	}
 
 	try {
 		const prompt = safePrompt(intent.prompt || intent.original, 5000);
