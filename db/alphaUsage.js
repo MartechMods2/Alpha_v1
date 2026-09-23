@@ -12,15 +12,19 @@ const clampLimit = (value, fallback = 10) => {
 export const alphaUsageDayKey = () => {
   const timeZone = process.env.BOT_TIMEZONE || "Africa/Lagos";
   try {
-    return new Intl.DateTimeFormat("en-CA", {
+    const parts = new Intl.DateTimeFormat("en", {
       timeZone,
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
-    }).format(new Date());
-  } catch {
-    return new Date().toISOString().slice(0, 10);
-  }
+    }).formatToParts(new Date());
+    const part = (type) => parts.find((item) => item.type === type)?.value || "";
+    const year = part("year");
+    const month = part("month");
+    const day = part("day");
+    if (year && month && day) return `${year}-${month}-${day}`;
+  } catch {}
+  return new Date().toISOString().slice(0, 10);
 };
 
 const usageId = (groupJid, memberJid, dayKey = alphaUsageDayKey()) =>
