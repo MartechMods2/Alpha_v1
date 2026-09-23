@@ -231,7 +231,9 @@ const normalizeThrownError = (provider, error) => {
     return new AiProviderError(provider, "AI_PROVIDER_MODEL", message, { status: 404, retryable: false });
   }
   if (/fetch failed|network|socket|econn|connection/i.test(message)) {
-    return new AiProviderError(provider, "AI_PROVIDER_NETWORK", message, { status: 503, retryable: true });
+    const cause = String(error?.cause?.code || error?.cause?.message || "").slice(0, 120);
+    const detail = cause ? `${message} (${cause})` : message;
+    return new AiProviderError(provider, "AI_PROVIDER_NETWORK", detail, { status: 503, retryable: true });
   }
   return new AiProviderError(provider, "AI_PROVIDER_ERROR", message, { status: 502, retryable: false });
 };
