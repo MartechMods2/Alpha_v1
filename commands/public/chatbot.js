@@ -5,10 +5,12 @@ dotenv.config();
 // Database / utility imports
 // -------------------------------------------------------------------------------------------------------------//
 import { getGroupData, group } from "../../db/groupData.js";
+import { consumeAlphaUsage } from "../../db/alphaUsage.js";
 import { getMemberData, getMemberPreferences } from "../../db/members.js";
 import { extractPhoneNumber } from "../../utils/lid.js";
 import { getChatMessages } from "../../utils/chatLogger.js";
 import { getMediaRuntimeConfig } from "../../utils/mediaJobs.js";
+import { isConfiguredModerator } from "../../utils/moderatorAuthority.js";
 import { askSafeAi, hasConfiguredAiProvider } from "../../utils/safeAi.js";
 import {
 	ALPHA_TRUST_BOUNDARY,
@@ -532,8 +534,8 @@ const handler = async (
 	}
 
 	// ---------------------------------------------------------------------------------------------
-	// At least one AI provider must be configured. Requests automatically fall
-	// back from NVIDIA to Gemini when the first provider is unavailable.
+	// At least one AI provider must be configured. The resilient router selects
+	// the first healthy provider and automatically fails over when needed.
 	// ---------------------------------------------------------------------------------------------
 
 	if (!hasConfiguredAiProvider()) {
@@ -541,7 +543,7 @@ const handler = async (
 			from,
 			{
 				text:
-					"⚡Alpha⚡ AI is not configured yet. Add NVIDIA_API_KEY or GOOGLE_API_KEY.",
+					"⚡Alpha⚡ AI is not configured yet. Add at least one supported provider API key in Render.",
 			},
 			{
 				quoted: msg,
@@ -653,6 +655,44 @@ const handler = async (
 				{
 					quoted: msg,
 				}
+			);
+		}
+
+		// -----------------------------------------------------------------------------------------
+		// Per-member AI quota. Only the configured creator/Moderator is unlimited.
+		// Ordinary group admins still use the same daily member allowance.
+		// The counter is stored in MongoDB so a Render restart does not reset it.
+		// -----------------------------------------------------------------------------------------
+
+		const dailyLimit = Number.isFinite(Number(data.alphaDailyQuota))
+			? Number(data.alphaDailyQuota)
+			: Number(process.env.ALPHA_MEMBER_DAILY_LIMIT || 10);
+		const unlimitedAi = Boolean(
+			msgInfoObj.isOwner ||
+			isConfiguredModerator(msgInfoObj.groupMetadata, [
+				msgInfoObj.senderJid,
+				msg?.key?.participantPn,
+				msg?.key?.participantAlt,
+			])
+		);
+		const quotaStatus = await consumeAlphaUsage({
+			groupJid: from,
+			memberJid: msgInfoObj.senderJid,
+			memberName: msgInfoObj.updateName || "",
+			limit: dailyLimit,
+			unlimited: unlimitedAi,
+		});
+
+		if (!quotaStatus.allowed) {
+			const quotaPrefix = msgInfoObj.prefix || process.env.PREFIX || "$";
+			return sendMessageWTyping(
+				from,
+				{
+					text:
+						`⚡Alpha⚡ daily AI limit reached (*${quotaStatus.used}/${quotaStatus.limit}*).\n` +
+						`Your allowance resets when the next bot-local day starts. Use *${quotaPrefix}alphaquota* to check usage.`,
+				},
+				{ quoted: msg }
 			);
 		}
 
@@ -842,7 +882,7 @@ export default () => ({
 	// system does not suddenly break.
 	cmd: ["alpha", "gemini"],
 
-	desc: "Chat with ⚡Alpha⚡ using automatic NVIDIA/Gemini failover",
+	desc: "Chat with ⚡Alpha⚡ using automatic multi-provider AI failover",
 
 	usage: "alpha <text>",
 
