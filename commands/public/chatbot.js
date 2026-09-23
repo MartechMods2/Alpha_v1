@@ -9,18 +9,15 @@ import { getMemberData, getMemberPreferences } from "../../db/members.js";
 import { extractPhoneNumber } from "../../utils/lid.js";
 import { getChatMessages } from "../../utils/chatLogger.js";
 import { getMediaRuntimeConfig } from "../../utils/mediaJobs.js";
-import { askSafeAi } from "../../utils/safeAi.js";
-
-// -------------------------------------------------------------------------------------------------------------
-// NVIDIA AI CONFIGURATION
-// -------------------------------------------------------------------------------------------------------------//
-
-const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || "";
-
-const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
-
-// NVIDIA free/serverless model
-const NVIDIA_MODEL = "openai/gpt-oss-20b";
+import { askSafeAi, hasConfiguredAiProvider } from "../../utils/safeAi.js";
+import {
+	ALPHA_TRUST_BOUNDARY,
+	alphaRuntimeInstruction,
+	cleanAlphaResponse,
+	compactAlphaMessages,
+	extractAlphaDirective,
+	speakerAwareHistory,
+} from "../../utils/alphaBrain.js";
 
 // Maximum input size
 const MAX_INPUT_WORDS = 500;
@@ -43,16 +40,6 @@ const MAX_HISTORY_MESSAGES = 20;
 
 const ALLOW_PRIVATE_CHAT =
 	String(process.env.ALPHA_PRIVATE_CHAT || "false").toLowerCase() === "true";
-
-// -------------------------------------------------------------------------------------------------------------
-// NVIDIA GENERATION CONFIG
-// -------------------------------------------------------------------------------------------------------------//
-
-const generationConfig = {
-	temperature: 0.8,
-	topP: 0.95,
-	maxTokens: 650,
-};
 
 // -------------------------------------------------------------------------------------------------------------
 // ALPHA SYSTEM PROMPT
@@ -147,100 +134,11 @@ You are ⚡Alpha⚡.
 `;
 
 // -------------------------------------------------------------------------------------------------------------
-// NVIDIA API FUNCTION
-// -------------------------------------------------------------------------------------------------------------//
-
-async function askNvidia(systemPrompt, messages) {
-	if (!NVIDIA_API_KEY) {
-		throw new Error("NVIDIA_API_KEY is not configured.");
-	}
-
-	const response = await fetch(
-		`${NVIDIA_BASE_URL}/chat/completions`,
-		{
-			method: "POST",
-
-			headers: {
-				Authorization: `Bearer ${NVIDIA_API_KEY}`,
-				"Content-Type": "application/json",
-				Accept: "application/json",
-			},
-
-			body: JSON.stringify({
-				model: NVIDIA_MODEL,
-
-				messages: [
-					{
-						role: "system",
-						content: systemPrompt,
-					},
-					...messages,
-				],
-
-				temperature: generationConfig.temperature,
-				top_p: generationConfig.topP,
-				max_tokens: generationConfig.maxTokens,
-
-				stream: false,
-			}),
-		}
-	);
-
-	if (!response.ok) {
-		const errorText = await response.text();
-
-		throw new Error(
-			`NVIDIA API Error ${response.status}: ${errorText}`
-		);
-	}
-
-	const result = await response.json();
-
-	const text =
-		result?.choices?.[0]?.message?.content?.trim() || "";
-
-	if (!text) {
-		throw new Error("NVIDIA returned an empty response.");
-	}
-
-	return text;
-}
-
-// -------------------------------------------------------------------------------------------------------------
 // CONVERT STORED HISTORY TO NVIDIA FORMAT
 // -------------------------------------------------------------------------------------------------------------//
 
 function convertConversationHistory(conversationHistory = []) {
-	return conversationHistory
-		.map((message) => {
-			let role = message?.role;
-
-			// Old Gemini history uses "model".
-			// NVIDIA/OpenAI-compatible API uses "assistant".
-			if (role === "model") {
-				role = "assistant";
-			}
-
-			if (role !== "user" && role !== "assistant") {
-				return null;
-			}
-
-			const content =
-				message?.parts
-					?.map((part) => part?.text || "")
-					.join("\n")
-					.trim() || "";
-
-			if (!content) {
-				return null;
-			}
-
-			return {
-				role,
-				content,
-			};
-		})
-		.filter(Boolean);
+	return speakerAwareHistory(conversationHistory);
 }
 
 // -------------------------------------------------------------------------------------------------------------
@@ -334,6 +232,8 @@ async function chat(
 					.map((historyMessage) => ({
 						role: historyMessage.role,
 						parts: historyMessage.parts,
+						senderName: historyMessage.senderName,
+						senderJid: historyMessage.senderJid,
 					}));
 		}
 
@@ -356,14 +256,23 @@ async function chat(
 				: alphaSystemPrompt;
 		const preferences = await getMemberPreferences(senderJid);
 		const preferencePrompt = `The current member selected reply tone: ${preferences.tone}. Their selected pronouns: ${preferences.pronouns}. If tone is auto, adapt gently to the message. If pronouns are neutral, use their name or gender-neutral language. Never infer gender.`;
-		const systemPrompt = `${baseSystemPrompt}\nThe assistant display name is ${mediaConfig.alphaName}.\n${preferencePrompt}\n${mediaConfig.alphaSystemPrompt || ""}`.trim();
+		const directive = extractAlphaDirective(prompt);
+		const systemPrompt = [
+			baseSystemPrompt,
+			`The assistant display name is ${mediaConfig.alphaName}.`,
+			preferencePrompt,
+			alphaRuntimeInstruction(),
+			ALPHA_TRUST_BOUNDARY,
+			directive.instruction,
+			mediaConfig.alphaSystemPrompt || "",
+		].filter(Boolean).join("\n").trim();
 
 		// -----------------------------------------------------------------------------------------
 		// Build user's prompt
 		// -----------------------------------------------------------------------------------------
 
 		let fullPrompt =
-			`[${updateName || "Unknown User"}]: ${prompt}${replyInfo}`;
+			`[${updateName || "Unknown User"}]: ${directive.prompt || prompt}${replyInfo}`;
 
 		// -----------------------------------------------------------------------------------------
 		// Add group information
@@ -481,24 +390,30 @@ ${chatContext}
 		}
 
 		// -----------------------------------------------------------------------------------------
-		// Send request to NVIDIA
+		// Send request through resilient AI provider router
 		// -----------------------------------------------------------------------------------------
 
-		const messages = [
+		const messages = compactAlphaMessages([
 			...historyMessages,
 			{
 				role: "user",
 				content: fullPrompt,
 			},
-		];
+		]);
 
-		const { text } = await askSafeAi({ groupJid: isGroup ? from : "direct", systemPrompt, messages });
+		const { text, provider, meta } = await askSafeAi({
+			groupJid: isGroup ? from : "direct",
+			systemPrompt,
+			messages,
+		});
+		console.log(`[ALPHA_AI] provider=${provider} latency=${meta?.latencyMs || 0}ms attempts=${meta?.attempts || 1} failover=${Boolean(meta?.failover)}`);
+		const finalText = cleanAlphaResponse(text, mediaConfig.alphaName);
 
 		// -----------------------------------------------------------------------------------------
 		// Empty response protection
 		// -----------------------------------------------------------------------------------------
 
-		if (!text?.trim()) {
+		if (!finalText) {
 			return sendMessageWTyping(
 				from,
 				{
@@ -541,7 +456,7 @@ ${chatContext}
 					role: "model",
 					parts: [
 						{
-							text: text.trim(),
+							text: finalText,
 						},
 					],
 					senderName: `⚡${mediaConfig.alphaName}⚡`,
@@ -572,7 +487,7 @@ ${chatContext}
 			{
 				text:
 					`⚡${mediaConfig.alphaName}⚡\n` +
-					text.trim(),
+					finalText,
 			},
 			{
 				quoted: msg,
@@ -580,21 +495,18 @@ ${chatContext}
 		);
 	} catch (err) {
 		const assistantName = getMediaRuntimeConfig().alphaName;
-		console.error(
-			"⚡Alpha⚡ NVIDIA error:",
-			err
-		);
+		const code = String(err?.code || "AI_UPSTREAM_ERROR");
+		console.error("[ALPHA_AI_ERROR]", {
+			code,
+			message: String(err?.message || err).slice(0, 300),
+			providers: Array.isArray(err?.providers) ? err.providers : undefined,
+		});
 
-		return sendMessageWTyping(
-			from,
-			{
-				text:
-					`⚡${assistantName}⚡ is having trouble connecting to the AI right now. Try again in a moment.`,
-			},
-			{
-				quoted: msg,
-			}
-		);
+		const userMessage = code === "AI_NOT_CONFIGURED"
+			? `⚡${assistantName}⚡ AI is not configured right now.`
+			: `⚡${assistantName}⚡ is temporarily unable to reach an AI provider. I logged the failure for diagnostics; try again shortly.`;
+
+		return sendMessageWTyping(from, { text: userMessage }, { quoted: msg });
 	}
 }
 
@@ -624,7 +536,7 @@ const handler = async (
 	// back from NVIDIA to Gemini when the first provider is unavailable.
 	// ---------------------------------------------------------------------------------------------
 
-	if (!NVIDIA_API_KEY && !process.env.GOOGLE_API_KEY) {
+	if (!hasConfiguredAiProvider()) {
 		return sendMessageWTyping(
 			from,
 			{
@@ -646,7 +558,7 @@ const handler = async (
 			from,
 			{
 				text:
-					"⚡Alpha⚡ is listening. Enter some text.",
+					"⚡Alpha⚡ is listening. Enter some text. You can also start with *brief:*, *deep:*, *steps:*, *eli5:*, *formal:* or *creative:*.",
 			},
 			{
 				quoted: msg,
