@@ -23,7 +23,15 @@ const COOLDOWN_MS = 10_000;
 const randomItem = (items) => items[Math.floor(Math.random() * items.length)];
 
 const handler = async (_sock, msg, from, args, msgInfoObj) => {
-	const { command, senderJid, sendMessageWTyping } = msgInfoObj;
+	const { command, senderJid, isOwner, groupMetadata, sendMessageWTyping } = msgInfoObj;
+	const quotaInput = {
+		groupJid: from,
+		senderJid,
+		memberName: msg?.pushName || "",
+		groupMetadata,
+		isOwner,
+		candidates: [msg?.key?.participantPn, msg?.key?.participantAlt],
+	};
 	const key = `${from}:${senderJid}:${command}`;
 	const now = Date.now();
 	if ((cooldowns.get(key) || 0) > now) return;
@@ -35,25 +43,25 @@ const handler = async (_sock, msg, from, args, msgInfoObj) => {
 	let text;
 	switch (command) {
 		case "truth": {
-			const prompt = await generateSocialGamePrompt({ groupJid: from, type: "truth" });
+			const prompt = await generateSocialGamePrompt({ groupJid: from, type: "truth", quotaInput });
 			text = alphaPanel({ icon: "🎯", title: "Truth", lines: [prompt], footer: "Answer honestly, but only share what you are comfortable sharing." });
 			break;
 		}
 		case "dare": {
-			const prompt = await generateSocialGamePrompt({ groupJid: from, type: "dare" });
+			const prompt = await generateSocialGamePrompt({ groupJid: from, type: "dare", quotaInput });
 			text = alphaPanel({ icon: "🔥", title: "Safe Dare", lines: [prompt], footer: "Keep it fun, respectful and voluntary." });
 			break;
 		}
 		case "wyr":
 		case "wouldyourather": {
-			const prompt = await generateSocialGamePrompt({ groupJid: from, type: "wyr" });
+			const prompt = await generateSocialGamePrompt({ groupJid: from, type: "wyr", quotaInput });
 			const poll = parseWouldYouRatherPoll(prompt);
 			if (poll) return sendMessageWTyping(from, { poll }, { quoted: msg });
 			text = alphaPanel({ icon: "🤔", title: "Would You Rather?", lines: [prompt], footer: "Pick one and tell the group why." });
 			break;
 		}
 		case "icebreaker": {
-			const prompt = await generateSocialGamePrompt({ groupJid: from, type: "icebreaker" });
+			const prompt = await generateSocialGamePrompt({ groupJid: from, type: "icebreaker", quotaInput });
 			text = alphaPanel({ icon: "🧊", title: "Icebreaker", lines: [prompt], footer: "Everyone can answer." });
 			break;
 		}
