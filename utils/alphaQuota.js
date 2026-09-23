@@ -2,7 +2,6 @@ import { getAlphaUsage, consumeAlphaUsage, refundAlphaUsage } from "../db/alphaU
 import { getGroupData } from "../db/groupData.js";
 import { extractPhoneNumber } from "./lid.js";
 import { isSameGroupUser } from "./groupParticipants.js";
-import { isConfiguredModerator } from "./moderatorAuthority.js";
 
 const configuredUnlimitedNumbers = () => String(process.env.ALPHA_UNLIMITED_NUMBERS || "")
   .split(/[,;\s]+/)
@@ -35,8 +34,10 @@ export const isAlphaUnlimitedUser = ({
     });
   }
 
-  // Backward-compatible fallback for deployments that have not set the new list.
-  return Boolean(isOwner || isConfiguredModerator(groupMetadata, values));
+  // By default only the bot owner/creator bypasses the quota. Other configured
+  // moderators and ordinary group admins remain limited. If the moderator who
+  // should be unlimited is a different account, set ALPHA_UNLIMITED_NUMBERS.
+  return Boolean(isOwner);
 };
 
 export const getAlphaGroupLimit = async (groupJid, suppliedLimit) => {
