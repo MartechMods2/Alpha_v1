@@ -18,6 +18,8 @@ export const DEFAULT_ALPHA_SETTINGS = Object.freeze({
 	alphaDeniedMembers: [],
 });
 
+const validClock = (value) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(value || ""));
+
 const normalizeMemberList = (value) => Array.isArray(value)
 	? [...new Set(value.map((jid) => String(jid || "").trim()).filter((jid) => jid.includes("@")))].slice(0, 100)
 	: [];
@@ -25,10 +27,10 @@ const normalizeMemberList = (value) => Array.isArray(value)
 export const normalizeAlphaSettings = (data = {}) => ({
 	alphaMode: ["smart", "text", "mixed", "sticker", "off"].includes(data.alphaMode) ? data.alphaMode : DEFAULT_ALPHA_SETTINGS.alphaMode,
 	alphaMemoryLimit: Number.isFinite(Number(data.alphaMemoryLimit))
-		? Math.min(20, Math.max(0, Number(data.alphaMemoryLimit)))
+		? Math.min(20, Math.max(0, Math.trunc(Number(data.alphaMemoryLimit))))
 		: DEFAULT_ALPHA_SETTINGS.alphaMemoryLimit,
 	alphaDailyQuota: Number.isFinite(Number(data.alphaDailyQuota))
-		? Math.min(50, Math.max(1, Number(data.alphaDailyQuota)))
+		? Math.min(50, Math.max(1, Math.trunc(Number(data.alphaDailyQuota))))
 		: DEFAULT_ALPHA_SETTINGS.alphaDailyQuota,
 	alphaImageOn: data.alphaImageOn !== false,
 	alphaVoiceOn: Boolean(data.alphaVoiceOn),
@@ -36,8 +38,8 @@ export const normalizeAlphaSettings = (data = {}) => ({
 	alphaStickerOn: data.alphaStickerOn !== false,
 	alphaPersonality: ["friendly", "funny", "professional", "desire"].includes(data.alphaPersonality) ? data.alphaPersonality : "friendly",
 	alphaResponseLength: ["short", "normal", "detailed"].includes(data.alphaResponseLength) ? data.alphaResponseLength : "short",
-	alphaQuietStart: /^\d{2}:\d{2}$/.test(data.alphaQuietStart || "") ? data.alphaQuietStart : "",
-	alphaQuietEnd: /^\d{2}:\d{2}$/.test(data.alphaQuietEnd || "") ? data.alphaQuietEnd : "",
+	alphaQuietStart: validClock(data.alphaQuietStart) ? data.alphaQuietStart : "",
+	alphaQuietEnd: validClock(data.alphaQuietEnd) ? data.alphaQuietEnd : "",
 	alphaAccessMode: ["everyone", "admins", "allowlist", "denylist"].includes(data.alphaAccessMode)
 		? data.alphaAccessMode
 		: DEFAULT_ALPHA_SETTINGS.alphaAccessMode,
