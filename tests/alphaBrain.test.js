@@ -34,3 +34,12 @@ test("Alpha compacts old context while retaining the newest messages", () => {
 test("Alpha response cleanup removes duplicated assistant labels", () => {
   assert.equal(cleanAlphaResponse("⚡Alpha⚡: Hello there", "Alpha"), "Hello there");
 });
+
+test("Alpha compaction preserves the tail of a long newest message", () => {
+  const question = "LATEST-QUESTION: what should we do next?";
+  const content = `old context ${"x".repeat(6000)} ${question}`;
+  const compacted = compactAlphaMessages([{ role: "user", content }], 5000);
+  assert.equal(compacted.length, 1);
+  assert.match(compacted[0].content, /LATEST-QUESTION: what should we do next\?/);
+  assert.match(compacted[0].content, /older context compacted/);
+});
