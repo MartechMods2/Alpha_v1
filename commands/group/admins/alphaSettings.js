@@ -80,7 +80,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	else if (command === "alphastyle" && ["friendly", "funny", "professional", "desire"].includes(raw)) updates.alphaPersonality = raw;
 	else if (command === "alphalength" && ["short", "normal", "detailed"].includes(raw)) updates.alphaResponseLength = raw;
 	else if (command === "alphamemory" && Number.isFinite(Number(raw))) updates.alphaMemoryLimit = Math.min(20, Math.max(0, Number(raw)));
-	else if (command === "alphaquota" && Number.isFinite(Number(raw))) updates.alphaDailyQuota = Math.min(50, Math.max(1, Number(raw)));
+	else if (command === "alphalimit" && Number.isFinite(Number(raw))) updates.alphaDailyQuota = Math.min(50, Math.max(1, Number(raw)));
 	else if (["alphaimage", "alphavoice", "alphadoc", "alphasticker"].includes(command) && onOff(raw) !== null) {
 		updates[{ alphaimage: "alphaImageOn", alphavoice: "alphaVoiceOn", alphadoc: "alphaDocOn", alphasticker: "alphaStickerOn" }[command]] = onOff(raw);
 	} else if (command === "alphaquiet") {
@@ -101,11 +101,11 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 export default () => ({
 	cmd: [
-		"alphamode", "alphastyle", "alphalength", "alphamemory", "alphaquota", "alphaquiet",
+		"alphamode", "alphastyle", "alphalength", "alphamemory", "alphalimit", "alphaquiet",
 		"alphaimage", "alphavoice", "alphadoc", "alphasticker", "alphastatus", "alphaclear",
 		"alphafilter", "alphaaccess",
 	],
 	desc: "Configure smart Alpha mention replies and media understanding",
-	usage: "alphastatus | alphamode smart | alphastyle desire | alphafilter everyone|admins|allowlist|denylist",
+	usage: "alphastatus | alphalimit 10 | alphamode smart | alphastyle desire | alphafilter everyone|admins|allowlist|denylist",
 	handler,
 });
