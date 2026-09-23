@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { downloadResolvedMedia, quotedText, resolveMediaEnvelope } from "./mediaInput.js";
+import { notifyAlphaOwnerFailure } from "./alphaErrorReporter.js";
 
 export const DEFAULT_ALPHA_SETTINGS = Object.freeze({
 	alphaMode: "smart",
@@ -89,6 +90,55 @@ const mediaInstruction = (kind) => ({
 	document: "Read this document and answer using only information that is present. Say when information is unavailable.",
 }[kind] || "Analyze this media safely.");
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const mediaModelCandidates = () => {
+	const primary = process.env.GEMINI_MEDIA_MODEL || "gemini-3.5-flash-lite";
+	const fallback = String(process.env.GEMINI_MEDIA_FALLBACK_MODELS || "")
+		.split(",")
+		.map((value) => value.trim())
+		.filter(Boolean);
+	const textModel = String(process.env.GEMINI_TEXT_MODEL || "").trim();
+	return [...new Set([primary, ...fallback, textModel].filter(Boolean))];
+};
+
+const geminiStatus = (error) => Number(
+	error?.status ||
+	error?.response?.status ||
+	String(error?.message || "").match(/\[(\d{3})\s/)?.[1] ||
+	0,
+);
+
+const isTemporaryGeminiError = (error) => {
+	const status = geminiStatus(error);
+	if ([429, 500, 502, 503, 504].includes(status)) return true;
+	return /high demand|service unavailable|temporar|overloaded|rate limit|resource exhausted/i.test(String(error?.message || ""));
+};
+
+const generateMediaAnalysis = async ({ client, models, prompt, media }) => {
+	let lastError;
+	for (const modelName of models) {
+		for (let attempt = 0; attempt < 2; attempt += 1) {
+			try {
+				const model = client.getGenerativeModel({ model: modelName });
+				const response = await model.generateContent([
+					prompt,
+					{ inlineData: { data: media.buffer.toString("base64"), mimeType: media.mime } },
+				]);
+				return {
+					text: String(response.response.text() || "").trim().slice(0, 4000),
+					model: modelName,
+				};
+			} catch (error) {
+				lastError = error;
+				if (!isTemporaryGeminiError(error) || attempt === 1) break;
+				await sleep(700 * (attempt + 1));
+			}
+		}
+	}
+	throw lastError || new Error("Gemini media analysis failed");
+};
+
 export const analyzeMentionMedia = async (sock, msg, settings, userPrompt) => {
 	const resolved = resolveMediaEnvelope(msg);
 	if (!resolved) return "";
@@ -102,12 +152,29 @@ export const analyzeMentionMedia = async (sock, msg, settings, userPrompt) => {
 		maxBytes: resolved.kind === "document" ? 8 * 1024 * 1024 : 12 * 1024 * 1024,
 	});
 	const client = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-	const model = client.getGenerativeModel({ model: process.env.GEMINI_MEDIA_MODEL || "gemini-3.5-flash-lite" });
-	const response = await model.generateContent([
-		`${mediaInstruction(resolved.kind)}\nUser request: ${String(userPrompt || "Please explain this").slice(0, 1000)}`,
-		{ inlineData: { data: media.buffer.toString("base64"), mimeType: media.mime } },
-	]);
-	return String(response.response.text() || "").trim().slice(0, 4000);
+	const models = mediaModelCandidates();
+	try {
+		const result = await generateMediaAnalysis({
+			client,
+			models,
+			prompt: `${mediaInstruction(resolved.kind)}\nUser request: ${String(userPrompt || "Please explain this").slice(0, 1000)}`,
+			media,
+		});
+		return result.text;
+	} catch (error) {
+		if (isTemporaryGeminiError(error)) {
+			notifyAlphaOwnerFailure({
+				sock,
+				scope: "media-understanding",
+				error,
+				groupName: msg?.key?.remoteJid?.endsWith("@g.us") ? "WhatsApp group" : "",
+				senderName: msg?.pushName || "",
+				detail: `kind=${resolved.kind}; models=${models.join(",")}`,
+			});
+			return "MEDIA_UNAVAILABLE: The attached media could not be inspected because the media AI service is temporarily busy. Do not guess what is in the media. Tell the user briefly that Alpha could not inspect the media right now and ask them to retry shortly or paste the important text.";
+		}
+		throw error;
+	}
 };
 
 export const stripBotMention = (body, mentionedJids = []) => {
