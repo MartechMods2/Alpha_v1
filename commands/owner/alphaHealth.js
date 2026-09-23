@@ -7,6 +7,7 @@ import {
 
 const icon = (provider) => {
   if (!provider.configured) return "⚪";
+  if (provider.enabled === false) return "⚫";
   if (provider.circuitOpen) return "🟠";
   if (provider.ok === true) return "🟢";
   if (provider.ok === false) return "🔴";
@@ -16,7 +17,9 @@ const icon = (provider) => {
 const providerLine = (name, provider) => {
   const state = !provider.configured
     ? "NOT CONFIGURED"
-    : provider.circuitOpen
+    : provider.enabled === false
+      ? "DISABLED"
+      : provider.circuitOpen
       ? "CIRCUIT OPEN"
       : provider.ok === true
         ? "HEALTHY"
@@ -29,6 +32,7 @@ const providerLine = (name, provider) => {
   if (provider.code) details.push(`code=${provider.code}`);
   if (provider.status) details.push(`http=${provider.status}`);
   if (provider.latencyMs) details.push(`${provider.latencyMs}ms`);
+  if (provider.timeoutMs) details.push(`timeout=${provider.timeoutMs}ms`);
   if (provider.consecutiveFailures) details.push(`fails=${provider.consecutiveFailures}`);
   if (provider.stats?.totalTokens) details.push(`tokens=${provider.stats.totalTokens}`);
 
@@ -49,15 +53,16 @@ const failureHint = (code) => ({
 const formatStatus = (status, live = null) => {
   const names = getAiProviderNames();
   const configuredCount = names.filter((name) => status.providers[name]?.configured).length;
-  const healthyCount = names.filter((name) => status.providers[name]?.ok === true).length;
+  const enabledCount = names.filter((name) => status.providers[name]?.enabled !== false).length;
 
   const lines = [
     "🧠 *Alpha AI Health*",
-    `Configured: *${configuredCount}/${names.length}*`,
-    `Operational: *${status.operational ? "YES" : healthyCount > 0 ? "YES" : "NOT CONFIRMED"}*`,
+    `Configured: *${configuredCount}/${names.length}* · Enabled: *${enabledCount}/${names.length}*`,
+    `Operational: *${status.operational ? "YES" : "NOT CONFIRMED"}*`,
     `Active provider: *${status.activeProvider || "none yet"}*`,
     `Next provider: *${status.nextProvider || "none"}*`,
-    `Provider order: *${status.preferredOrder.join(" → ")}*`,
+    `Provider order: *${status.preferredOrder.join(" → ") || "none"}*`,
+    `Disabled: *${status.disabledProviders?.length ? status.disabledProviders.join(", ") : "none"}*`,
     `Timeout: *${status.timeoutMs}ms* · Retries: *${status.retries}* · Max output: *${status.maxOutputTokens}* · Probe: *${status.probeOutputTokens}*`,
     "",
     ...names.map((name) => providerLine(name, status.providers[name])),
@@ -68,7 +73,8 @@ const formatStatus = (status, live = null) => {
 
   if (live) {
     lines.push("", "🔬 *Live probe*");
-    for (const name of names) {
+    const liveNames = names.filter((name) => Object.prototype.hasOwnProperty.call(live, name));
+    for (const name of liveNames) {
       const result = live[name];
       if (!result?.configured) {
         lines.push(`⚪ ${name.toUpperCase()}: not configured`);
@@ -98,7 +104,17 @@ const handler = async (_sock, msg, from, args, info) => {
       return reply(`♻️ *Alpha AI provider health reset.*\n\n${formatStatus(status)}`);
     }
     if (action === "test" || action === "live") {
-      const result = await probeAiProviders({ live: true });
+      const target = String(command === "aitest" ? (args[0] || "") : (args[1] || "")).toLowerCase().trim();
+      const providerNames = getAiProviderNames();
+      if (target && !["all", "*"].includes(target) && !providerNames.includes(target)) {
+        return reply(`❌ Unknown provider *${target}*. Use one of: ${providerNames.join(", ")}.`);
+      }
+      const providers = ["all", "*"].includes(target)
+        ? providerNames
+        : target
+          ? [target]
+          : null;
+      const result = await probeAiProviders({ live: true, providers });
       return reply(formatStatus(result, result.live));
     }
     return reply(formatStatus(getAiRuntimeStatus()));
@@ -110,6 +126,6 @@ const handler = async (_sock, msg, from, args, info) => {
 export default () => ({
   cmd: ["alphahealth", "aistatus", "aitest"],
   desc: "Owner-only Alpha AI provider health, live tests, latency, failover and circuit status",
-  usage: "alphahealth | alphahealth test | alphahealth reset | aitest",
+  usage: "alphahealth | alphahealth test [provider] | alphahealth reset | aitest [provider]",
   handler,
 });

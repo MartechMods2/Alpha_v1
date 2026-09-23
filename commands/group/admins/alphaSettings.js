@@ -2,6 +2,8 @@ import { group } from "../../../db/groupData.js";
 import { normalizeAlphaSettings } from "../../../utils/alphaMention.js";
 
 const onOff = (value) => value === "on" ? true : value === "off" ? false : null;
+const validClock = (value) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(value || ""));
+const wholeNumber = (value) => /^\d+$/.test(String(value || ""));
 const ACCESS_MODES = ["everyone", "admins", "allowlist", "denylist"];
 const mentionLabel = (jid) => `@${String(jid || "").split("@")[0].split(":")[0]}`;
 
@@ -79,13 +81,13 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	if (command === "alphamode" && ["smart", "text", "mixed", "sticker", "off"].includes(raw)) updates.alphaMode = raw;
 	else if (command === "alphastyle" && ["friendly", "funny", "professional", "desire"].includes(raw)) updates.alphaPersonality = raw;
 	else if (command === "alphalength" && ["short", "normal", "detailed"].includes(raw)) updates.alphaResponseLength = raw;
-	else if (command === "alphamemory" && Number.isFinite(Number(raw))) updates.alphaMemoryLimit = Math.min(20, Math.max(0, Number(raw)));
-	else if (command === "alphaquota" && Number.isFinite(Number(raw))) updates.alphaDailyQuota = Math.min(50, Math.max(1, Number(raw)));
+	else if (command === "alphamemory" && wholeNumber(raw)) updates.alphaMemoryLimit = Math.min(20, Math.max(0, Math.trunc(Number(raw))));
+	else if (command === "alphalimit" && wholeNumber(raw)) updates.alphaDailyQuota = Math.min(50, Math.max(1, Math.trunc(Number(raw))));
 	else if (["alphaimage", "alphavoice", "alphadoc", "alphasticker"].includes(command) && onOff(raw) !== null) {
 		updates[{ alphaimage: "alphaImageOn", alphavoice: "alphaVoiceOn", alphadoc: "alphaDocOn", alphasticker: "alphaStickerOn" }[command]] = onOff(raw);
 	} else if (command === "alphaquiet") {
 		if (raw === "off") Object.assign(updates, { alphaQuietStart: "", alphaQuietEnd: "" });
-		else if (/^\d{2}:\d{2}$/.test(args[0] || "") && /^\d{2}:\d{2}$/.test(args[1] || "")) {
+		else if (validClock(args[0]) && validClock(args[1])) {
 			Object.assign(updates, { alphaQuietStart: args[0], alphaQuietEnd: args[1] });
 		}
 	} else if (command === "alphaclear") {
@@ -101,11 +103,11 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 export default () => ({
 	cmd: [
-		"alphamode", "alphastyle", "alphalength", "alphamemory", "alphaquota", "alphaquiet",
+		"alphamode", "alphastyle", "alphalength", "alphamemory", "alphalimit", "alphaquiet",
 		"alphaimage", "alphavoice", "alphadoc", "alphasticker", "alphastatus", "alphaclear",
 		"alphafilter", "alphaaccess",
 	],
 	desc: "Configure smart Alpha mention replies and media understanding",
-	usage: "alphastatus | alphamode smart | alphastyle desire | alphafilter everyone|admins|allowlist|denylist",
+	usage: "alphastatus | alphalimit 10 | alphamode smart | alphastyle desire | alphafilter everyone|admins|allowlist|denylist",
 	handler,
 });

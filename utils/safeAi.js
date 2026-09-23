@@ -15,9 +15,6 @@ const PROVIDERS = Object.freeze([
 
 const providerState = new Map();
 const providerCircuits = new Map();
-const usage = new Map();
-const day = () => new Date().toISOString().slice(0, 10);
-let lastUsageDay = day();
 
 const emptyProviderMetrics = () => ({
   requests: 0,
@@ -49,6 +46,8 @@ const clamp = (value, min, max, fallback) => {
 };
 
 const aiTimeoutMs = () => clamp(process.env.ALPHA_AI_TIMEOUT_MS, 5_000, 60_000, 15_000);
+const providerTimeoutMs = (name) =>
+  clamp(process.env[`${String(name || "").toUpperCase()}_AI_TIMEOUT_MS`], 5_000, 60_000, aiTimeoutMs());
 const retryCount = () => clamp(process.env.ALPHA_AI_RETRIES, 0, 2, 0);
 const maxOutputTokens = () => clamp(process.env.ALPHA_AI_MAX_TOKENS, 100, 2400, 850);
 const probeOutputTokens = () => clamp(process.env.ALPHA_AI_PROBE_MAX_TOKENS, 64, 512, 256);
@@ -102,16 +101,32 @@ const providerDefinitions = () => ({
 
 export const getAiProviderNames = () => [...PROVIDERS];
 
-const providerOrder = () => {
-  const configuredOrder = String(
-    process.env.ALPHA_AI_PROVIDER_ORDER ||
-      "groq,gemini,mistral,kilo,cloudflare,openrouter,aion,nvidia",
-  )
+const defaultProviderOrder = Object.freeze([
+  "groq",
+  "kilo",
+  "cloudflare",
+  "openrouter",
+  "gemini",
+  "aion",
+  "mistral",
+  "nvidia",
+]);
+
+const disabledProviders = () => new Set(
+  String(process.env.ALPHA_AI_DISABLED_PROVIDERS || "")
     .toLowerCase()
     .split(",")
     .map((value) => value.trim())
+    .filter((value) => PROVIDERS.includes(value)),
+);
+
+const providerOrder = () => {
+  const raw = String(process.env.ALPHA_AI_PROVIDER_ORDER || "").trim();
+  const requested = (raw ? raw.split(",") : defaultProviderOrder)
+    .map((value) => String(value).toLowerCase().trim())
     .filter((value) => PROVIDERS.includes(value));
-  return [...new Set([...configuredOrder, ...PROVIDERS])];
+  const disabled = disabledProviders();
+  return [...new Set(requested)].filter((name) => !disabled.has(name));
 };
 
 const providerConfigured = (name) => {
@@ -241,7 +256,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const withTimeout = async (provider, promiseFactory) => {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), aiTimeoutMs());
+  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs(provider));
   try {
     return await promiseFactory(controller.signal);
   } catch (error) {
@@ -460,6 +475,7 @@ const runProvider = async (
     retries = retryCount(),
     countMetrics = true,
     isProbe = false,
+    affectCircuit = true,
     maxTokens = maxOutputTokens(),
   } = {},
 ) => {
@@ -487,7 +503,11 @@ const runProvider = async (
         metrics.byProvider[name].successes += 1;
         applyUsageMetrics(name, result.usage);
       }
-      markSuccess(name, latencyMs);
+      if (affectCircuit) {
+        markSuccess(name, latencyMs);
+      } else {
+        note(name, true, { code: "OK", status: 200, latencyMs, consecutiveFailures: circuitFor(name).consecutiveFailures });
+      }
       return {
         text: result.text,
         provider: name,
@@ -499,7 +519,19 @@ const runProvider = async (
       const error = normalizeThrownError(name, rawError);
       lastError = error;
       if (countMetrics) metrics.byProvider[name].failures += 1;
-      markFailure(name, error, Date.now() - started);
+      const latencyMs = Date.now() - started;
+      if (affectCircuit) {
+        markFailure(name, error, latencyMs);
+      } else {
+        note(name, false, {
+          code: error.code,
+          status: error.status || 0,
+          error: error.message,
+          latencyMs,
+          consecutiveFailures: circuitFor(name).consecutiveFailures,
+          lastFailureAt: new Date().toISOString(),
+        });
+      }
       if (!error.retryable || attempt >= maxAttempts - 1) break;
       if (countMetrics) {
         metrics.retries += 1;
@@ -510,29 +542,6 @@ const runProvider = async (
   }
   throw lastError || new AiProviderError(name, "AI_PROVIDER_ERROR", "Provider failed.", { status: 502 });
 };
-const pruneUsage = () => {
-  const current = day();
-  if (current === lastUsageDay && usage.size < 2000) return;
-  lastUsageDay = current;
-  const prefix = `${current}:`;
-  for (const key of usage.keys()) if (!key.startsWith(prefix)) usage.delete(key);
-  if (usage.size > 2500) {
-    const extra = usage.size - 2000;
-    for (const key of [...usage.keys()].slice(0, extra)) usage.delete(key);
-  }
-};
-
-export const useSafeAiBudget = async (groupJid, memberJid) => {
-  pruneUsage();
-  const settings = await getSafeSettings(groupJid);
-  const limit = Math.min(100, Math.max(1, Number(settings.aiDailyLimit) || 20));
-  const key = `${day()}:${groupJid}:${memberJid}`;
-  const used = usage.get(key) || 0;
-  if (used >= limit) return false;
-  usage.set(key, used + 1);
-  return true;
-};
-
 export const hasConfiguredAiProvider = () => providerOrder().some(providerConfigured);
 
 export const askSafeAi = async ({ groupJid = "direct", systemPrompt, messages }) => {
@@ -578,10 +587,13 @@ export const askSafeAi = async ({ groupJid = "direct", systemPrompt, messages })
   throw new AiUnavailableError(errors);
 };
 
-export const probeAiProviders = async ({ live = false } = {}) => {
+export const probeAiProviders = async ({ live = false, providers: requestedProviders = null } = {}) => {
   if (!live) return getAiRuntimeStatus();
+  const selected = Array.isArray(requestedProviders) && requestedProviders.length
+    ? [...new Set(requestedProviders.map((name) => String(name).toLowerCase()).filter((name) => PROVIDERS.includes(name)))]
+    : providerOrder();
   const results = {};
-  await Promise.all(PROVIDERS.map(async (name) => {
+  await Promise.all(selected.map(async (name) => {
     if (!providerConfigured(name)) {
       results[name] = { configured: false, ok: false, code: "AI_NOT_CONFIGURED" };
       return;
@@ -591,7 +603,14 @@ export const probeAiProviders = async ({ live = false } = {}) => {
         name,
         "You are a health-check endpoint. Reply with exactly OK.",
         [{ role: "user", content: "health check" }],
-        { force: true, retries: 0, countMetrics: false, isProbe: true, maxTokens: probeOutputTokens() },
+        {
+          force: true,
+          retries: 0,
+          countMetrics: false,
+          isProbe: true,
+          affectCircuit: false,
+          maxTokens: probeOutputTokens(),
+        },
       );
       results[name] = { configured: true, ok: true, latencyMs: result.latencyMs, model: providerModel(name) };
     } catch (rawError) {
@@ -616,14 +635,16 @@ export const resetAiProviderHealth = () => {
 };
 
 export const getAiRuntimeStatus = () => {
-  pruneUsage();
   const providers = {};
+  const order = providerOrder();
   for (const name of PROVIDERS) {
     const circuit = circuitFor(name);
     const state = providerState.get(name) || {};
     providers[name] = {
       configured: providerConfigured(name),
+      enabled: order.includes(name),
       model: providerModel(name),
+      timeoutMs: providerTimeoutMs(name),
       ok: state.ok ?? null,
       code: state.code || "",
       status: Number(state.status || 0),
@@ -638,16 +659,21 @@ export const getAiRuntimeStatus = () => {
       stats: { ...metrics.byProvider[name] },
     };
   }
-  const healthy = providerOrder().find(
+  const healthy = order.find(
     (name) => providers[name]?.configured && providers[name]?.ok === true && !providers[name]?.circuitOpen,
   ) || null;
-  const nextProvider = providerOrder().find(
+  const available = order.filter(
     (name) => providers[name]?.configured && !providers[name]?.circuitOpen,
-  ) || null;
+  );
+  const activeIndex = healthy ? available.indexOf(healthy) : -1;
+  const nextProvider = activeIndex >= 0
+    ? (available.slice(activeIndex + 1)[0] || null)
+    : (available[0] || null);
   return {
     ready: hasConfiguredAiProvider(),
     operational: Boolean(healthy),
-    preferredOrder: providerOrder(),
+    preferredOrder: order,
+    disabledProviders: [...disabledProviders()],
     activeProvider: healthy,
     nextProvider,
     timeoutMs: aiTimeoutMs(),
@@ -661,9 +687,5 @@ export const getAiRuntimeStatus = () => {
     failovers: metrics.failovers,
     retriesPerformed: metrics.retries,
     probes: metrics.probes,
-    usageToday: [...usage.entries()]
-      .filter(([key]) => key.startsWith(`${day()}:`))
-      .reduce((sum, [, value]) => sum + value, 0),
-    usageKeys: usage.size,
   };
 };

@@ -12,15 +12,19 @@ const clampLimit = (value, fallback = 10) => {
 export const alphaUsageDayKey = () => {
   const timeZone = process.env.BOT_TIMEZONE || "Africa/Lagos";
   try {
-    return new Intl.DateTimeFormat("en-CA", {
+    const parts = new Intl.DateTimeFormat("en", {
       timeZone,
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
-    }).format(new Date());
-  } catch {
-    return new Date().toISOString().slice(0, 10);
-  }
+    }).formatToParts(new Date());
+    const part = (type) => parts.find((item) => item.type === type)?.value || "";
+    const year = part("year");
+    const month = part("month");
+    const day = part("day");
+    if (year && month && day) return `${year}-${month}-${day}`;
+  } catch {}
+  return new Date().toISOString().slice(0, 10);
 };
 
 const usageId = (groupJid, memberJid, dayKey = alphaUsageDayKey()) =>
@@ -92,6 +96,46 @@ export const getAlphaUsage = async ({
       limit: normalizedLimit,
       persisted: false,
       dayKey,
+    };
+  }
+};
+
+
+export const refundAlphaUsage = async ({
+  groupJid,
+  memberJid,
+  dayKey = alphaUsageDayKey(),
+  unlimited = false,
+}) => {
+  if (unlimited) return { refunded: false, unlimited: true, dayKey };
+
+  const id = usageId(groupJid, memberJid, dayKey);
+  try {
+    const result = await alphaAiUsage.findOneAndUpdate(
+      { _id: id, used: { $gt: 0 } },
+      {
+        $inc: { used: -1 },
+        $set: { updatedAt: new Date(), expiresAt: expiryDate() },
+      },
+      { returnDocument: "after" },
+    );
+    return {
+      refunded: Boolean(result),
+      unlimited: false,
+      used: Math.max(0, Number(result?.used || 0)),
+      dayKey,
+      persisted: true,
+    };
+  } catch (error) {
+    console.warn("[ALPHA_QUOTA] Mongo refund failed; using process fallback:", error.message);
+    const used = fallbackUsage.get(id) || 0;
+    if (used > 0) fallbackUsage.set(id, used - 1);
+    return {
+      refunded: used > 0,
+      unlimited: false,
+      used: Math.max(0, used - 1),
+      dayKey,
+      persisted: false,
     };
   }
 };

@@ -1,24 +1,37 @@
-import { getGroupData } from "../../db/groupData.js";
-import { getAlphaUsage } from "../../db/alphaUsage.js";
+import { getGroupData, group } from "../../db/groupData.js";
+import { getAlphaGroupAiUsage } from "../../utils/alphaQuota.js";
 import { isConfiguredModerator } from "../../utils/moderatorAuthority.js";
 
-const handler = async (_sock, msg, from, _args, info) => {
-  const { isGroup, senderJid, isOwner, groupMetadata, sendMessageWTyping } = info;
+const handler = async (_sock, msg, from, args, info) => {
+  const { isGroup, senderJid, isOwner, isGroupAdmin, groupMetadata, sendMessageWTyping } = info;
   const reply = (text) => sendMessageWTyping(from, { text }, { quoted: msg });
 
   if (!isGroup) return reply("⚡ Alpha usage limits are tracked per group.");
 
   const data = await getGroupData(from);
-  const limit = Number.isFinite(Number(data?.alphaDailyQuota))
-    ? Number(data.alphaDailyQuota)
-    : Number(process.env.ALPHA_MEMBER_DAILY_LIMIT || 10);
-  const unlimited = Boolean(isOwner || isConfiguredModerator(groupMetadata, [senderJid]));
+  const requestedLimit = Number(args[0]);
+  const moderator = isConfiguredModerator(groupMetadata, [
+    senderJid,
+    msg?.key?.participantPn,
+    msg?.key?.participantAlt,
+  ]);
 
-  const status = await getAlphaUsage({
+  if (Number.isFinite(requestedLimit)) {
+    if (!(isOwner || isGroupAdmin || moderator)) {
+      return reply("🛡️ Only a group admin or configured moderator can change Alpha's daily limit.");
+    }
+    const nextLimit = Math.min(50, Math.max(1, Math.trunc(requestedLimit)));
+    await group.updateOne({ _id: from }, { $set: { alphaDailyQuota: nextLimit } });
+    return reply(`✅ Alpha daily AI limit set to *${nextLimit} requests per member*.`);
+  }
+
+  const status = await getAlphaGroupAiUsage({
     groupJid: from,
-    memberJid: senderJid,
-    limit,
-    unlimited,
+    senderJid,
+    groupMetadata,
+    isOwner,
+    candidates: [msg?.key?.participantPn, msg?.key?.participantAlt],
+    limit: data?.alphaDailyQuota,
   });
 
   if (status.unlimited) {
@@ -32,7 +45,7 @@ const handler = async (_sock, msg, from, _args, info) => {
 
 export default () => ({
   cmd: ["alphaquota", "aiquota"],
-  desc: "Show your Alpha AI daily usage in this group",
-  usage: "alphaquota",
+  desc: "Show your Alpha AI daily usage; admins can set the group daily limit",
+  usage: "alphaquota | alphaquota <1-50>",
   handler,
 });

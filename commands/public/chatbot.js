@@ -5,12 +5,10 @@ dotenv.config();
 // Database / utility imports
 // -------------------------------------------------------------------------------------------------------------//
 import { getGroupData, group } from "../../db/groupData.js";
-import { consumeAlphaUsage } from "../../db/alphaUsage.js";
 import { getMemberData, getMemberPreferences } from "../../db/members.js";
-import { extractPhoneNumber } from "../../utils/lid.js";
 import { getChatMessages } from "../../utils/chatLogger.js";
 import { getMediaRuntimeConfig } from "../../utils/mediaJobs.js";
-import { isConfiguredModerator } from "../../utils/moderatorAuthority.js";
+import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../utils/alphaQuota.js";
 import { askSafeAi, hasConfiguredAiProvider } from "../../utils/safeAi.js";
 import {
 	ALPHA_TRUST_BOUNDARY,
@@ -143,6 +141,16 @@ function convertConversationHistory(conversationHistory = []) {
 	return speakerAwareHistory(conversationHistory);
 }
 
+const quotedMessageText = (quoted = {}) => String(
+	quoted?.conversation ??
+	quoted?.extendedTextMessage?.text ??
+	quoted?.imageMessage?.caption ??
+	quoted?.videoMessage?.caption ??
+	quoted?.documentMessage?.caption ??
+	quoted?.buttonsMessage?.contentText ??
+	"",
+).replace(/\s+/g, " ").trim().slice(0, 1500);
+
 // -------------------------------------------------------------------------------------------------------------
 // MAIN ALPHA CHAT FUNCTION
 // -------------------------------------------------------------------------------------------------------------//
@@ -156,7 +164,8 @@ async function chat(
 	data,
 	tagMessage,
 	tagMessageSenderJID,
-	chatContext = ""
+	chatContext = "",
+	quotaClaim = null
 ) {
 	const {
 		sendMessageWTyping,
@@ -168,6 +177,7 @@ async function chat(
 		groupAdmins,
 		isGroup,
 	} = msgInfoObj;
+	let aiProviderSucceeded = false;
 
 	try {
 		// -----------------------------------------------------------------------------------------
@@ -200,15 +210,13 @@ async function chat(
 
 				const replySenderName =
 					tagMessageSender?.username ||
-					extractPhoneNumber(
-						tagMessageSenderJID
-					);
+					"Member";
 
-				const replyContent =
-					JSON.stringify(tagMessage);
-
-				replyInfo =
-					`\n(Replying to ${replySenderName}: ${replyContent})`;
+				const replyContent = quotedMessageText(tagMessage);
+				if (replyContent) {
+					replyInfo =
+						`\n(Replying to ${replySenderName}: ${replyContent})`;
+				}
 			} catch (replyError) {
 				console.error(
 					"Alpha reply-context error:",
@@ -273,8 +281,9 @@ async function chat(
 		// Build user's prompt
 		// -----------------------------------------------------------------------------------------
 
-		let fullPrompt =
+		const memoryUserText =
 			`[${updateName || "Unknown User"}]: ${directive.prompt || prompt}${replyInfo}`;
+		let fullPrompt = memoryUserText;
 
 		// -----------------------------------------------------------------------------------------
 		// Add group information
@@ -295,10 +304,7 @@ async function chat(
 									admin
 							);
 
-						return (
-							adminData?.name ||
-							admin.split("@")[0]
-						);
+						return adminData?.name || "Admin";
 					})
 					.join(", ") ||
 				"Unknown";
@@ -308,68 +314,21 @@ async function chat(
 
 Group Name: ${data?.grpName || "Unknown"}
 
-Group ID: ${data?._id || "Unknown"}
-
-Group Description: ${data?.desc || "No description"}
+Group Description: ${String(data?.desc || "No description").slice(0, 800)}
 
 Total Messages: ${data?.totalMsgCount || 0}
 
-Bot Status: ${
-				data?.isBotOn
-					? "Active"
-					: "Inactive"
-			}
-
-ChatBot Status: ${
-				data?.isChatBotOn
-					? "Active"
-					: "Inactive"
-			}
-
-Total Members: ${
-				data?.members?.length || 0
-			}
+Total Members: ${data?.members?.length || 0}
 
 Group Admins: ${admins}
-
-Blocked Commands: ${
-				data?.cmdBlocked?.join(", ") ||
-				"None"
-			}
-
-Welcome Message Enabled: ${
-				data?.welcome?.status
-					? "Yes"
-					: "No"
-			}
-
-Member Warnings: ${
-				JSON.stringify(
-					data?.memberWarnCount
-				) || "None"
-			}
 
 --- Current User Information ---
 
 User Name: ${updateName || "Unknown"}
 
-User ID: ${updateId || "Unknown"}
+User Total Messages: ${memberData?.totalmsg || 0}
 
-User WhatsApp JID: ${
-				senderJid || "Unknown"
-			}
-
-User Total Messages: ${
-				memberData?.totalmsg || 0
-			}
-
-Is Admin: ${
-				groupAdmins?.includes(
-					senderJid
-				)
-					? "Yes"
-					: "No"
-			}
+Is Admin: ${groupAdmins?.includes(senderJid) ? "Yes" : "No"}
 
 -------------------------
 `;
@@ -408,6 +367,7 @@ ${chatContext}
 			systemPrompt,
 			messages,
 		});
+		aiProviderSucceeded = true;
 		console.log(`[ALPHA_AI] provider=${provider} latency=${meta?.latencyMs || 0}ms attempts=${meta?.attempts || 1} failover=${Boolean(meta?.failover)}`);
 		const finalText = cleanAlphaResponse(text, mediaConfig.alphaName);
 
@@ -444,7 +404,7 @@ ${chatContext}
 					role: "user",
 					parts: [
 						{
-							text: fullPrompt,
+							text: memoryUserText,
 						},
 					],
 					senderName:
@@ -496,6 +456,10 @@ ${chatContext}
 			}
 		);
 	} catch (err) {
+		if (quotaClaim?.charged && !aiProviderSucceeded) {
+			await refundAlphaGroupAiUsage(quotaClaim).catch((refundError) =>
+				console.warn("[ALPHA_QUOTA] Could not refund failed Alpha request:", refundError.message));
+		}
 		const assistantName = getMediaRuntimeConfig().alphaName;
 		const code = String(err?.code || "AI_UPSTREAM_ERROR");
 		console.error("[ALPHA_AI_ERROR]", {
@@ -659,28 +623,21 @@ const handler = async (
 		}
 
 		// -----------------------------------------------------------------------------------------
-		// Per-member AI quota. Only the configured creator/Moderator is unlimited.
-		// Ordinary group admins still use the same daily member allowance.
-		// The counter is stored in MongoDB so a Render restart does not reset it.
+		// Persistent per-member AI quota. A failed upstream AI call is refunded.
+		// ALPHA_UNLIMITED_NUMBERS can restrict unlimited access to one account.
 		// -----------------------------------------------------------------------------------------
 
-		const dailyLimit = Number.isFinite(Number(data.alphaDailyQuota))
-			? Number(data.alphaDailyQuota)
-			: Number(process.env.ALPHA_MEMBER_DAILY_LIMIT || 10);
-		const unlimitedAi = Boolean(
-			msgInfoObj.isOwner ||
-			isConfiguredModerator(msgInfoObj.groupMetadata, [
-				msgInfoObj.senderJid,
+		const quotaStatus = await claimAlphaGroupAiUsage({
+			groupJid: from,
+			senderJid: msgInfoObj.senderJid,
+			memberName: msgInfoObj.updateName || "",
+			groupMetadata: msgInfoObj.groupMetadata,
+			isOwner: msgInfoObj.isOwner,
+			candidates: [
 				msg?.key?.participantPn,
 				msg?.key?.participantAlt,
-			])
-		);
-		const quotaStatus = await consumeAlphaUsage({
-			groupJid: from,
-			memberJid: msgInfoObj.senderJid,
-			memberName: msgInfoObj.updateName || "",
-			limit: dailyLimit,
-			unlimited: unlimitedAi,
+			],
+			limit: data.alphaDailyQuota,
 		});
 
 		if (!quotaStatus.allowed) {
@@ -713,15 +670,11 @@ const handler = async (
 				if (logs?.length > 0) {
 					chatContext =
 						logs
-							.slice(-100)
+							.slice(-60)
 							.map((m) => {
 								const name =
 									m.senderName ||
-									m.sender
-										?.split(
-											"@"
-										)[0] ||
-									"Unknown";
+									"Member";
 
 								const replyPart =
 									m.replyTo
@@ -729,24 +682,17 @@ const handler = async (
 												m
 													.replyTo
 													.senderName ||
-												m
-													.replyTo
-													.sender
-													?.split(
-														"@"
-													)[0] ||
-												"Unknown"
+												"Member"
 										  }: "${
 												m
 													.replyTo
-													.text ||
+													.text?.slice?.(0, 300) ||
 												""
 										  }"]`
 										: "";
 
 								let text =
-									m.text ||
-									"";
+									String(m.text || "").slice(0, 500);
 
 								// Replace raw mentions with names.
 								if (
@@ -788,7 +734,8 @@ const handler = async (
 
 								return `${name}${replyPart}: ${text}`;
 							})
-							.join("\n");
+							.join("\n")
+							.slice(-6000);
 				}
 			} catch (contextError) {
 				console.error(
@@ -807,7 +754,8 @@ const handler = async (
 			data,
 			tagMessage,
 			tagMessageSenderJID,
-			chatContext
+			chatContext,
+			quotaStatus
 		);
 	}
 

@@ -1,5 +1,4 @@
 import { getGroupData } from "../db/groupData.js";
-import { consumeAlphaUsage } from "../db/alphaUsage.js";
 import { askSafeAi } from "./safeAi.js";
 import {
 	buildAlphaPrompt,
@@ -14,7 +13,7 @@ import {
 	generateAlphaVoiceNote,
 } from "./alphaMediaAi.js";
 import { detectAlphaDeliveryIntent } from "./alphaDeliveryIntent.js";
-import { isConfiguredModerator } from "./moderatorAuthority.js";
+import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "./alphaQuota.js";
 import { getBotIdentityJids, isJidGroupAdmin, isSameGroupUser } from "./groupParticipants.js";
 import { detectSmartIntent } from "./smartIntent.js";
 import { runSmartIntent } from "../commands/public/smartIntent.js";
@@ -73,38 +72,70 @@ const deliveryStyle = (settings) => settings.alphaPersonality === "desire"
 	? "You are Alpha in Desire Hub AFTER DARK mode: 30% teasing, 30% helpful and 40% chaotic. Sound witty, Nigerian-flavoured and human, but keep flirting non-explicit, consensual and respectful. Never pressure, degrade or harass anyone."
 	: "You are Alpha, a warm, intelligent WhatsApp assistant. Answer naturally and accurately.";
 
-const sendVoiceAnswer = async ({ sock, msg, groupJid, senderJid, prompt, settings }) => {
-	const quota = claimVoiceQuota(senderJid);
-	if (!quota.allowed) {
-		await send(sock, groupJid, { text: `⏳ Voice-note limit reached. Try again in about ${Math.ceil(quota.retryAfterSeconds / 60)} minute(s).` }, { quoted: msg });
+const sendVoiceAnswer = async ({ sock, msg, groupJid, senderJid, prompt, settings, quotaInput }) => {
+	const windowQuota = claimVoiceQuota(senderJid);
+	if (!windowQuota.allowed) {
+		await send(sock, groupJid, { text: `⏳ Voice-note limit reached. Try again in about ${Math.ceil(windowQuota.retryAfterSeconds / 60)} minute(s).` }, { quoted: msg });
 		return true;
 	}
-	const built = await buildAlphaPrompt({ sock, msg, body: prompt, mentionedJids: [], settings });
-	const { text } = await askSafeAi({
-		groupJid,
-		systemPrompt: `${deliveryStyle(settings)} The answer will be spoken as a WhatsApp voice note. Use natural spoken language, no markdown, and stay under about 220 words unless detail is essential.`,
-		messages: [{ role: "user", content: built }],
-	});
-	const spoken = String(text || "").replace(/[*_`#]/g, "").trim().slice(0, 2800);
-	if (!spoken) throw new Error("Alpha returned no text to speak");
-	const audio = await generateAlphaVoiceNote(spoken, {
-		instructions: settings.alphaPersonality === "desire"
-			? "Speak naturally, playfully and confidently like a witty Nigerian WhatsApp friend. Keep it respectful and never overact."
-			: undefined,
-	});
-	await send(sock, groupJid, { audio: audio.buffer, mimetype: audio.mimetype, ptt: true }, { quoted: msg });
-	return true;
+
+	const quotaClaim = await claimAlphaGroupAiUsage(quotaInput);
+	if (!quotaClaim.allowed) {
+		await send(sock, groupJid, {
+			text: `⚡Alpha⚡ daily AI limit reached (*${quotaClaim.used}/${quotaClaim.limit}*).`,
+		}, { quoted: msg });
+		return true;
+	}
+
+	let providerSucceeded = false;
+	try {
+		const built = await buildAlphaPrompt({ sock, msg, body: prompt, mentionedJids: [], settings });
+		const { text } = await askSafeAi({
+			groupJid,
+			systemPrompt: `${deliveryStyle(settings)} The answer will be spoken as a WhatsApp voice note. Use natural spoken language, no markdown, and stay under about 220 words unless detail is essential.`,
+			messages: [{ role: "user", content: built }],
+		});
+		providerSucceeded = true;
+		const spoken = String(text || "").replace(/[*_`#]/g, "").trim().slice(0, 2800);
+		if (!spoken) throw new Error("Alpha returned no text to speak");
+		const audio = await generateAlphaVoiceNote(spoken, {
+			instructions: settings.alphaPersonality === "desire"
+				? "Speak naturally, playfully and confidently like a witty Nigerian WhatsApp friend. Keep it respectful and never overact."
+				: undefined,
+		});
+		await send(sock, groupJid, { audio: audio.buffer, mimetype: audio.mimetype, ptt: true }, { quoted: msg });
+		return true;
+	} catch (error) {
+		if (!providerSucceeded) await refundAlphaGroupAiUsage(quotaClaim).catch(() => {});
+		throw error;
+	}
 };
 
-const sendGeneratedImage = async ({ sock, msg, groupJid, senderJid, prompt }) => {
-	const quota = claimImageQuota(senderJid);
-	if (!quota.allowed) {
-		await send(sock, groupJid, { text: `⏳ Image limit reached. Try again in about ${Math.ceil(quota.retryAfterSeconds / 60)} minute(s).` }, { quoted: msg });
+const sendGeneratedImage = async ({ sock, msg, groupJid, senderJid, prompt, quotaInput }) => {
+	const windowQuota = claimImageQuota(senderJid);
+	if (!windowQuota.allowed) {
+		await send(sock, groupJid, { text: `⏳ Image limit reached. Try again in about ${Math.ceil(windowQuota.retryAfterSeconds / 60)} minute(s).` }, { quoted: msg });
 		return true;
 	}
-	const image = await generateAlphaImage(prompt);
-	await send(sock, groupJid, { image: image.buffer, caption: "🎨 *Alpha Image*" }, { quoted: msg });
-	return true;
+
+	const quotaClaim = await claimAlphaGroupAiUsage(quotaInput);
+	if (!quotaClaim.allowed) {
+		await send(sock, groupJid, {
+			text: `⚡Alpha⚡ daily AI limit reached (*${quotaClaim.used}/${quotaClaim.limit}*).`,
+		}, { quoted: msg });
+		return true;
+	}
+
+	let generated = false;
+	try {
+		const image = await generateAlphaImage(prompt);
+		generated = true;
+		await send(sock, groupJid, { image: image.buffer, caption: "🎨 *Alpha Image*" }, { quoted: msg });
+		return true;
+	} catch (error) {
+		if (!generated) await refundAlphaGroupAiUsage(quotaClaim).catch(() => {});
+		throw error;
+	}
 };
 
 const runExistingMediaIntent = async ({ sock, msg, groupJid, senderJid, metadata, intent, prompt }) => {
@@ -173,41 +204,26 @@ export const handleExplicitAlphaDelivery = async ({ sock, msg, groupJid, senderJ
 	})) return true;
 	if (settings.alphaMode === "off" || isAlphaQuiet(settings)) return true;
 
-	// Use the same persistent daily quota as the normal Alpha command path.
-	// Only the configured creator/Moderator is unlimited; ordinary group admins
-	// still consume their daily allowance.
-	const unlimitedAi = Boolean(
-		isOwner ||
-		isConfiguredModerator(metadata, [
-			senderJid,
-			msg?.key?.participantPn,
-			msg?.key?.participantAlt,
-		].filter(Boolean))
-	);
-	const quotaStatus = await consumeAlphaUsage({
-		groupJid,
-		memberJid: senderJid,
-		limit: settings.alphaDailyQuota,
-		unlimited: unlimitedAi,
-	});
-	if (!quotaStatus.allowed) {
-		await send(sock, groupJid, {
-			text:
-				`⚡Alpha⚡ daily AI limit reached (*${quotaStatus.used}/${quotaStatus.limit}*).\n` +
-				`Use *${process.env.PREFIX || "$"}alphaquota* to check your remaining allowance.`,
-		}, { quoted: msg }).catch(() => {});
-		return true;
-	}
-
 	try {
 		const prompt = safePrompt(intent.prompt || intent.original, 5000);
-		if (intent.mode === "voice") return sendVoiceAnswer({ sock, msg, groupJid, senderJid, prompt, settings });
+		const quotaInput = {
+			groupJid,
+			senderJid,
+			memberName: msg?.pushName || "",
+			groupMetadata: metadata,
+			isOwner,
+			candidates: [msg?.key?.participantPn, msg?.key?.participantAlt],
+			limit: settings.alphaDailyQuota,
+		};
+		if (intent.mode === "voice") {
+			return sendVoiceAnswer({ sock, msg, groupJid, senderJid, prompt, settings, quotaInput });
+		}
 		if (intent.mode === "image") {
 			// Explicit image/picture requests are AI-generated by default. Only
 			// clearly search-oriented wording such as “find/search/get a real photo”
 			// uses the safe public-media search path.
 			if (intent.action === "search") return runExistingMediaIntent({ sock, msg, groupJid, senderJid, metadata, intent, prompt });
-			return sendGeneratedImage({ sock, msg, groupJid, senderJid, prompt });
+			return sendGeneratedImage({ sock, msg, groupJid, senderJid, prompt, quotaInput });
 		}
 		if (intent.mode === "video") {
 			if (intent.action === "generate") {

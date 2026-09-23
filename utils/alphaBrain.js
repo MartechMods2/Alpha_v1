@@ -34,12 +34,24 @@ export const alphaRuntimeInstruction = () => {
   return `Runtime context: current bot-local time is ${localTime} (${timeZone}). This is clock context only, not proof of live news, prices, schedules or other changing facts.`;
 };
 
+const trimMessageContent = (value, maxPerMessage = 4000) => {
+  const content = String(value || "").trim();
+  if (content.length <= maxPerMessage) return content;
+
+  // Preserve both the beginning and the newest/question-bearing tail. This is
+  // especially important for group summaries, where metadata and chat context
+  // come before the user's actual question.
+  const head = Math.max(800, Math.floor(maxPerMessage * 0.4));
+  const tail = Math.max(800, maxPerMessage - head - 40);
+  return `${content.slice(0, head)}\n…[older context compacted]…\n${content.slice(-tail)}`;
+};
+
 export const compactAlphaMessages = (messages = [], maxChars = 12000) => {
   const kept = [];
   let used = 0;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const item = messages[index];
-    const content = String(item?.content || "").slice(0, 3000);
+    const content = trimMessageContent(item?.content, 4000);
     if (!content) continue;
     if (used + content.length > maxChars && kept.length > 0) break;
     kept.unshift({ ...item, content });

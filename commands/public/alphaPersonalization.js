@@ -1,5 +1,6 @@
 import { getMemberPreferences, setMemberPreferences } from "../../db/members.js";
-import { askSafeAi, useSafeAiBudget } from "../../utils/safeAi.js";
+import { askSafeAi } from "../../utils/safeAi.js";
+import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../utils/alphaQuota.js";
 import { claimVoiceQuota, generateAlphaVoiceNote } from "../../utils/alphaMediaAi.js";
 import {
 	ALPHA_TEXT_STYLES,
@@ -26,7 +27,7 @@ const VOICE_EXAMPLES = Object.freeze({
 });
 
 const handler = async (_sock, msg, from, args, info) => {
-	const { command, prefix = "$", senderJid, isGroup, sendMessageWTyping } = info;
+	const { command, prefix = "$", senderJid, isGroup, isOwner, groupMetadata, sendMessageWTyping } = info;
 	const reply = (text) => sendMessageWTyping(from, { text }, { quoted: msg });
 
 	if (["alphavoices", "voiceprofiles"].includes(command)) {
@@ -86,8 +87,21 @@ const handler = async (_sock, msg, from, args, info) => {
 	if (command === "stylealpha") {
 		const prompt = args.join(" ").trim();
 		if (!prompt) return reply(`❌ Use: ${prefix}stylealpha <question>`);
-		const allowed = isGroup ? await useSafeAiBudget(from, senderJid).catch(() => true) : true;
-		if (!allowed) return reply("⏳ Your Alpha AI limit for today has been reached.");
+		let quotaClaim = null;
+		if (isGroup) {
+			quotaClaim = await claimAlphaGroupAiUsage({
+				groupJid: from,
+				senderJid,
+				memberName: msg?.pushName || "",
+				groupMetadata,
+				isOwner,
+				candidates: [msg?.key?.participantPn, msg?.key?.participantAlt],
+			});
+			if (!quotaClaim.allowed) {
+				return reply(`⏳ Your Alpha AI limit for today has been reached (*${quotaClaim.used}/${quotaClaim.limit}*).`);
+			}
+		}
+		let providerSucceeded = false;
 		try {
 			const prefs = await getMemberPreferences(senderJid);
 			const { text } = await askSafeAi({
@@ -95,8 +109,12 @@ const handler = async (_sock, msg, from, args, info) => {
 				systemPrompt: "You are Alpha, a natural WhatsApp assistant. Answer accurately, helpfully and concisely. Do not use markdown # headings. Do not invent facts.",
 				messages: [{ role: "user", content: prompt.slice(0, 5000) }],
 			});
+			providerSucceeded = true;
 			return reply(applyAlphaTextStyle(text || "Alpha returned no answer.", prefs.textStyle));
 		} catch (error) {
+			if (quotaClaim?.charged && !providerSucceeded) {
+				await refundAlphaGroupAiUsage(quotaClaim).catch(() => {});
+			}
 			return reply(`❌ Styled Alpha answer failed: ${error.message}`);
 		}
 	}

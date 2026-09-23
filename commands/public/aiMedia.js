@@ -1,4 +1,5 @@
-import { askSafeAi, useSafeAiBudget } from "../../utils/safeAi.js";
+import { askSafeAi } from "../../utils/safeAi.js";
+import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../utils/alphaQuota.js";
 import { getMemberPreferences } from "../../db/members.js";
 import {
 	claimImageQuota,
@@ -27,6 +28,8 @@ const handler = async (_sock, msg, from, args, info) => {
 		prefix = "$",
 		senderJid,
 		isGroup,
+		isOwner,
+		groupMetadata,
 		extendedMessageOriginal,
 		sendMessageWTyping,
 	} = info;
@@ -68,14 +71,29 @@ const handler = async (_sock, msg, from, args, info) => {
 		if (!prompt) return reply(`❌ Usage: ${prefix}img <describe the image you want>`);
 		const quota = claimImageQuota(senderJid);
 		if (!quota.allowed) return reply(`⏳ Image limit reached. Try again in about ${Math.ceil(quota.retryAfterSeconds / 60)} minute(s).`);
+		let quotaClaim = null;
+		if (isGroup) {
+			quotaClaim = await claimAlphaGroupAiUsage({
+				groupJid: from,
+				senderJid,
+				memberName: msg?.pushName || "",
+				groupMetadata,
+				isOwner,
+				candidates: [msg?.key?.participantPn, msg?.key?.participantAlt],
+			});
+			if (!quotaClaim.allowed) return reply(`⏳ Your Alpha AI limit for today has been reached (*${quotaClaim.used}/${quotaClaim.limit}*).`);
+		}
+		let generated = false;
 		try {
 			const image = await generateAlphaImage(prompt);
+			generated = true;
 			return sendMessageWTyping(
 				from,
 				{ image: image.buffer, mimetype: image.mimetype, caption: `🎨 *Alpha Image*\n${prompt.slice(0, 500)}` },
 				{ quoted: msg },
 			);
 		} catch (error) {
+			if (quotaClaim?.charged && !generated) await refundAlphaGroupAiUsage(quotaClaim).catch(() => {});
 			console.error("[ALPHA_IMAGE]", error.message);
 			return reply(`❌ Alpha could not generate that image.\n${error.message}\n\nCheck *${prefix}imgstatus*.`);
 		}
@@ -89,8 +107,19 @@ const handler = async (_sock, msg, from, args, info) => {
 		if (!prompt) return reply(`❌ Usage: ${prefix}voice [profile] <question or instruction>`);
 		const quota = claimVoiceQuota(senderJid);
 		if (!quota.allowed) return reply(`⏳ Voice-note limit reached. Try again in about ${Math.ceil(quota.retryAfterSeconds / 60)} minute(s).`);
-		const aiAllowed = isGroup ? await useSafeAiBudget(from, senderJid).catch(() => true) : true;
-		if (!aiAllowed) return reply("⏳ Your Alpha AI limit for today has been reached.");
+		let quotaClaim = null;
+		if (isGroup) {
+			quotaClaim = await claimAlphaGroupAiUsage({
+				groupJid: from,
+				senderJid,
+				memberName: msg?.pushName || "",
+				groupMetadata,
+				isOwner,
+				candidates: [msg?.key?.participantPn, msg?.key?.participantAlt],
+			});
+			if (!quotaClaim.allowed) return reply(`⏳ Your Alpha AI limit for today has been reached (*${quotaClaim.used}/${quotaClaim.limit}*).`);
+		}
+		let providerSucceeded = false;
 		try {
 			const { text } = await askSafeAi({
 				groupJid: isGroup ? from : "direct",
@@ -98,6 +127,7 @@ const handler = async (_sock, msg, from, args, info) => {
 					"You are Alpha answering through a WhatsApp voice note. Answer the user's actual request instead of reading the prompt back. Be accurate, natural, clear, concise and conversational. Do not use markdown because the output will be spoken aloud. Keep the response under about 220 words unless detail is essential. For cybersecurity topics, stay defensive, ethical and authorized-use focused.",
 				messages: [{ role: "user", content: prompt }],
 			});
+			providerSucceeded = true;
 			const spoken = String(text || "").replace(/[*_`#]/g, "").trim().slice(0, 2800);
 			if (!spoken) throw new Error("AI returned no answer to speak");
 			const audio = await generateAlphaVoiceNote(spoken, profile);
@@ -107,6 +137,7 @@ const handler = async (_sock, msg, from, args, info) => {
 				{ quoted: msg },
 			);
 		} catch (error) {
+			if (quotaClaim?.charged && !providerSucceeded) await refundAlphaGroupAiUsage(quotaClaim).catch(() => {});
 			console.error("[ALPHA_VOICE_AI]", error.message);
 			return reply(`❌ Alpha could not answer by voice: ${error.message}`);
 		}
