@@ -42,6 +42,7 @@ import {
 } from "../utils/alphaMention.js";
 import { getMediaRuntimeConfig } from "../utils/mediaJobs.js";
 import { getAlphaGroupAiUsage } from "../utils/alphaQuota.js";
+import { alphaPublicFailureMessage, notifyAlphaOwnerFailure } from "../utils/alphaErrorReporter.js";
 import { isGroupStatusMentionMessage } from "../utils/groupSafety.js";
 import { handleAdvancedAutomation } from "../utils/advancedAutomation.js";
 import { handleSafeModerationMessage } from "../utils/safeModeration.js";
@@ -597,7 +598,14 @@ const getCommand = async (sock, msg, cache) => {
 				});
 			} catch (error) {
 				console.error("Alpha mention failed:", error.message);
-				await sendMessageWTyping(from, { text: `⚡ Alpha could not process that mention: ${error.message}` }, { quoted: msg });
+				notifyAlphaOwnerFailure({
+					sock,
+					scope: "group-mention",
+					error,
+					groupName: groupMetadata?.subject || groupData?.grpName || "",
+					senderName: updateName || senderData?.username || "",
+				});
+				await sendMessageWTyping(from, { text: alphaPublicFailureMessage() }, { quoted: msg });
 			}
 			return;
 		}
