@@ -11,6 +11,8 @@ const runtimeFiles = [
   "utils/alphaQuota.js",
   "utils/alphaMention.js",
   "utils/alphaDeliveryRouter.js",
+  "utils/desireHub.js",
+  "utils/humanEngagement.js",
   "commands/public/chatbot.js",
   "commands/public/aiMedia.js",
   "commands/public/alphaFeaturePack.js",
@@ -26,6 +28,14 @@ const exportedNames = (source) => {
   const names = new Set();
   for (const match of source.matchAll(/export\s+(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/g)) {
     names.add(match[1]);
+  }
+  for (const match of source.matchAll(/export\s+(?:const|let|var)\s*\{([^}]*)\}\s*=/g)) {
+    for (const raw of match[1].split(",")) {
+      const item = raw.trim();
+      if (!item) continue;
+      const key = item.split(":")[0].trim();
+      if (key) names.add(key);
+    }
   }
   for (const match of source.matchAll(/export\s*\{([\s\S]*?)\}\s*;?/g)) {
     for (const raw of match[1].split(",")) {
@@ -45,7 +55,7 @@ test("Alpha runtime relative named imports resolve to real exports", () => {
   for (const relativeFile of runtimeFiles) {
     const file = path.join(root, relativeFile);
     const source = readFileSync(file, "utf8");
-    const importPattern = /import\s*\{([\s\S]*?)\}\s*from\s*["'](\.[^"']+)["']/g;
+    const importPattern = /^\s*import\s*\{([^}]*)\}\s*from\s*["'](\.[^"']+)["']\s*;?/gm;
 
     for (const match of source.matchAll(importPattern)) {
       const specifier = match[2];
