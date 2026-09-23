@@ -47,3 +47,17 @@ test("Alpha default provider order prioritizes providers proven healthy in produ
   assert.match(source, /ALPHA_AI_DISABLED_PROVIDERS/);
   assert.match(source, /providerTimeoutMs/);
 });
+
+test("Alpha AI-assisted user games route through the persistent quota policy", () => {
+  const gameGenerator = read("utils/socialGameGenerator.js");
+  const desire = read("utils/desireHub.js");
+  assert.match(gameGenerator, /claimAlphaGroupAiUsage/);
+  assert.match(gameGenerator, /refundAlphaGroupAiUsage/);
+  assert.match(desire, /claimAlphaGroupAiUsage/);
+});
+
+test("Alpha background engagement does not consume a member quota identity", () => {
+  const engagement = read("utils/humanEngagement.js");
+  assert.doesNotMatch(engagement, /claimAlphaGroupAiUsage|useSafeAiBudget/);
+  assert.match(engagement, /humanDailyLimit/);
+});
