@@ -591,7 +591,7 @@ export const probeAiProviders = async ({ live = false, providers: requestedProvi
   if (!live) return getAiRuntimeStatus();
   const selected = Array.isArray(requestedProviders) && requestedProviders.length
     ? [...new Set(requestedProviders.map((name) => String(name).toLowerCase()).filter((name) => PROVIDERS.includes(name)))]
-    : PROVIDERS;
+    : providerOrder();
   const results = {};
   await Promise.all(selected.map(async (name) => {
     if (!providerConfigured(name)) {
