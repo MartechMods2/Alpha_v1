@@ -1,5 +1,6 @@
 import { askSafeAi } from "../../../utils/safeAi.js";
 import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../../utils/alphaQuota.js";
+import { alphaPublicFailureMessage, notifyAlphaOwnerFailure } from "../../../utils/alphaErrorReporter.js";
 import {
 	cleanAiPollJson,
 	getQuizPollAnswer,
@@ -40,7 +41,7 @@ const aiPoll = async ({ groupJid, senderJid, request, quiz = false, quotaInput }
 	}
 };
 
-const handler = async (_sock, msg, from, args, info) => {
+const handler = async (sock, msg, from, args, info) => {
 	const { command, prefix = "$", senderJid, isOwner, groupMetadata, sendMessageWTyping } = info;
 	const reply = (text) => sendMessageWTyping(from, { text }, { quoted: msg });
 	const sendPoll = (poll) => sendMessageWTyping(from, { poll }, { quoted: msg });
@@ -109,7 +110,14 @@ const handler = async (_sock, msg, from, args, info) => {
 			}));
 		} catch (error) {
 			console.warn("[ALPHA_POLL]", error.message);
-			return reply(`❌ Alpha couldn't build that poll: ${error.message}`);
+			notifyAlphaOwnerFailure({
+				sock,
+				scope: "ai-poll",
+				error,
+				groupName: groupMetadata?.subject || "",
+				senderName: msg?.pushName || "",
+			});
+			return reply(`❌ Alpha couldn't build that poll. ${alphaPublicFailureMessage().replace(/^⚡\s*/, "")}`);
 		}
 	}
 
@@ -134,7 +142,14 @@ const handler = async (_sock, msg, from, args, info) => {
 			return sendPoll({ name: poll.name, values: poll.values, selectableCount: 1 });
 		} catch (error) {
 			console.warn("[ALPHA_QUIZ_POLL]", error.message);
-			return reply(`❌ Alpha couldn't build that quiz poll: ${error.message}`);
+			notifyAlphaOwnerFailure({
+				sock,
+				scope: "ai-quiz-poll",
+				error,
+				groupName: groupMetadata?.subject || "",
+				senderName: msg?.pushName || "",
+			});
+			return reply(`❌ Alpha couldn't build that quiz poll. ${alphaPublicFailureMessage().replace(/^⚡\s*/, "")}`);
 		}
 	}
 
