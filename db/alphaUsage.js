@@ -96,6 +96,46 @@ export const getAlphaUsage = async ({
   }
 };
 
+
+export const refundAlphaUsage = async ({
+  groupJid,
+  memberJid,
+  dayKey = alphaUsageDayKey(),
+  unlimited = false,
+}) => {
+  if (unlimited) return { refunded: false, unlimited: true, dayKey };
+
+  const id = usageId(groupJid, memberJid, dayKey);
+  try {
+    const result = await alphaAiUsage.findOneAndUpdate(
+      { _id: id, used: { $gt: 0 } },
+      {
+        $inc: { used: -1 },
+        $set: { updatedAt: new Date(), expiresAt: expiryDate() },
+      },
+      { returnDocument: "after" },
+    );
+    return {
+      refunded: Boolean(result),
+      unlimited: false,
+      used: Math.max(0, Number(result?.used || 0)),
+      dayKey,
+      persisted: true,
+    };
+  } catch (error) {
+    console.warn("[ALPHA_QUOTA] Mongo refund failed; using process fallback:", error.message);
+    const used = fallbackUsage.get(id) || 0;
+    if (used > 0) fallbackUsage.set(id, used - 1);
+    return {
+      refunded: used > 0,
+      unlimited: false,
+      used: Math.max(0, used - 1),
+      dayKey,
+      persisted: false,
+    };
+  }
+};
+
 export const consumeAlphaUsage = async ({
   groupJid,
   memberJid,
