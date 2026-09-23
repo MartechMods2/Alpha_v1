@@ -14,6 +14,7 @@ import {
 } from "./alphaMediaAi.js";
 import { detectAlphaDeliveryIntent } from "./alphaDeliveryIntent.js";
 import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "./alphaQuota.js";
+import { alphaPublicFailureMessage, notifyAlphaOwnerFailure } from "./alphaErrorReporter.js";
 import { getBotIdentityJids, isJidGroupAdmin, isSameGroupUser } from "./groupParticipants.js";
 import { detectSmartIntent } from "./smartIntent.js";
 import { runSmartIntent } from "../commands/public/smartIntent.js";
@@ -235,7 +236,15 @@ export const handleExplicitAlphaDelivery = async ({ sock, msg, groupJid, senderJ
 		return false;
 	} catch (error) {
 		console.error("[ALPHA DELIVERY ROUTER]", error.message);
-		await send(sock, groupJid, { text: `⚡ Alpha could not deliver that response as ${intent.mode}: ${error.message}` }, { quoted: msg }).catch(() => {});
+		notifyAlphaOwnerFailure({
+			sock,
+			scope: `delivery-${intent.mode}`,
+			error,
+			groupName: metadata?.subject || groupData?.grpName || "",
+			senderName: msg?.pushName || "",
+		});
+		const publicMode = intent.mode === "voice" ? "voice" : intent.mode === "image" ? "image" : "request";
+		await send(sock, groupJid, { text: alphaPublicFailureMessage(publicMode) }, { quoted: msg }).catch(() => {});
 		return true;
 	}
 };
