@@ -1,6 +1,9 @@
 import { getSock } from "../core/socketRef.js";
 
-const ownerJid = process.env.MY_NUMBER?.split(",")[0] + "@s.whatsapp.net";
+const ownerNumber = String(process.env.MY_NUMBER || "")
+	.split(",")[0]
+	.replace(/[^0-9]/g, "");
+const ownerJid = ownerNumber ? `${ownerNumber}@s.whatsapp.net` : "";
 
 // Convert HTML tags to WhatsApp markdown + decode HTML entities
 function htmlToWa(html) {

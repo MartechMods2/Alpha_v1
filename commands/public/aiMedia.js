@@ -1,5 +1,6 @@
 import { askSafeAi } from "../../utils/safeAi.js";
 import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../utils/alphaQuota.js";
+import { alphaPublicFailureMessage, notifyAlphaOwnerFailure } from "../../utils/alphaErrorReporter.js";
 import { getMemberPreferences } from "../../db/members.js";
 import {
 	claimImageQuota,
@@ -22,7 +23,7 @@ import {
 
 const IMAGE_STATUS_COMMANDS = ["imgstatus", "imagestatus"];
 
-const handler = async (_sock, msg, from, args, info) => {
+const handler = async (sock, msg, from, args, info) => {
 	const {
 		command,
 		prefix = "$",
@@ -95,7 +96,14 @@ const handler = async (_sock, msg, from, args, info) => {
 		} catch (error) {
 			if (quotaClaim?.charged && !generated) await refundAlphaGroupAiUsage(quotaClaim).catch(() => {});
 			console.error("[ALPHA_IMAGE]", error.message);
-			return reply(`❌ Alpha could not generate that image.\n${error.message}\n\nCheck *${prefix}imgstatus*.`);
+			notifyAlphaOwnerFailure({
+				sock,
+				scope: "image-generation",
+				error,
+				groupName: isGroup ? (groupMetadata?.subject || "") : "",
+				senderName: msg?.pushName || "",
+			});
+			return reply(`${alphaPublicFailureMessage("image")}\nCheck *${prefix}imgstatus* if you are the administrator.`);
 		}
 	}
 
@@ -139,7 +147,14 @@ const handler = async (_sock, msg, from, args, info) => {
 		} catch (error) {
 			if (quotaClaim?.charged && !providerSucceeded) await refundAlphaGroupAiUsage(quotaClaim).catch(() => {});
 			console.error("[ALPHA_VOICE_AI]", error.message);
-			return reply(`❌ Alpha could not answer by voice: ${error.message}`);
+			notifyAlphaOwnerFailure({
+				sock,
+				scope: "voice-ai",
+				error,
+				groupName: isGroup ? (groupMetadata?.subject || "") : "",
+				senderName: msg?.pushName || "",
+			});
+			return reply(alphaPublicFailureMessage("voice"));
 		}
 	}
 
@@ -160,7 +175,14 @@ const handler = async (_sock, msg, from, args, info) => {
 			);
 		} catch (error) {
 			console.error("[ALPHA_TTS]", error.message);
-			return reply(`❌ Alpha could not create the voice note: ${error.message}`);
+			notifyAlphaOwnerFailure({
+				sock,
+				scope: "voice-tts",
+				error,
+				groupName: isGroup ? (groupMetadata?.subject || "") : "",
+				senderName: msg?.pushName || "",
+			});
+			return reply(alphaPublicFailureMessage("voice"));
 		}
 	}
 };
