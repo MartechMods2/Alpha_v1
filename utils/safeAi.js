@@ -2,11 +2,33 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getSafeSettings } from "../db/safePackData.js";
 import { redactPii } from "./safePack.js";
 
+const PROVIDERS = Object.freeze([
+  "groq",
+  "gemini",
+  "mistral",
+  "kilo",
+  "cloudflare",
+  "openrouter",
+  "aion",
+  "nvidia",
+]);
+
 const providerState = new Map();
 const providerCircuits = new Map();
 const usage = new Map();
 const day = () => new Date().toISOString().slice(0, 10);
 let lastUsageDay = day();
+
+const emptyProviderMetrics = () => ({
+  requests: 0,
+  successes: 0,
+  failures: 0,
+  retries: 0,
+  probes: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0,
+});
 
 const metrics = {
   requests: 0,
@@ -14,10 +36,8 @@ const metrics = {
   failures: 0,
   failovers: 0,
   retries: 0,
-  byProvider: {
-    nvidia: { requests: 0, successes: 0, failures: 0, retries: 0 },
-    gemini: { requests: 0, successes: 0, failures: 0, retries: 0 },
-  },
+  probes: 0,
+  byProvider: Object.fromEntries(PROVIDERS.map((name) => [name, emptyProviderMetrics()])),
 };
 
 const creatorName = String(process.env.ALPHA_CREATOR_NAME || "Martech").trim() || "Martech";
@@ -28,25 +48,79 @@ const clamp = (value, min, max, fallback) => {
   return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
 };
 
-const aiTimeoutMs = () => clamp(process.env.ALPHA_AI_TIMEOUT_MS, 5_000, 60_000, 20_000);
-const retryCount = () => clamp(process.env.ALPHA_AI_RETRIES, 0, 2, 1);
-const nvidiaModel = () => process.env.NVIDIA_AI_MODEL || "openai/gpt-oss-20b";
-const geminiModel = () => process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_MEDIA_MODEL || "gemini-2.0-flash";
+const aiTimeoutMs = () => clamp(process.env.ALPHA_AI_TIMEOUT_MS, 5_000, 60_000, 15_000);
+const retryCount = () => clamp(process.env.ALPHA_AI_RETRIES, 0, 2, 0);
+const maxOutputTokens = () => clamp(process.env.ALPHA_AI_MAX_TOKENS, 100, 2400, 850);
+
+const providerDefinitions = () => ({
+  groq: {
+    key: process.env.GROQ_API_KEY || "",
+    model: process.env.GROQ_AI_MODEL || "openai/gpt-oss-120b",
+    url: "https://api.groq.com/openai/v1/chat/completions",
+  },
+  gemini: {
+    key: process.env.GOOGLE_API_KEY || "",
+    model: process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_MEDIA_MODEL || "gemini-2.5-flash",
+  },
+  mistral: {
+    key: process.env.MISTRAL_API_KEY || "",
+    model: process.env.MISTRAL_AI_MODEL || "mistral-small-latest",
+    url: "https://api.mistral.ai/v1/chat/completions",
+  },
+  kilo: {
+    key: process.env.KILO_API_KEY || "",
+    model: process.env.KILO_AI_MODEL || "kilo-auto/free",
+    url: "https://api.kilo.ai/api/gateway/chat/completions",
+  },
+  cloudflare: {
+    key: process.env.CLOUDFLARE_API_TOKEN || "",
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID || "",
+    model: process.env.CLOUDFLARE_AI_MODEL || "@cf/openai/gpt-oss-120b",
+    get url() {
+      return this.accountId
+        ? `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(this.accountId)}/ai/v1/chat/completions`
+        : "";
+    },
+  },
+  openrouter: {
+    key: process.env.OPENROUTER_API_KEY || "",
+    model: process.env.OPENROUTER_AI_MODEL || "openrouter/free",
+    url: "https://openrouter.ai/api/v1/chat/completions",
+  },
+  aion: {
+    key: process.env.AION_API_KEY || "",
+    model: process.env.AION_AI_MODEL || "aion-labs/aion-3.0-mini",
+    url: "https://api.aionlabs.ai/v1/chat/completions",
+  },
+  nvidia: {
+    key: process.env.NVIDIA_API_KEY || "",
+    model: process.env.NVIDIA_AI_MODEL || "openai/gpt-oss-20b",
+    url: "https://integrate.api.nvidia.com/v1/chat/completions",
+  },
+});
+
+export const getAiProviderNames = () => [...PROVIDERS];
 
 const providerOrder = () => {
-  const configured = String(process.env.ALPHA_AI_PROVIDER_ORDER || "nvidia,gemini")
+  const configuredOrder = String(
+    process.env.ALPHA_AI_PROVIDER_ORDER ||
+      "groq,gemini,mistral,kilo,cloudflare,openrouter,aion,nvidia",
+  )
     .toLowerCase()
     .split(",")
     .map((value) => value.trim())
-    .filter((value) => ["nvidia", "gemini"].includes(value));
-  return [...new Set([...configured, "nvidia", "gemini"])];
+    .filter((value) => PROVIDERS.includes(value));
+  return [...new Set([...configuredOrder, ...PROVIDERS])];
 };
 
-const providerConfigured = (name) =>
-  name === "nvidia" ? Boolean(process.env.NVIDIA_API_KEY) : Boolean(process.env.GOOGLE_API_KEY);
+const providerConfigured = (name) => {
+  const config = providerDefinitions()[name];
+  if (!config) return false;
+  if (name === "cloudflare") return Boolean(config.key && config.accountId);
+  return Boolean(config.key);
+};
 
-const providerModel = (name) => (name === "nvidia" ? nvidiaModel() : geminiModel());
-
+const providerModel = (name) => providerDefinitions()[name]?.model || "";
 const circuitFor = (name) => {
   if (!providerCircuits.has(name)) {
     providerCircuits.set(name, {
@@ -70,13 +144,14 @@ const note = (name, ok, detail = {}) => {
 };
 
 class AiProviderError extends Error {
-  constructor(provider, code, message, { status = 0, retryable = false } = {}) {
+  constructor(provider, code, message, { status = 0, retryable = false, retryAfterMs = 0 } = {}) {
     super(message);
     this.name = "AiProviderError";
     this.provider = provider;
     this.code = code;
     this.status = status;
     this.retryable = retryable;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -93,39 +168,72 @@ export class AiUnavailableError extends Error {
   }
 }
 
-const classifyHttpError = (provider, status, message = "") => {
+const parseRetryAfterMs = (value) => {
+  if (!value) return 0;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const dateMs = Date.parse(value);
+  return Number.isFinite(dateMs) ? Math.max(0, dateMs - Date.now()) : 0;
+};
+
+const classifyHttpError = (provider, status, message = "", retryAfterMs = 0) => {
   if (status === 401 || status === 403) {
-    return new AiProviderError(provider, "AI_PROVIDER_AUTH", message || "Provider rejected the API key.", { status, retryable: false });
+    return new AiProviderError(provider, "AI_PROVIDER_AUTH", message || "Provider rejected the API key.", {
+      status, retryable: false, retryAfterMs,
+    });
+  }
+  if (status === 402) {
+    return new AiProviderError(provider, "AI_PROVIDER_QUOTA", message || "Provider credits or quota are exhausted.", {
+      status, retryable: false, retryAfterMs,
+    });
+  }
+  if (status === 404) {
+    return new AiProviderError(provider, "AI_PROVIDER_MODEL", message || "Provider model or endpoint was not found.", {
+      status, retryable: false, retryAfterMs,
+    });
   }
   if (status === 429) {
-    return new AiProviderError(provider, "AI_PROVIDER_RATE_LIMIT", message || "Provider rate limit reached.", { status, retryable: false });
+    return new AiProviderError(provider, "AI_PROVIDER_RATE_LIMIT", message || "Provider rate limit reached.", {
+      status, retryable: false, retryAfterMs,
+    });
   }
   if ([408, 425].includes(status) || status >= 500) {
-    return new AiProviderError(provider, "AI_PROVIDER_TEMPORARY", message || `Provider request failed (${status}).`, { status, retryable: true });
+    return new AiProviderError(provider, "AI_PROVIDER_TEMPORARY", message || `Provider request failed (${status}).`, {
+      status, retryable: true, retryAfterMs,
+    });
   }
-  return new AiProviderError(provider, "AI_PROVIDER_REQUEST", message || `Provider request failed (${status}).`, { status, retryable: false });
+  return new AiProviderError(provider, "AI_PROVIDER_REQUEST", message || `Provider request failed (${status}).`, {
+    status, retryable: false, retryAfterMs,
+  });
 };
 
 const normalizeThrownError = (provider, error) => {
   if (error instanceof AiProviderError) return error;
   if (error?.name === "AbortError" || /timed? ?out|timeout/i.test(String(error?.message || ""))) {
-    return new AiProviderError(provider, "AI_PROVIDER_TIMEOUT", "Provider request timed out.", { status: 504, retryable: true });
+    return new AiProviderError(provider, "AI_PROVIDER_TIMEOUT", "Provider request timed out.", {
+      status: 504, retryable: true,
+    });
   }
   const message = String(error?.message || error || "Unknown provider error");
-  const statusMatch = message.match(/\b(401|403|408|425|429|5\d\d)\b/);
+  const statusMatch = message.match(/\b(400|401|402|403|404|408|425|429|5\d\d)\b/);
   if (statusMatch) return classifyHttpError(provider, Number(statusMatch[1]), message);
-  if (/quota|rate.?limit|resource exhausted/i.test(message)) {
+  if (/quota|credits? exhausted|insufficient balance/i.test(message)) {
+    return new AiProviderError(provider, "AI_PROVIDER_QUOTA", message, { status: 402, retryable: false });
+  }
+  if (/rate.?limit|resource exhausted/i.test(message)) {
     return new AiProviderError(provider, "AI_PROVIDER_RATE_LIMIT", message, { status: 429, retryable: false });
   }
   if (/api.?key|permission|forbidden|unauthori[sz]ed|credential/i.test(message)) {
     return new AiProviderError(provider, "AI_PROVIDER_AUTH", message, { status: 401, retryable: false });
+  }
+  if (/model.*(?:not found|unknown|invalid)|unknown model/i.test(message)) {
+    return new AiProviderError(provider, "AI_PROVIDER_MODEL", message, { status: 404, retryable: false });
   }
   if (/fetch failed|network|socket|econn|connection/i.test(message)) {
     return new AiProviderError(provider, "AI_PROVIDER_NETWORK", message, { status: 503, retryable: true });
   }
   return new AiProviderError(provider, "AI_PROVIDER_ERROR", message, { status: 502, retryable: false });
 };
-
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const withTimeout = async (provider, promiseFactory) => {
@@ -143,28 +251,37 @@ const withTimeout = async (provider, promiseFactory) => {
   }
 };
 
+const cooldownForError = (error, consecutiveFailures) => {
+  if (error.retryAfterMs > 0) return clamp(error.retryAfterMs, 2_000, 6 * 60 * 60_000, 60_000);
+  if (error.code === "AI_PROVIDER_AUTH") return 15 * 60_000;
+  if (error.code === "AI_PROVIDER_QUOTA") return 6 * 60 * 60_000;
+  if (error.code === "AI_PROVIDER_RATE_LIMIT") return 60_000;
+  if (error.code === "AI_PROVIDER_MODEL") return 30 * 60_000;
+  if (error.code === "AI_PROVIDER_REQUEST") return 10 * 60_000;
+  if (
+    consecutiveFailures >= 2 &&
+    ["AI_PROVIDER_TIMEOUT", "AI_PROVIDER_NETWORK", "AI_PROVIDER_TEMPORARY", "AI_EMPTY_RESPONSE"].includes(error.code)
+  ) return 90_000;
+  if (consecutiveFailures >= 3) return 60_000;
+  return 0;
+};
+
 const markFailure = (name, error, latencyMs) => {
   const circuit = circuitFor(name);
   circuit.consecutiveFailures += 1;
   circuit.lastFailureCode = error.code || "AI_PROVIDER_ERROR";
-
-  let cooldown = 0;
-  if (error.code === "AI_PROVIDER_AUTH") cooldown = 5 * 60_000;
-  else if (error.code === "AI_PROVIDER_RATE_LIMIT") cooldown = 2 * 60_000;
-  else if (circuit.consecutiveFailures >= 2 && ["AI_PROVIDER_TIMEOUT", "AI_PROVIDER_NETWORK", "AI_PROVIDER_TEMPORARY"].includes(error.code)) cooldown = 90_000;
-  else if (circuit.consecutiveFailures >= 3) cooldown = 60_000;
-
+  const cooldown = cooldownForError(error, circuit.consecutiveFailures);
   if (cooldown > 0) {
     circuit.openUntil = Date.now() + cooldown;
     circuit.openedAt = new Date().toISOString();
   }
-
   note(name, false, {
     code: error.code,
     status: error.status || 0,
     error: error.message,
     latencyMs,
     consecutiveFailures: circuit.consecutiveFailures,
+    lastFailureAt: new Date().toISOString(),
   });
 };
 
@@ -174,71 +291,113 @@ const markSuccess = (name, latencyMs) => {
   circuit.openUntil = 0;
   circuit.lastFailureCode = "";
   circuit.openedAt = null;
-  note(name, true, { code: "OK", status: 200, latencyMs, consecutiveFailures: 0 });
+  note(name, true, {
+    code: "OK",
+    status: 200,
+    latencyMs,
+    consecutiveFailures: 0,
+    lastSuccessAt: new Date().toISOString(),
+  });
 };
-
 const circuitOpen = (name) => circuitFor(name).openUntil > Date.now();
 
 const parseProviderBody = async (response) => {
   const raw = await response.text();
   if (!raw) return {};
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return { raw: raw.slice(0, 500) };
-  }
+  try { return JSON.parse(raw); }
+  catch { return { raw: raw.slice(0, 500) }; }
 };
 
-const askNvidia = async (systemPrompt, messages) => {
-  if (!process.env.NVIDIA_API_KEY) {
-    throw new AiProviderError("nvidia", "AI_NOT_CONFIGURED", "NVIDIA_API_KEY is not configured.", { status: 503 });
+const extractText = (content) => {
+  if (typeof content === "string") return content.trim();
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => (typeof item === "string" ? item : item?.text || item?.content || ""))
+      .join("")
+      .trim();
   }
+  return String(content?.text || content?.content || "").trim();
+};
 
-  return withTimeout("nvidia", async (signal) => {
-    const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+const normalizeUsage = (data = {}) => {
+  const raw = data?.usage || {};
+  const inputTokens = Number(raw.prompt_tokens ?? raw.input_tokens ?? 0) || 0;
+  const outputTokens = Number(raw.completion_tokens ?? raw.output_tokens ?? 0) || 0;
+  const totalTokens = Number(raw.total_tokens ?? inputTokens + outputTokens) || inputTokens + outputTokens;
+  return { inputTokens, outputTokens, totalTokens };
+};
+
+const openAiHeaders = (name, config) => {
+  const headers = {
+    Authorization: `Bearer ${config.key}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  if (name === "openrouter") {
+    if (process.env.HOST_URL) headers["HTTP-Referer"] = process.env.HOST_URL;
+    headers["X-Title"] = process.env.OPENROUTER_APP_NAME || "Alpha by Martech";
+  }
+  return headers;
+};
+
+const askOpenAiCompatible = async (name, systemPrompt, messages, { maxTokens = maxOutputTokens() } = {}) => {
+  const config = providerDefinitions()[name];
+  if (!providerConfigured(name)) {
+    throw new AiProviderError(name, "AI_NOT_CONFIGURED", `${name} is not configured.`, { status: 503 });
+  }
+  return withTimeout(name, async (signal) => {
+    const body = {
+      model: config.model,
+      messages: [{ role: "system", content: systemPrompt }, ...messages],
+      temperature: 0.5,
+      max_tokens: maxTokens,
+      stream: false,
+    };
+    if (name === "cloudflare") body.options = { rejectIfBusy: true };
+    const response = await fetch(config.url, {
       method: "POST",
       signal,
-      headers: {
-        Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        model: nvidiaModel(),
-        messages: [{ role: "system", content: systemPrompt }, ...messages],
-        temperature: 0.5,
-        max_tokens: clamp(process.env.ALPHA_AI_MAX_TOKENS, 200, 1800, 850),
-        stream: false,
-      }),
+      headers: openAiHeaders(name, config),
+      body: JSON.stringify(body),
     });
-
     const data = await parseProviderBody(response);
     if (!response.ok) {
-      const detail = String(data?.error?.message || data?.message || data?.raw || "").slice(0, 300);
-      throw classifyHttpError("nvidia", response.status, detail);
+      const detail = String(
+        data?.error?.message ||
+        data?.error?.error ||
+        data?.message ||
+        data?.errors?.[0]?.message ||
+        data?.raw || "",
+      ).slice(0, 300);
+      throw classifyHttpError(
+        name,
+        response.status,
+        detail,
+        parseRetryAfterMs(response.headers.get("retry-after")),
+      );
     }
-
-    const text = String(data?.choices?.[0]?.message?.content || "").trim();
+    const text = extractText(data?.choices?.[0]?.message?.content);
     if (!text) {
-      throw new AiProviderError("nvidia", "AI_EMPTY_RESPONSE", "NVIDIA returned no text.", { status: 502, retryable: true });
+      throw new AiProviderError(name, "AI_EMPTY_RESPONSE", `${name} returned no text.`, {
+        status: 502, retryable: true,
+      });
     }
-    return text;
+    return { text, usage: normalizeUsage(data) };
   });
 };
 
-const askGemini = async (systemPrompt, messages) => {
+const askGemini = async (systemPrompt, messages, { maxTokens = maxOutputTokens() } = {}) => {
   if (!process.env.GOOGLE_API_KEY) {
     throw new AiProviderError("gemini", "AI_NOT_CONFIGURED", "GOOGLE_API_KEY is not configured.", { status: 503 });
   }
-
   const model = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY).getGenerativeModel({
-    model: geminiModel(),
+    model: providerModel("gemini"),
     systemInstruction: systemPrompt,
+    generationConfig: { temperature: 0.5, maxOutputTokens: maxTokens },
   });
   const prompt = messages
     .map((item) => `${item.role === "assistant" ? "Assistant" : "User"}: ${item.content}`)
     .join("\n\n");
-
   return withTimeout("gemini", async (signal) => {
     const resultPromise = model.generateContent(prompt);
     const abortPromise = new Promise((_, reject) => {
@@ -247,50 +406,91 @@ const askGemini = async (systemPrompt, messages) => {
     const response = await Promise.race([resultPromise, abortPromise]);
     const text = String(response?.response?.text?.() || "").trim();
     if (!text) {
-      throw new AiProviderError("gemini", "AI_EMPTY_RESPONSE", "Gemini returned no text.", { status: 502, retryable: true });
+      throw new AiProviderError("gemini", "AI_EMPTY_RESPONSE", "Gemini returned no text.", {
+        status: 502, retryable: true,
+      });
     }
-    return text;
+    const usageMetadata = response?.response?.usageMetadata || {};
+    return {
+      text,
+      usage: {
+        inputTokens: Number(usageMetadata.promptTokenCount || 0),
+        outputTokens: Number(usageMetadata.candidatesTokenCount || 0),
+        totalTokens: Number(usageMetadata.totalTokenCount || 0),
+      },
+    };
   });
 };
 
-const providerFn = (name) => (name === "nvidia" ? askNvidia : askGemini);
+const providerFn = (name) => name === "gemini"
+  ? askGemini
+  : (systemPrompt, messages, options) => askOpenAiCompatible(name, systemPrompt, messages, options);
 
-const runProvider = async (name, systemPrompt, messages, { force = false, retries = retryCount() } = {}) => {
+const applyUsageMetrics = (name, providerUsage = {}) => {
+  const stats = metrics.byProvider[name];
+  stats.inputTokens += Number(providerUsage.inputTokens || 0);
+  stats.outputTokens += Number(providerUsage.outputTokens || 0);
+  stats.totalTokens += Number(providerUsage.totalTokens || 0);
+};
+const runProvider = async (
+  name,
+  systemPrompt,
+  messages,
+  {
+    force = false,
+    retries = retryCount(),
+    countMetrics = true,
+    isProbe = false,
+    maxTokens = maxOutputTokens(),
+  } = {},
+) => {
   if (!providerConfigured(name)) {
     throw new AiProviderError(name, "AI_NOT_CONFIGURED", `${name} is not configured.`, { status: 503 });
   }
   if (!force && circuitOpen(name)) {
-    throw new AiProviderError(name, "AI_PROVIDER_CIRCUIT_OPEN", `${name} is temporarily paused after repeated failures.`, { status: 503 });
+    throw new AiProviderError(name, "AI_PROVIDER_CIRCUIT_OPEN", `${name} is temporarily paused after repeated failures.`, {
+      status: 503,
+    });
   }
-
   const maxAttempts = 1 + retries;
   let lastError = null;
-
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const started = Date.now();
-    metrics.byProvider[name].requests += 1;
+    if (countMetrics) metrics.byProvider[name].requests += 1;
+    if (isProbe) {
+      metrics.probes += 1;
+      metrics.byProvider[name].probes += 1;
+    }
     try {
-      const text = await providerFn(name)(systemPrompt, messages);
+      const result = await providerFn(name)(systemPrompt, messages, { maxTokens });
       const latencyMs = Date.now() - started;
-      metrics.byProvider[name].successes += 1;
+      if (countMetrics) {
+        metrics.byProvider[name].successes += 1;
+        applyUsageMetrics(name, result.usage);
+      }
       markSuccess(name, latencyMs);
-      return { text, provider: name, latencyMs, attempts: attempt + 1 };
+      return {
+        text: result.text,
+        provider: name,
+        latencyMs,
+        attempts: attempt + 1,
+        usage: result.usage || {},
+      };
     } catch (rawError) {
       const error = normalizeThrownError(name, rawError);
       lastError = error;
-      metrics.byProvider[name].failures += 1;
+      if (countMetrics) metrics.byProvider[name].failures += 1;
       markFailure(name, error, Date.now() - started);
-
       if (!error.retryable || attempt >= maxAttempts - 1) break;
-      metrics.retries += 1;
-      metrics.byProvider[name].retries += 1;
+      if (countMetrics) {
+        metrics.retries += 1;
+        metrics.byProvider[name].retries += 1;
+      }
       await sleep(350 * (attempt + 1));
     }
   }
-
   throw lastError || new AiProviderError(name, "AI_PROVIDER_ERROR", "Provider failed.", { status: 502 });
 };
-
 const pruneUsage = () => {
   const current = day();
   if (current === lastUsageDay && usage.size < 2000) return;
@@ -343,6 +543,8 @@ export const askSafeAi = async ({ groupJid = "direct", systemPrompt, messages })
           latencyMs: result.latencyMs,
           attempts: result.attempts,
           failover: errors.length > 0,
+          usage: result.usage,
+          triedProviders: errors.length + 1,
         },
       };
     } catch (error) {
@@ -360,18 +562,17 @@ export const askSafeAi = async ({ groupJid = "direct", systemPrompt, messages })
 export const probeAiProviders = async ({ live = false } = {}) => {
   if (!live) return getAiRuntimeStatus();
   const results = {};
-
-  for (const name of ["nvidia", "gemini"]) {
+  await Promise.all(PROVIDERS.map(async (name) => {
     if (!providerConfigured(name)) {
       results[name] = { configured: false, ok: false, code: "AI_NOT_CONFIGURED" };
-      continue;
+      return;
     }
     try {
       const result = await runProvider(
         name,
         "You are a health-check endpoint. Reply with exactly OK.",
         [{ role: "user", content: "health check" }],
-        { force: true, retries: 0 },
+        { force: true, retries: 0, countMetrics: false, isProbe: true, maxTokens: 16 },
       );
       results[name] = { configured: true, ok: true, latencyMs: result.latencyMs, model: providerModel(name) };
     } catch (rawError) {
@@ -385,8 +586,7 @@ export const probeAiProviders = async ({ live = false } = {}) => {
         model: providerModel(name),
       };
     }
-  }
-
+  }));
   return { ...getAiRuntimeStatus(), live: results };
 };
 
@@ -399,8 +599,7 @@ export const resetAiProviderHealth = () => {
 export const getAiRuntimeStatus = () => {
   pruneUsage();
   const providers = {};
-
-  for (const name of ["nvidia", "gemini"]) {
+  for (const name of PROVIDERS) {
     const circuit = circuitFor(name);
     const state = providerState.get(name) || {};
     providers[name] = {
@@ -415,25 +614,33 @@ export const getAiRuntimeStatus = () => {
       consecutiveFailures: circuit.consecutiveFailures,
       circuitOpen: circuit.openUntil > Date.now(),
       circuitOpenUntil: circuit.openUntil > Date.now() ? new Date(circuit.openUntil).toISOString() : null,
+      lastSuccessAt: state.lastSuccessAt || null,
+      lastFailureAt: state.lastFailureAt || null,
       stats: { ...metrics.byProvider[name] },
     };
   }
-
-  const healthy = providerOrder().find((name) => providers[name]?.configured && providers[name]?.ok === true) || null;
-  const available = providerOrder().find((name) => providers[name]?.configured && !providers[name]?.circuitOpen) || null;
-
+  const healthy = providerOrder().find(
+    (name) => providers[name]?.configured && providers[name]?.ok === true && !providers[name]?.circuitOpen,
+  ) || null;
+  const nextProvider = providerOrder().find(
+    (name) => providers[name]?.configured && !providers[name]?.circuitOpen,
+  ) || null;
   return {
     ready: hasConfiguredAiProvider(),
+    operational: Boolean(healthy),
     preferredOrder: providerOrder(),
-    activeProvider: healthy || available,
+    activeProvider: healthy,
+    nextProvider,
     timeoutMs: aiTimeoutMs(),
     retries: retryCount(),
+    maxOutputTokens: maxOutputTokens(),
     providers,
     requests: metrics.requests,
     successes: metrics.successes,
     failures: metrics.failures,
     failovers: metrics.failovers,
     retriesPerformed: metrics.retries,
+    probes: metrics.probes,
     usageToday: [...usage.entries()]
       .filter(([key]) => key.startsWith(`${day()}:`))
       .reduce((sum, [, value]) => sum + value, 0),

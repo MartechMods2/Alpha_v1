@@ -39,7 +39,6 @@ import {
 	isAlphaQuiet,
 	normalizeAlphaSettings,
 	stripBotMention,
-	useAlphaQuota,
 } from "../utils/alphaMention.js";
 import { getMediaRuntimeConfig } from "../utils/mediaJobs.js";
 import { isGroupStatusMentionMessage } from "../utils/groupSafety.js";
@@ -515,7 +514,6 @@ const getCommand = async (sock, msg, cache) => {
 			const cooldownKey = `${from}:${senderJid}`;
 			const now = Date.now();
 			if (settings.alphaMode === "off" || isAlphaQuiet(settings) || (tagStickerCooldowns.get(cooldownKey) || 0) > now) return;
-			if (!useAlphaQuota(from, senderJid, settings.alphaDailyQuota)) return;
 			tagStickerCooldowns.set(cooldownKey, now + ALPHA_MENTION_COOLDOWN_MS);
 			const cleanMentionText = stripBotMention(body, alphaMentioned);
 			if (settings.alphaMode === "sticker" || (settings.alphaMode === "mixed" && !cleanMentionText)) {
