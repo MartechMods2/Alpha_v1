@@ -1,8 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { downloadResolvedMedia, quotedText, resolveMediaEnvelope } from "./mediaInput.js";
 
-const quota = new Map();
-
 export const DEFAULT_ALPHA_SETTINGS = Object.freeze({
 	alphaMode: "smart",
 	alphaMemoryLimit: 5,
@@ -83,18 +81,6 @@ export const isAlphaQuiet = (settings) => {
 	return start <= end ? now >= start && now < end : now >= start || now < end;
 };
 
-export const useAlphaQuota = (groupJid, senderJid, limit) => {
-	const key = `${new Date().toISOString().slice(0, 10)}:${groupJid}:${senderJid}`;
-	const used = quota.get(key) || 0;
-	if (used >= limit) return false;
-	quota.set(key, used + 1);
-	if (quota.size > 5000) {
-		const today = `${new Date().toISOString().slice(0, 10)}:`;
-		for (const entry of quota.keys()) if (!entry.startsWith(today)) quota.delete(entry);
-	}
-	return true;
-};
-
 const mediaInstruction = (kind) => ({
 	image: "Describe the image and answer the user's request. Do not identify real people or infer sensitive traits.",
 	audio: "Transcribe the important spoken content, then answer the user's request.",
@@ -114,7 +100,7 @@ export const analyzeMentionMedia = async (sock, msg, settings, userPrompt) => {
 		maxBytes: resolved.kind === "document" ? 8 * 1024 * 1024 : 12 * 1024 * 1024,
 	});
 	const client = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-	const model = client.getGenerativeModel({ model: process.env.GEMINI_MEDIA_MODEL || "gemini-2.0-flash" });
+	const model = client.getGenerativeModel({ model: process.env.GEMINI_MEDIA_MODEL || "gemini-3.5-flash-lite" });
 	const response = await model.generateContent([
 		`${mediaInstruction(resolved.kind)}\nUser request: ${String(userPrompt || "Please explain this").slice(0, 1000)}`,
 		{ inlineData: { data: media.buffer.toString("base64"), mimeType: media.mime } },

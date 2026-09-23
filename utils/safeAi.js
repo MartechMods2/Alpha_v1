@@ -51,6 +51,7 @@ const clamp = (value, min, max, fallback) => {
 const aiTimeoutMs = () => clamp(process.env.ALPHA_AI_TIMEOUT_MS, 5_000, 60_000, 15_000);
 const retryCount = () => clamp(process.env.ALPHA_AI_RETRIES, 0, 2, 0);
 const maxOutputTokens = () => clamp(process.env.ALPHA_AI_MAX_TOKENS, 100, 2400, 850);
+const probeOutputTokens = () => clamp(process.env.ALPHA_AI_PROBE_MAX_TOKENS, 64, 512, 256);
 
 const providerDefinitions = () => ({
   groq: {
@@ -60,7 +61,7 @@ const providerDefinitions = () => ({
   },
   gemini: {
     key: process.env.GOOGLE_API_KEY || "",
-    model: process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_MEDIA_MODEL || "gemini-2.5-flash",
+    model: process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_MEDIA_MODEL || "gemini-3.5-flash-lite",
   },
   mistral: {
     key: process.env.MISTRAL_API_KEY || "",
@@ -75,7 +76,7 @@ const providerDefinitions = () => ({
   cloudflare: {
     key: process.env.CLOUDFLARE_API_TOKEN || "",
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID || "",
-    model: process.env.CLOUDFLARE_AI_MODEL || "@cf/openai/gpt-oss-120b",
+    model: process.env.CLOUDFLARE_AI_MODEL || "@cf/zai-org/glm-4.7-flash",
     get url() {
       return this.accountId
         ? `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(this.accountId)}/ai/v1/chat/completions`
@@ -230,7 +231,9 @@ const normalizeThrownError = (provider, error) => {
     return new AiProviderError(provider, "AI_PROVIDER_MODEL", message, { status: 404, retryable: false });
   }
   if (/fetch failed|network|socket|econn|connection/i.test(message)) {
-    return new AiProviderError(provider, "AI_PROVIDER_NETWORK", message, { status: 503, retryable: true });
+    const cause = String(error?.cause?.code || error?.cause?.message || "").slice(0, 120);
+    const detail = cause ? `${message} (${cause})` : message;
+    return new AiProviderError(provider, "AI_PROVIDER_NETWORK", detail, { status: 503, retryable: true });
   }
   return new AiProviderError(provider, "AI_PROVIDER_ERROR", message, { status: 502, retryable: false });
 };
@@ -258,10 +261,9 @@ const cooldownForError = (error, consecutiveFailures) => {
   if (error.code === "AI_PROVIDER_RATE_LIMIT") return 60_000;
   if (error.code === "AI_PROVIDER_MODEL") return 30 * 60_000;
   if (error.code === "AI_PROVIDER_REQUEST") return 10 * 60_000;
-  if (
-    consecutiveFailures >= 2 &&
-    ["AI_PROVIDER_TIMEOUT", "AI_PROVIDER_NETWORK", "AI_PROVIDER_TEMPORARY", "AI_EMPTY_RESPONSE"].includes(error.code)
-  ) return 90_000;
+  if (["AI_PROVIDER_TIMEOUT", "AI_PROVIDER_NETWORK", "AI_PROVIDER_TEMPORARY", "AI_EMPTY_RESPONSE"].includes(error.code)) {
+    return consecutiveFailures >= 2 ? 90_000 : 45_000;
+  }
   if (consecutiveFailures >= 3) return 60_000;
   return 0;
 };
@@ -340,7 +342,7 @@ const openAiHeaders = (name, config) => {
   return headers;
 };
 
-const askOpenAiCompatible = async (name, systemPrompt, messages, { maxTokens = maxOutputTokens() } = {}) => {
+const askOpenAiCompatible = async (name, systemPrompt, messages, { maxTokens = maxOutputTokens(), isProbe = false } = {}) => {
   const config = providerDefinitions()[name];
   if (!providerConfigured(name)) {
     throw new AiProviderError(name, "AI_NOT_CONFIGURED", `${name} is not configured.`, { status: 503 });
@@ -353,7 +355,18 @@ const askOpenAiCompatible = async (name, systemPrompt, messages, { maxTokens = m
       max_tokens: maxTokens,
       stream: false,
     };
-    if (name === "cloudflare") body.options = { rejectIfBusy: true };
+    if (name === "groq") {
+      body.reasoning_effort = process.env.GROQ_REASONING_EFFORT || "low";
+      body.include_reasoning = false;
+    }
+    if (name === "cloudflare") {
+      body.options = { rejectIfBusy: true };
+      body.reasoning_effort = isProbe ? "low" : (process.env.CLOUDFLARE_REASONING_EFFORT || "low");
+    }
+    if (name === "aion") {
+      body.reasoning_effort = isProbe ? "none" : (process.env.AION_REASONING_EFFORT || "low");
+      body.reasoning_split = true;
+    }
     const response = await fetch(config.url, {
       method: "POST",
       signal,
@@ -376,9 +389,15 @@ const askOpenAiCompatible = async (name, systemPrompt, messages, { maxTokens = m
         parseRetryAfterMs(response.headers.get("retry-after")),
       );
     }
-    const text = extractText(data?.choices?.[0]?.message?.content);
+    const choice = data?.choices?.[0] || {};
+    const text = extractText(choice?.message?.content);
     if (!text) {
-      throw new AiProviderError(name, "AI_EMPTY_RESPONSE", `${name} returned no text.`, {
+      const finishReason = String(choice?.finish_reason || "unknown");
+      const hasReasoning = Boolean(extractText(choice?.message?.reasoning));
+      const reason = hasReasoning && finishReason === "length"
+        ? `${name} used the output budget on reasoning before producing visible text.`
+        : `${name} returned no visible text (finish=${finishReason}).`;
+      throw new AiProviderError(name, "AI_EMPTY_RESPONSE", reason, {
         status: 502, retryable: true,
       });
     }
@@ -462,7 +481,7 @@ const runProvider = async (
       metrics.byProvider[name].probes += 1;
     }
     try {
-      const result = await providerFn(name)(systemPrompt, messages, { maxTokens });
+      const result = await providerFn(name)(systemPrompt, messages, { maxTokens, isProbe });
       const latencyMs = Date.now() - started;
       if (countMetrics) {
         metrics.byProvider[name].successes += 1;
@@ -572,7 +591,7 @@ export const probeAiProviders = async ({ live = false } = {}) => {
         name,
         "You are a health-check endpoint. Reply with exactly OK.",
         [{ role: "user", content: "health check" }],
-        { force: true, retries: 0, countMetrics: false, isProbe: true, maxTokens: 16 },
+        { force: true, retries: 0, countMetrics: false, isProbe: true, maxTokens: probeOutputTokens() },
       );
       results[name] = { configured: true, ok: true, latencyMs: result.latencyMs, model: providerModel(name) };
     } catch (rawError) {
@@ -634,6 +653,7 @@ export const getAiRuntimeStatus = () => {
     timeoutMs: aiTimeoutMs(),
     retries: retryCount(),
     maxOutputTokens: maxOutputTokens(),
+    probeOutputTokens: probeOutputTokens(),
     providers,
     requests: metrics.requests,
     successes: metrics.successes,
