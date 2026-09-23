@@ -5,14 +5,22 @@ import { parseWouldYouRatherPoll } from "../../../utils/alphaPolls.js";
 const normalizedGameType = (args = []) => String(args.join(" ") || "").toLowerCase().replace(/[\s_-]+/g, "");
 
 const handler = async (_sock, msg, from, args, msgInfoObj) => {
-	const { command, senderJid, sendMessageWTyping } = msgInfoObj;
+	const { command, senderJid, isOwner, groupMetadata, sendMessageWTyping } = msgInfoObj;
 	const reply = (text) => sendMessageWTyping(from, { text }, { quoted: msg });
 
 	if (["vibecheck", "vibe", "energy"].includes(command)) {
 		return reply(formatVibeCheck(from));
 	}
 	if (["rizz", "rizzcoach"].includes(command)) {
-		return reply(await generateRizzReplies({ groupJid: from, senderJid, context: args.join(" ") }));
+		return reply(await generateRizzReplies({
+			groupJid: from,
+			senderJid,
+			context: args.join(" "),
+			groupMetadata,
+			isOwner,
+			memberName: msg?.pushName || "",
+			candidates: [msg?.key?.participantPn, msg?.key?.participantAlt],
+		}));
 	}
 	if (["game", "desiregame"].includes(command)) {
 		const type = normalizedGameType(args);
