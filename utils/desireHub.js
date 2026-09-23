@@ -1,5 +1,6 @@
 import { getGroupData } from "../db/groupData.js";
-import { askSafeAi, useSafeAiBudget } from "./safeAi.js";
+import { askSafeAi } from "./safeAi.js";
+import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "./alphaQuota.js";
 import { generateSocialGamePrompt } from "./socialGameGenerator.js";
 import { addGroupWarning, clearGroupWarnings } from "./moderation.js";
 import { getGroupSafetySettings } from "./groupSafety.js";
@@ -64,10 +65,28 @@ export const formatVibeCheck = (groupJid) => {
 	return `🌚 *VIBE CHECK*\n\nEnergy: *${vibe.energy}/10*\n${vibe.label}\n${boundary}\n\n_${vibe.messages} recent messages · ${vibe.participants} active people_`;
 };
 
-export const generateRizzReplies = async ({ groupJid, senderJid, context }) => {
+export const generateRizzReplies = async ({
+	groupJid,
+	senderJid,
+	context,
+	groupMetadata,
+	isOwner = false,
+	memberName = "",
+	candidates = [],
+}) => {
 	const input = clean(context, 1000);
 	if (!input) return "🌚 Give me what they said. Example: `$rizz she said come find out`.";
-	if (!await useSafeAiBudget(groupJid, senderJid).catch(() => true)) return "⏳ Alpha's AI budget is cooling down. Try again later.";
+
+	const quotaClaim = await claimAlphaGroupAiUsage({
+		groupJid,
+		senderJid,
+		memberName,
+		groupMetadata,
+		isOwner,
+		candidates,
+	});
+	if (!quotaClaim.allowed) return `⏳ Your Alpha AI limit for today has been reached (*${quotaClaim.used}/${quotaClaim.limit}*).`;
+
 	try {
 		const { text } = await askSafeAi({
 			groupJid,
@@ -76,6 +95,7 @@ export const generateRizzReplies = async ({ groupJid, senderJid, context }) => {
 		});
 		return `🫦 *RIZZ COACH*\n\n${String(text || "").trim().slice(0, 1200)}`;
 	} catch (error) {
+		await refundAlphaGroupAiUsage(quotaClaim).catch(() => {});
 		console.warn("[DESIRE RIZZ]", error.message);
 		return `🫦 *RIZZ COACH*\n\n*Playful:* “Come find out” is doing a lot of work there 😂\n*Smooth:* Careful, I might actually take you seriously.\n*Sweet:* I like your confidence. Now you've got my attention. 🌚`;
 	}
