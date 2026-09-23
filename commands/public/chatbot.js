@@ -6,7 +6,6 @@ dotenv.config();
 // -------------------------------------------------------------------------------------------------------------//
 import { getGroupData, group } from "../../db/groupData.js";
 import { getMemberData, getMemberPreferences } from "../../db/members.js";
-import { extractPhoneNumber } from "../../utils/lid.js";
 import { getChatMessages } from "../../utils/chatLogger.js";
 import { getMediaRuntimeConfig } from "../../utils/mediaJobs.js";
 import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../utils/alphaQuota.js";
@@ -211,9 +210,7 @@ async function chat(
 
 				const replySenderName =
 					tagMessageSender?.username ||
-					extractPhoneNumber(
-						tagMessageSenderJID
-					);
+					"Member";
 
 				const replyContent = quotedMessageText(tagMessage);
 				if (replyContent) {
@@ -307,10 +304,7 @@ async function chat(
 									admin
 							);
 
-						return (
-							adminData?.name ||
-							admin.split("@")[0]
-						);
+						return adminData?.name || "Admin";
 					})
 					.join(", ") ||
 				"Unknown";
@@ -680,11 +674,7 @@ const handler = async (
 							.map((m) => {
 								const name =
 									m.senderName ||
-									m.sender
-										?.split(
-											"@"
-										)[0] ||
-									"Unknown";
+									"Member";
 
 								const replyPart =
 									m.replyTo
@@ -692,13 +682,7 @@ const handler = async (
 												m
 													.replyTo
 													.senderName ||
-												m
-													.replyTo
-													.sender
-													?.split(
-														"@"
-													)[0] ||
-												"Unknown"
+												"Member"
 										  }: "${
 												m
 													.replyTo
