@@ -2,6 +2,7 @@ import { getSafeSettings, listSafeAudit, updateSafeSettings } from "../../../db/
 import { getGroupData, group } from "../../../db/groupData.js";
 import { getAiProviderNames, getAiRuntimeStatus, askSafeAi } from "../../../utils/safeAi.js";
 import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../../utils/alphaQuota.js";
+import { alphaPublicFailureMessage, notifyAlphaOwnerFailure } from "../../../utils/alphaErrorReporter.js";
 import { cleanSafeText } from "../../../utils/safePack.js";
 import { getGroupTools } from "../../../db/groupTools.js";
 
@@ -24,7 +25,7 @@ const claimUsage = (from, msg, info) => claimAlphaGroupAiUsage({
 	candidates: [msg?.key?.participantPn, msg?.key?.participantAlt],
 });
 
-const handler = async (_sock, msg, from, args, info) => {
+const handler = async (sock, msg, from, args, info) => {
 	const { command, senderJid, sendMessageWTyping } = info;
 	const reply = (text) => sendMessageWTyping(from, { text }, { quoted: msg });
 
@@ -123,7 +124,14 @@ const handler = async (_sock, msg, from, args, info) => {
 		}
 	} catch (error) {
 		console.error("Safe AI admin failed:", error.message);
-		return reply(`❌ ${error.message}`);
+		notifyAlphaOwnerFailure({
+			sock,
+			scope: `admin-${command}`,
+			error,
+			groupName: info?.groupMetadata?.subject || "",
+			senderName: msg?.pushName || "",
+		});
+		return reply(`❌ ${alphaPublicFailureMessage().replace(/^⚡\s*/, "")}`);
 	}
 };
 
