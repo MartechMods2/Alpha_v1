@@ -1,4 +1,9 @@
-import { getAiRuntimeStatus, probeAiProviders, resetAiProviderHealth } from "../../utils/safeAi.js";
+import {
+  getAiProviderNames,
+  getAiRuntimeStatus,
+  probeAiProviders,
+  resetAiProviderHealth,
+} from "../../utils/safeAi.js";
 
 const icon = (provider) => {
   if (!provider.configured) return "⚪";
@@ -18,47 +23,56 @@ const providerLine = (name, provider) => {
         : provider.ok === false
           ? "FAILED"
           : "NOT TESTED";
+
   const details = [];
   if (provider.model) details.push(`model=${provider.model}`);
   if (provider.code) details.push(`code=${provider.code}`);
   if (provider.status) details.push(`http=${provider.status}`);
   if (provider.latencyMs) details.push(`${provider.latencyMs}ms`);
   if (provider.consecutiveFailures) details.push(`fails=${provider.consecutiveFailures}`);
+  if (provider.stats?.totalTokens) details.push(`tokens=${provider.stats.totalTokens}`);
+
   return `${icon(provider)} *${name.toUpperCase()}*: ${state}${details.length ? `\n   ${details.join(" · ")}` : ""}`;
 };
 
 const formatStatus = (status, live = null) => {
+  const names = getAiProviderNames();
+  const configuredCount = names.filter((name) => status.providers[name]?.configured).length;
+  const healthyCount = names.filter((name) => status.providers[name]?.ok === true).length;
+
   const lines = [
     "🧠 *Alpha AI Health*",
-    `Ready: *${status.ready ? "YES" : "NO"}*`,
-    `Active provider: *${status.activeProvider || "none"}*`,
+    `Configured: *${configuredCount}/${names.length}*`,
+    `Operational: *${status.operational ? "YES" : healthyCount > 0 ? "YES" : "NOT CONFIRMED"}*`,
+    `Active provider: *${status.activeProvider || "none yet"}*`,
+    `Next provider: *${status.nextProvider || "none"}*`,
     `Provider order: *${status.preferredOrder.join(" → ")}*`,
-    `Timeout: *${status.timeoutMs}ms* · Retries: *${status.retries}*`,
+    `Timeout: *${status.timeoutMs}ms* · Retries: *${status.retries}* · Max output: *${status.maxOutputTokens}*`,
     "",
-    providerLine("nvidia", status.providers.nvidia),
-    providerLine("gemini", status.providers.gemini),
+    ...names.map((name) => providerLine(name, status.providers[name])),
     "",
     `Requests: *${status.requests}* · Success: *${status.successes}* · Failed: *${status.failures}*`,
-    `Failovers: *${status.failovers}* · Retries performed: *${status.retriesPerformed}*`,
-    `Safe-AI usage today: *${status.usageToday}*`,
+    `Failovers: *${status.failovers}* · Retries: *${status.retriesPerformed}* · Probes: *${status.probes}*`,
   ];
 
   if (live) {
     lines.push("", "🔬 *Live probe*");
-    for (const name of ["nvidia", "gemini"]) {
+    for (const name of names) {
       const result = live[name];
       if (!result?.configured) {
         lines.push(`⚪ ${name.toUpperCase()}: not configured`);
       } else if (result.ok) {
         lines.push(`🟢 ${name.toUpperCase()}: PASS${result.latencyMs ? ` · ${result.latencyMs}ms` : ""}`);
       } else {
-        lines.push(`🔴 ${name.toUpperCase()}: ${result.code || "FAILED"}${result.status ? ` · HTTP ${result.status}` : ""}`);
+        lines.push(
+          `🔴 ${name.toUpperCase()}: ${result.code || "FAILED"}${result.status ? ` · HTTP ${result.status}` : ""}`,
+        );
       }
     }
   }
 
   lines.push("", "No API keys or secret values are displayed.");
-  return lines.join("\n").slice(0, 4000);
+  return lines.join("\n").slice(0, 7500);
 };
 
 const handler = async (_sock, msg, from, args, info) => {
