@@ -41,12 +41,12 @@ export const isAlphaUnlimitedUser = ({
 };
 
 export const getAlphaGroupLimit = async (groupJid, suppliedLimit) => {
-  if (Number.isFinite(Number(suppliedLimit))) return Math.min(100, Math.max(1, Math.trunc(Number(suppliedLimit))));
+  if (Number.isFinite(Number(suppliedLimit))) return Math.min(50, Math.max(1, Math.trunc(Number(suppliedLimit))));
   const data = await getGroupData(groupJid).catch(() => null);
   const value = Number(data?.alphaDailyQuota);
-  if (Number.isFinite(value)) return Math.min(100, Math.max(1, Math.trunc(value)));
+  if (Number.isFinite(value)) return Math.min(50, Math.max(1, Math.trunc(value)));
   const fallback = Number(process.env.ALPHA_MEMBER_DAILY_LIMIT || 10);
-  return Number.isFinite(fallback) ? Math.min(100, Math.max(1, Math.trunc(fallback))) : 10;
+  return Number.isFinite(fallback) ? Math.min(50, Math.max(1, Math.trunc(fallback))) : 10;
 };
 
 export const getAlphaGroupAiUsage = async ({
