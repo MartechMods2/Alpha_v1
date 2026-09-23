@@ -29,7 +29,7 @@ const runtimeFiles = [
 
 const exportedNames = (source) => {
   const names = new Set();
-  for (const match of source.matchAll(/export\s+(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/g)) {
+  for (const match of source.matchAll(/export\s+(?:async\s+)?(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/g)) {
     names.add(match[1]);
   }
   for (const match of source.matchAll(/export\s+(?:const|let|var)\s*\{([^}]*)\}\s*=/g)) {
