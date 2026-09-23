@@ -35,6 +35,17 @@ const providerLine = (name, provider) => {
   return `${icon(provider)} *${name.toUpperCase()}*: ${state}${details.length ? `\n   ${details.join(" · ")}` : ""}`;
 };
 
+const failureHint = (code) => ({
+  AI_PROVIDER_NETWORK: "connection/DNS/TLS failure",
+  AI_PROVIDER_MODEL: "model or endpoint unavailable",
+  AI_PROVIDER_RATE_LIMIT: "rate or account quota reached",
+  AI_PROVIDER_QUOTA: "credits/quota exhausted",
+  AI_PROVIDER_AUTH: "API key or permission problem",
+  AI_EMPTY_RESPONSE: "provider returned no visible answer",
+  AI_PROVIDER_TIMEOUT: "provider exceeded Alpha timeout",
+  AI_PROVIDER_TEMPORARY: "temporary upstream failure",
+}[code] || "");
+
 const formatStatus = (status, live = null) => {
   const names = getAiProviderNames();
   const configuredCount = names.filter((name) => status.providers[name]?.configured).length;
@@ -47,7 +58,7 @@ const formatStatus = (status, live = null) => {
     `Active provider: *${status.activeProvider || "none yet"}*`,
     `Next provider: *${status.nextProvider || "none"}*`,
     `Provider order: *${status.preferredOrder.join(" → ")}*`,
-    `Timeout: *${status.timeoutMs}ms* · Retries: *${status.retries}* · Max output: *${status.maxOutputTokens}*`,
+    `Timeout: *${status.timeoutMs}ms* · Retries: *${status.retries}* · Max output: *${status.maxOutputTokens}* · Probe: *${status.probeOutputTokens}*`,
     "",
     ...names.map((name) => providerLine(name, status.providers[name])),
     "",
@@ -64,8 +75,9 @@ const formatStatus = (status, live = null) => {
       } else if (result.ok) {
         lines.push(`🟢 ${name.toUpperCase()}: PASS${result.latencyMs ? ` · ${result.latencyMs}ms` : ""}`);
       } else {
+        const hint = failureHint(result.code);
         lines.push(
-          `🔴 ${name.toUpperCase()}: ${result.code || "FAILED"}${result.status ? ` · HTTP ${result.status}` : ""}`,
+          `🔴 ${name.toUpperCase()}: ${result.code || "FAILED"}${result.status ? ` · HTTP ${result.status}` : ""}${hint ? ` · ${hint}` : ""}`,
         );
       }
     }
