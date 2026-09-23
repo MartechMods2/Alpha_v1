@@ -101,7 +101,7 @@ export const generateRizzReplies = async ({
 	}
 };
 
-export const generateDesireGame = async ({ groupJid, type }) => {
+export const generateDesireGame = async ({ groupJid, type, quotaInput = null }) => {
 	const requested = String(type || "").toLowerCase().replace(/[\s_-]+/g, "");
 	if (["2truths", "2truthsalie", "twotruths", "twotruthsandalie"].includes(requested)) {
 		return "🎭 *2 TRUTHS & A LIE*\n\nDrop three short statements about yourself — two true, one lie. Label them A, B, C. Everybody guesses. 🌚";
@@ -111,7 +111,7 @@ export const generateDesireGame = async ({ groupJid, type }) => {
 	};
 	const gameType = map[requested];
 	if (!gameType) return "🎮 Try `$game 2truths`, `$game wouldyourather`, `$game truth`, `$game dare`, or `$game icebreaker`.";
-	const prompt = await generateSocialGamePrompt({ groupJid, type: gameType });
+	const prompt = await generateSocialGamePrompt({ groupJid, type: gameType, quotaInput });
 	const title = gameType === "wyr" ? "WOULD YOU RATHER?" : gameType.toUpperCase();
 	return `🎮 *${title}*\n\n${clean(prompt, 800)}\n\n_No pressure. Skip anything you don't want to answer._`;
 };
