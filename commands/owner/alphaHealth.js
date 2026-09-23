@@ -1,0 +1,89 @@
+import { getAiRuntimeStatus, probeAiProviders, resetAiProviderHealth } from "../../utils/safeAi.js";
+
+const icon = (provider) => {
+  if (!provider.configured) return "⚪";
+  if (provider.circuitOpen) return "🟠";
+  if (provider.ok === true) return "🟢";
+  if (provider.ok === false) return "🔴";
+  return "🟡";
+};
+
+const providerLine = (name, provider) => {
+  const state = !provider.configured
+    ? "NOT CONFIGURED"
+    : provider.circuitOpen
+      ? "CIRCUIT OPEN"
+      : provider.ok === true
+        ? "HEALTHY"
+        : provider.ok === false
+          ? "FAILED"
+          : "NOT TESTED";
+  const details = [];
+  if (provider.model) details.push(`model=${provider.model}`);
+  if (provider.code) details.push(`code=${provider.code}`);
+  if (provider.status) details.push(`http=${provider.status}`);
+  if (provider.latencyMs) details.push(`${provider.latencyMs}ms`);
+  if (provider.consecutiveFailures) details.push(`fails=${provider.consecutiveFailures}`);
+  return `${icon(provider)} *${name.toUpperCase()}*: ${state}${details.length ? `\n   ${details.join(" · ")}` : ""}`;
+};
+
+const formatStatus = (status, live = null) => {
+  const lines = [
+    "🧠 *Alpha AI Health*",
+    `Ready: *${status.ready ? "YES" : "NO"}*`,
+    `Active provider: *${status.activeProvider || "none"}*`,
+    `Provider order: *${status.preferredOrder.join(" → ")}*`,
+    `Timeout: *${status.timeoutMs}ms* · Retries: *${status.retries}*`,
+    "",
+    providerLine("nvidia", status.providers.nvidia),
+    providerLine("gemini", status.providers.gemini),
+    "",
+    `Requests: *${status.requests}* · Success: *${status.successes}* · Failed: *${status.failures}*`,
+    `Failovers: *${status.failovers}* · Retries performed: *${status.retriesPerformed}*`,
+    `Safe-AI usage today: *${status.usageToday}*`,
+  ];
+
+  if (live) {
+    lines.push("", "🔬 *Live probe*");
+    for (const name of ["nvidia", "gemini"]) {
+      const result = live[name];
+      if (!result?.configured) {
+        lines.push(`⚪ ${name.toUpperCase()}: not configured`);
+      } else if (result.ok) {
+        lines.push(`🟢 ${name.toUpperCase()}: PASS${result.latencyMs ? ` · ${result.latencyMs}ms` : ""}`);
+      } else {
+        lines.push(`🔴 ${name.toUpperCase()}: ${result.code || "FAILED"}${result.status ? ` · HTTP ${result.status}` : ""}`);
+      }
+    }
+  }
+
+  lines.push("", "No API keys or secret values are displayed.");
+  return lines.join("\n").slice(0, 4000);
+};
+
+const handler = async (_sock, msg, from, args, info) => {
+  const { command, sendMessageWTyping } = info;
+  const reply = (text) => sendMessageWTyping(from, { text }, { quoted: msg });
+  const action = command === "aitest" ? "test" : String(args[0] || "status").toLowerCase();
+
+  try {
+    if (action === "reset") {
+      const status = resetAiProviderHealth();
+      return reply(`♻️ *Alpha AI provider health reset.*\n\n${formatStatus(status)}`);
+    }
+    if (action === "test" || action === "live") {
+      const result = await probeAiProviders({ live: true });
+      return reply(formatStatus(result, result.live));
+    }
+    return reply(formatStatus(getAiRuntimeStatus()));
+  } catch (error) {
+    return reply(`❌ Alpha health check failed: ${String(error?.message || error).slice(0, 300)}`);
+  }
+};
+
+export default () => ({
+  cmd: ["alphahealth", "aistatus", "aitest"],
+  desc: "Owner-only Alpha AI provider health, live tests, latency, failover and circuit status",
+  usage: "alphahealth | alphahealth test | alphahealth reset | aitest",
+  handler,
+});
