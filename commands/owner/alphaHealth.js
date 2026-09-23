@@ -109,7 +109,11 @@ const handler = async (_sock, msg, from, args, info) => {
       if (target && !["all", "*"].includes(target) && !providerNames.includes(target)) {
         return reply(`❌ Unknown provider *${target}*. Use one of: ${providerNames.join(", ")}.`);
       }
-      const providers = target && !["all", "*"].includes(target) ? [target] : null;
+      const providers = ["all", "*"].includes(target)
+        ? providerNames
+        : target
+          ? [target]
+          : null;
       const result = await probeAiProviders({ live: true, providers });
       return reply(formatStatus(result, result.live));
     }
