@@ -692,7 +692,13 @@ const getCommand = async (sock, msg, cache) => {
 					if (handled) return;
 				} catch (error) {
 					console.error("Smart DM intent failed:", error.message);
-					await sendMessageWTyping(from, { text: `❌ Alpha could not complete that request: ${error.message}` }, { quoted: msg });
+					notifyAlphaOwnerFailure({
+						sock,
+						scope: "smart-dm-intent",
+						error,
+						senderName: updateName || senderData?.username || "",
+					});
+					await sendMessageWTyping(from, { text: alphaPublicFailureMessage() }, { quoted: msg });
 					return;
 				}
 			}
