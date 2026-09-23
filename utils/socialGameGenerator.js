@@ -1,4 +1,5 @@
 import { askSafeAi } from "./safeAi.js";
+import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "./alphaQuota.js";
 
 const FALLBACKS = {
 	truth: [
@@ -101,10 +102,23 @@ const fallbackPrompt = (groupJid, type) => {
 	return (available.length ? available : pool)[Math.floor(Math.random() * (available.length ? available.length : pool.length))];
 };
 
-export const generateSocialGamePrompt = async ({ groupJid, type }) => {
+export const generateSocialGamePrompt = async ({ groupJid, type, quotaInput = null }) => {
 	const safeType = ["truth", "dare", "wyr", "icebreaker"].includes(type) ? type : "icebreaker";
 	const previous = recent.get(keyFor(groupJid, safeType)) || [];
 	let prompt = "";
+	let quotaClaim = null;
+
+	if (quotaInput) {
+		quotaClaim = await claimAlphaGroupAiUsage(quotaInput);
+		// Game commands still work when a member has exhausted AI usage; they
+		// simply use the curated local prompt pool instead of spending provider quota.
+		if (!quotaClaim.allowed) {
+			prompt = fallbackPrompt(groupJid, safeType);
+			remember(groupJid, safeType, prompt);
+			return prompt;
+		}
+	}
+
 	try {
 		const label = safeType === "wyr" ? "Would You Rather" : safeType;
 		const result = await askSafeAi({
@@ -123,7 +137,9 @@ export const generateSocialGamePrompt = async ({ groupJid, type }) => {
 		prompt = cleanGenerated(result?.text, safeType);
 		const used = new Set(previous.map(normalized));
 		if (prompt.length < 8 || used.has(normalized(prompt))) prompt = "";
-	} catch {}
+	} catch {
+		if (quotaClaim?.charged) await refundAlphaGroupAiUsage(quotaClaim).catch(() => {});
+	}
 	if (!prompt) prompt = fallbackPrompt(groupJid, safeType);
 	remember(groupJid, safeType, prompt);
 	return prompt;
