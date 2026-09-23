@@ -41,6 +41,7 @@ import {
 	stripBotMention,
 } from "../utils/alphaMention.js";
 import { getMediaRuntimeConfig } from "../utils/mediaJobs.js";
+import { getAlphaGroupAiUsage } from "../utils/alphaQuota.js";
 import { isGroupStatusMentionMessage } from "../utils/groupSafety.js";
 import { handleAdvancedAutomation } from "../utils/advancedAutomation.js";
 import { handleSafeModerationMessage } from "../utils/safeModeration.js";
@@ -560,6 +561,23 @@ const getCommand = async (sock, msg, cache) => {
 						command: "remind",
 						evv: reminderArgs.join(" "),
 					});
+					return;
+				}
+				// Check the persistent quota before media understanding. This prevents a
+				// member who is already at the daily limit from consuming a Gemini
+				// image/audio/document analysis call before the Alpha command rejects them.
+				const alphaUsage = await getAlphaGroupAiUsage({
+					groupJid: from,
+					senderJid,
+					groupMetadata,
+					isOwner,
+					candidates: [msg?.key?.participantPn, msg?.key?.participantAlt],
+					limit: settings.alphaDailyQuota,
+				});
+				if (!alphaUsage.allowed) {
+					await sendMessageWTyping(from, {
+						text: `⚡Alpha⚡ daily AI limit reached (*${alphaUsage.used}/${alphaUsage.limit}*). Use *${prefix}alphaquota* to check usage.`,
+					}, { quoted: msg });
 					return;
 				}
 				const alphaPrompt = await buildAlphaPrompt({ sock, msg, body, mentionedJids: alphaMentioned, settings });
