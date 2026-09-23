@@ -1,20 +1,33 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const read = (relative) => readFileSync(new URL(`../${relative}`, import.meta.url), "utf8");
 
-test("Alpha group AI paths no longer use the legacy in-memory safe AI budget", () => {
-  const files = [
-    "commands/public/chatbot.js",
-    "commands/public/aiMedia.js",
-    "commands/public/alphaFeaturePack.js",
-    "commands/public/alphaPersonalization.js",
-    "commands/group/members/alphaPolls.js",
-    "commands/group/admins/safeAiAdmin.js",
-    "utils/alphaDeliveryRouter.js",
-  ];
-  for (const file of files) assert.doesNotMatch(read(file), /\buseSafeAiBudget\b/, file);
+test("Alpha no longer has legacy in-memory safe AI budget references", () => {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const files = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile() && entry.name.endsWith(".js")) files.push(full);
+    }
+  };
+  for (const dir of ["commands", "core", "utils"]) walk(path.join(root, dir));
+  const failures = files
+    .filter((file) => /\buseSafeAiBudget\b/.test(readFileSync(file, "utf8")))
+    .map((file) => path.relative(root, file));
+  assert.deepEqual(failures, []);
+});
+
+test("Alpha unlimited quota bypass defaults to owner-only", () => {
+  const quota = read("utils/alphaQuota.js");
+  assert.doesNotMatch(quota, /isConfiguredModerator/);
+  assert.match(quota, /return Boolean\(isOwner\)/);
+  assert.match(quota, /ALPHA_UNLIMITED_NUMBERS/);
 });
 
 test("Alpha admin quota setter no longer collides with public alphaquota", () => {
