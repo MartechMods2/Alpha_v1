@@ -1,6 +1,7 @@
 import { getMemberPreferences, setMemberPreferences } from "../../db/members.js";
 import { askSafeAi } from "../../utils/safeAi.js";
 import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../utils/alphaQuota.js";
+import { alphaPublicFailureMessage, notifyAlphaOwnerFailure } from "../../utils/alphaErrorReporter.js";
 import { claimVoiceQuota, generateAlphaVoiceNote } from "../../utils/alphaMediaAi.js";
 import {
 	ALPHA_TEXT_STYLES,
@@ -26,7 +27,7 @@ const VOICE_EXAMPLES = Object.freeze({
 	nigerian: "natural Nigerian English",
 });
 
-const handler = async (_sock, msg, from, args, info) => {
+const handler = async (sock, msg, from, args, info) => {
 	const { command, prefix = "$", senderJid, isGroup, isOwner, groupMetadata, sendMessageWTyping } = info;
 	const reply = (text) => sendMessageWTyping(from, { text }, { quoted: msg });
 
@@ -71,7 +72,14 @@ const handler = async (_sock, msg, from, args, info) => {
 			const audio = await generateAlphaVoiceNote(`Hey, this is Alpha using the ${requested} voice profile. If this vibe works for you, set it as your default.`, profile);
 			return sendMessageWTyping(from, { audio: audio.buffer, mimetype: audio.mimetype, ptt: true }, { quoted: msg });
 		} catch (error) {
-			return reply(`❌ Voice preview failed: ${error.message}`);
+			notifyAlphaOwnerFailure({
+				sock,
+				scope: "voice-preview",
+				error,
+				groupName: isGroup ? (groupMetadata?.subject || "") : "",
+				senderName: msg?.pushName || "",
+			});
+			return reply(alphaPublicFailureMessage("voice"));
 		}
 	}
 
@@ -115,7 +123,14 @@ const handler = async (_sock, msg, from, args, info) => {
 			if (quotaClaim?.charged && !providerSucceeded) {
 				await refundAlphaGroupAiUsage(quotaClaim).catch(() => {});
 			}
-			return reply(`❌ Styled Alpha answer failed: ${error.message}`);
+			notifyAlphaOwnerFailure({
+				sock,
+				scope: "styled-alpha",
+				error,
+				groupName: isGroup ? (groupMetadata?.subject || "") : "",
+				senderName: msg?.pushName || "",
+			});
+			return reply(alphaPublicFailureMessage());
 		}
 	}
 
