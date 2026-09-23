@@ -7,6 +7,7 @@ import {
 
 const icon = (provider) => {
   if (!provider.configured) return "⚪";
+  if (provider.enabled === false) return "⚫";
   if (provider.circuitOpen) return "🟠";
   if (provider.ok === true) return "🟢";
   if (provider.ok === false) return "🔴";
@@ -52,12 +53,12 @@ const failureHint = (code) => ({
 const formatStatus = (status, live = null) => {
   const names = getAiProviderNames();
   const configuredCount = names.filter((name) => status.providers[name]?.configured).length;
-  const healthyCount = names.filter((name) => status.providers[name]?.ok === true).length;
+  const enabledCount = names.filter((name) => status.providers[name]?.enabled !== false).length;
 
   const lines = [
     "🧠 *Alpha AI Health*",
-    `Configured: *${configuredCount}/${names.length}*`,
-    `Operational: *${status.operational ? "YES" : healthyCount > 0 ? "YES" : "NOT CONFIRMED"}*`,
+    `Configured: *${configuredCount}/${names.length}* · Enabled: *${enabledCount}/${names.length}*`,
+    `Operational: *${status.operational ? "YES" : "NOT CONFIRMED"}*`,
     `Active provider: *${status.activeProvider || "none yet"}*`,
     `Next provider: *${status.nextProvider || "none"}*`,
     `Provider order: *${status.preferredOrder.join(" → ") || "none"}*`,
@@ -72,7 +73,8 @@ const formatStatus = (status, live = null) => {
 
   if (live) {
     lines.push("", "🔬 *Live probe*");
-    for (const name of names) {
+    const liveNames = names.filter((name) => Object.prototype.hasOwnProperty.call(live, name));
+    for (const name of liveNames) {
       const result = live[name];
       if (!result?.configured) {
         lines.push(`⚪ ${name.toUpperCase()}: not configured`);
@@ -102,7 +104,7 @@ const handler = async (_sock, msg, from, args, info) => {
       return reply(`♻️ *Alpha AI provider health reset.*\n\n${formatStatus(status)}`);
     }
     if (action === "test" || action === "live") {
-      const target = String(args[1] || "").toLowerCase().trim();
+      const target = String(command === "aitest" ? (args[0] || "") : (args[1] || "")).toLowerCase().trim();
       const providerNames = getAiProviderNames();
       if (target && !["all", "*"].includes(target) && !providerNames.includes(target)) {
         return reply(`❌ Unknown provider *${target}*. Use one of: ${providerNames.join(", ")}.`);
