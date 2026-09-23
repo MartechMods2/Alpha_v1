@@ -9,6 +9,7 @@ import { getMemberData, getMemberPreferences } from "../../db/members.js";
 import { getChatMessages } from "../../utils/chatLogger.js";
 import { getMediaRuntimeConfig } from "../../utils/mediaJobs.js";
 import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../utils/alphaQuota.js";
+import { notifyAlphaOwnerFailure } from "../../utils/alphaErrorReporter.js";
 import { askSafeAi, hasConfiguredAiProvider } from "../../utils/safeAi.js";
 import {
 	ALPHA_TRUST_BOUNDARY,
@@ -466,6 +467,13 @@ ${chatContext}
 			code,
 			message: String(err?.message || err).slice(0, 300),
 			providers: Array.isArray(err?.providers) ? err.providers : undefined,
+		});
+		notifyAlphaOwnerFailure({
+			scope: "alpha-chat",
+			error: err,
+			groupName: isGroup ? (data?.grpName || "") : "",
+			senderName: updateName || "",
+			detail: Array.isArray(err?.providers) ? `providers=${err.providers.join(",")}` : "",
 		});
 
 		const userMessage = code === "AI_NOT_CONFIGURED"
