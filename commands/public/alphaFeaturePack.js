@@ -1,5 +1,6 @@
 import { askSafeAi } from "../../utils/safeAi.js";
 import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../utils/alphaQuota.js";
+import { alphaPublicFailureMessage, notifyAlphaOwnerFailure } from "../../utils/alphaErrorReporter.js";
 import { getMemberPreferences } from "../../db/members.js";
 import { applyAlphaTextStyle } from "../../utils/alphaPresentation.js";
 import {
@@ -47,7 +48,7 @@ const generalHelp = (prefix) => {
 	return `🧠 *Alpha 160 AI Workflow Pack*\n\n${lines.join("\n")}\n\nExamples:\n${prefix}aisummarize <text>\n${prefix}aimeetingminutes <notes>\n${prefix}ailessonplan Primary 4 fractions\n${prefix}aibusinesscase <idea>\n${prefix}aieditorialreview <text>\n\nYou can also reply to a message with a command such as ${prefix}aisummarize.`;
 };
 
-const handler = async (_sock, msg, from, args, info) => {
+const handler = async (sock, msg, from, args, info) => {
 	const {
 		command, prefix = "$", senderJid, isGroup, isOwner, groupMetadata,
 		extendedMessageOriginal, sendMessageWTyping,
@@ -103,7 +104,14 @@ const handler = async (_sock, msg, from, args, info) => {
 			await refundAlphaGroupAiUsage(quotaClaim).catch(() => {});
 		}
 		console.error(`[AI_FEATURE:${command}]`, error.message);
-		return reply(`❌ Alpha AI could not complete *${command}*: ${error.message}`);
+		notifyAlphaOwnerFailure({
+			sock,
+			scope: `workflow-${command}`,
+			error,
+			groupName: isGroup ? (groupMetadata?.subject || "") : "",
+			senderName: msg?.pushName || "",
+		});
+		return reply(`❌ Alpha AI could not complete *${command}*. ${alphaPublicFailureMessage().replace(/^⚡\s*/, "")}`);
 	}
 };
 
