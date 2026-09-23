@@ -1,4 +1,5 @@
-import { askSafeAi, useSafeAiBudget } from "../../utils/safeAi.js";
+import { askSafeAi } from "../../utils/safeAi.js";
+import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../utils/alphaQuota.js";
 import { getMemberPreferences } from "../../db/members.js";
 import { applyAlphaTextStyle } from "../../utils/alphaPresentation.js";
 import {
@@ -47,7 +48,10 @@ const generalHelp = (prefix) => {
 };
 
 const handler = async (_sock, msg, from, args, info) => {
-	const { command, prefix = "$", senderJid, isGroup, extendedMessageOriginal, sendMessageWTyping } = info;
+	const {
+		command, prefix = "$", senderJid, isGroup, isOwner, groupMetadata,
+		extendedMessageOriginal, sendMessageWTyping,
+	} = info;
 	const reply = (text) => sendMessageWTyping(from, { text: String(text).slice(0, 6500) }, { quoted: msg });
 
 	if (["aifeatures", "aitools", "aiworkflows"].includes(command)) {
@@ -64,23 +68,40 @@ const handler = async (_sock, msg, from, args, info) => {
 		return reply(`❌ Add the content after *${prefix}${command}* or reply to a text message with *${prefix}${command}*.`);
 	}
 
-	const allowed = isGroup
-		? await useSafeAiBudget(from, senderJid).catch(() => true)
-		: claimDirectBudget(senderJid);
-	if (!allowed) return reply("⏳ Your Alpha AI workflow limit for today has been reached. Try again later.");
+	let quotaClaim = null;
+	if (isGroup) {
+		quotaClaim = await claimAlphaGroupAiUsage({
+			groupJid: from,
+			senderJid,
+			memberName: msg?.pushName || "",
+			groupMetadata,
+			isOwner,
+			candidates: [msg?.key?.participantPn, msg?.key?.participantAlt],
+		});
+		if (!quotaClaim.allowed) {
+			return reply(`⏳ Your Alpha AI limit for today has been reached (*${quotaClaim.used}/${quotaClaim.limit}*).`);
+		}
+	} else if (!claimDirectBudget(senderJid)) {
+		return reply("⏳ Your Alpha AI workflow limit for today has been reached. Try again later.");
+	}
 
 	const systemPrompt = `You are Alpha's focused workflow engine.\nTask: ${feature.instruction}\nCategory: ${feature.category}.\nReturn only a useful answer for the user's supplied material. Be accurate, practical and concise enough for WhatsApp. Do not invent facts, citations, prices, standards, people, dates or credentials. Clearly mark assumptions. Do not use markdown headings with #; use short labels, bullets and *single-asterisk* emphasis when useful. Respect privacy. For security-related material, stay defensive and authorized: do not provide phishing, credential theft, malware, evasion, destructive actions, or instructions to intrude into systems.`;
 
+	let providerSucceeded = false;
 	try {
 		const { text } = await askSafeAi({
 			groupJid: isGroup ? from : "direct",
 			systemPrompt,
 			messages: [{ role: "user", content: input }],
 		});
+		providerSucceeded = true;
 		const prefs = await getMemberPreferences(senderJid).catch(() => ({ textStyle: "normal" }));
 		const response = text || "Alpha returned no text for that workflow.";
 		return reply(applyAlphaTextStyle(response, prefs.textStyle));
 	} catch (error) {
+		if (quotaClaim?.charged && !providerSucceeded) {
+			await refundAlphaGroupAiUsage(quotaClaim).catch(() => {});
+		}
 		console.error(`[AI_FEATURE:${command}]`, error.message);
 		return reply(`❌ Alpha AI could not complete *${command}*: ${error.message}`);
 	}
