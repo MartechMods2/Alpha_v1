@@ -29,3 +29,16 @@ test("Alpha access modes filter ordinary members while preserving admin access",
 	assert.equal(evaluate({ alphaAccessMode: "denylist", alphaDeniedMembers: [senderJid] }), false);
 	assert.equal(evaluate({ alphaAccessMode: "denylist", alphaDeniedMembers: [] }), true);
 });
+
+test("Alpha settings reject invalid clocks and normalize integer quotas", () => {
+	const settings = normalizeAlphaSettings({
+		alphaQuietStart: "99:99",
+		alphaQuietEnd: "24:01",
+		alphaDailyQuota: 9.8,
+		alphaMemoryLimit: 4.9,
+	});
+	assert.equal(settings.alphaQuietStart, "");
+	assert.equal(settings.alphaQuietEnd, "");
+	assert.equal(settings.alphaDailyQuota, 9);
+	assert.equal(settings.alphaMemoryLimit, 4);
+});
