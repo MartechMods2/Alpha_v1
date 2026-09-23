@@ -1,4 +1,5 @@
-import { askSafeAi, useSafeAiBudget } from "../../../utils/safeAi.js";
+import { askSafeAi } from "../../../utils/safeAi.js";
+import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../../utils/alphaQuota.js";
 import {
 	cleanAiPollJson,
 	getQuizPollAnswer,
@@ -19,20 +20,28 @@ const claimCooldown = (groupJid, senderJid, command) => {
 	return true;
 };
 
-const aiPoll = async ({ groupJid, senderJid, request, quiz = false }) => {
-	if (!await useSafeAiBudget(groupJid, senderJid).catch(() => true)) throw new Error("Alpha's AI budget is cooling down. Try again later.");
-	const { text } = await askSafeAi({
-		groupJid,
-		systemPrompt: quiz
-			? "Create one safe WhatsApp quiz poll. Return ONLY valid JSON with keys question, options, selectableCount, correctIndex. Use exactly 4 short options. selectableCount must be 1. correctIndex must be a zero-based integer. Avoid unsafe, sexual, humiliating, discriminatory, political-persuasion, medical-diagnosis or private-data questions."
-			: "Create one useful WhatsApp poll from the user's request. Return ONLY valid JSON with keys question, options, selectableCount. Use 2 to 6 concise options, selectableCount 1 unless the request clearly needs multiple selections. Do not invent personal facts. Keep it safe and suitable for a mixed group.",
-		messages: [{ role: "user", content: String(request || "").slice(0, 1200) }],
-	});
-	return cleanAiPollJson(text);
+const aiPoll = async ({ groupJid, senderJid, request, quiz = false, quotaInput }) => {
+	const quotaClaim = await claimAlphaGroupAiUsage(quotaInput);
+	if (!quotaClaim.allowed) {
+		throw new Error(`daily Alpha AI limit reached (${quotaClaim.used}/${quotaClaim.limit})`);
+	}
+	try {
+		const { text } = await askSafeAi({
+			groupJid,
+			systemPrompt: quiz
+				? "Create one safe WhatsApp quiz poll. Return ONLY valid JSON with keys question, options, selectableCount, correctIndex. Use exactly 4 short options. selectableCount must be 1. correctIndex must be a zero-based integer. Avoid unsafe, sexual, humiliating, discriminatory, political-persuasion, medical-diagnosis or private-data questions."
+				: "Create one useful WhatsApp poll from the user's request. Return ONLY valid JSON with keys question, options, selectableCount. Use 2 to 6 concise options, selectableCount 1 unless the request clearly needs multiple selections. Do not invent personal facts. Keep it safe and suitable for a mixed group.",
+			messages: [{ role: "user", content: String(request || "").slice(0, 1200) }],
+		});
+		return cleanAiPollJson(text);
+	} catch (error) {
+		await refundAlphaGroupAiUsage(quotaClaim).catch(() => {});
+		throw error;
+	}
 };
 
 const handler = async (_sock, msg, from, args, info) => {
-	const { command, prefix = "$", senderJid, sendMessageWTyping } = info;
+	const { command, prefix = "$", senderJid, isOwner, groupMetadata, sendMessageWTyping } = info;
 	const reply = (text) => sendMessageWTyping(from, { text }, { quoted: msg });
 	const sendPoll = (poll) => sendMessageWTyping(from, { poll }, { quoted: msg });
 
@@ -85,7 +94,19 @@ const handler = async (_sock, msg, from, args, info) => {
 		const request = args.join(" ").trim();
 		if (!request) return reply(`❌ Use: ${prefix}${command} <what the group should vote on>`);
 		try {
-			return sendPoll(await aiPoll({ groupJid: from, senderJid, request }));
+			return sendPoll(await aiPoll({
+				groupJid: from,
+				senderJid,
+				request,
+				quotaInput: {
+					groupJid: from,
+					senderJid,
+					memberName: msg?.pushName || "",
+					groupMetadata,
+					isOwner,
+					candidates: [msg?.key?.participantPn, msg?.key?.participantAlt],
+				},
+			}));
 		} catch (error) {
 			console.warn("[ALPHA_POLL]", error.message);
 			return reply(`❌ Alpha couldn't build that poll: ${error.message}`);
@@ -95,7 +116,20 @@ const handler = async (_sock, msg, from, args, info) => {
 	if (command === "quizpoll") {
 		const request = args.join(" ").trim() || "general knowledge";
 		try {
-			const poll = await aiPoll({ groupJid: from, senderJid, request, quiz: true });
+			const poll = await aiPoll({
+				groupJid: from,
+				senderJid,
+				request,
+				quiz: true,
+				quotaInput: {
+					groupJid: from,
+					senderJid,
+					memberName: msg?.pushName || "",
+					groupMetadata,
+					isOwner,
+					candidates: [msg?.key?.participantPn, msg?.key?.participantAlt],
+				},
+			});
 			rememberQuizPoll(from, poll, poll.correctIndex);
 			return sendPoll({ name: poll.name, values: poll.values, selectableCount: 1 });
 		} catch (error) {
