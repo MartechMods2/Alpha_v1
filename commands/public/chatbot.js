@@ -320,68 +320,21 @@ async function chat(
 
 Group Name: ${data?.grpName || "Unknown"}
 
-Group ID: ${data?._id || "Unknown"}
-
-Group Description: ${data?.desc || "No description"}
+Group Description: ${String(data?.desc || "No description").slice(0, 800)}
 
 Total Messages: ${data?.totalMsgCount || 0}
 
-Bot Status: ${
-				data?.isBotOn
-					? "Active"
-					: "Inactive"
-			}
-
-ChatBot Status: ${
-				data?.isChatBotOn
-					? "Active"
-					: "Inactive"
-			}
-
-Total Members: ${
-				data?.members?.length || 0
-			}
+Total Members: ${data?.members?.length || 0}
 
 Group Admins: ${admins}
-
-Blocked Commands: ${
-				data?.cmdBlocked?.join(", ") ||
-				"None"
-			}
-
-Welcome Message Enabled: ${
-				data?.welcome?.status
-					? "Yes"
-					: "No"
-			}
-
-Member Warnings: ${
-				JSON.stringify(
-					data?.memberWarnCount
-				) || "None"
-			}
 
 --- Current User Information ---
 
 User Name: ${updateName || "Unknown"}
 
-User ID: ${updateId || "Unknown"}
+User Total Messages: ${memberData?.totalmsg || 0}
 
-User WhatsApp JID: ${
-				senderJid || "Unknown"
-			}
-
-User Total Messages: ${
-				memberData?.totalmsg || 0
-			}
-
-Is Admin: ${
-				groupAdmins?.includes(
-					senderJid
-				)
-					? "Yes"
-					: "No"
-			}
+Is Admin: ${groupAdmins?.includes(senderJid) ? "Yes" : "No"}
 
 -------------------------
 `;
@@ -797,7 +750,8 @@ const handler = async (
 
 								return `${name}${replyPart}: ${text}`;
 							})
-							.join("\n");
+							.join("\n")
+							.slice(-6000);
 				}
 			} catch (contextError) {
 				console.error(
