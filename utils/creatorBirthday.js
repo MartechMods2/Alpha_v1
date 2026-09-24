@@ -1,5 +1,3 @@
-import { bot } from "../db/botData.js";
-
 const fallbackClaims = new Set();
 
 const configuredBirthday = () => {
@@ -85,6 +83,7 @@ export const claimCreatorBirthdayGreeting = async ({ scope = "global", date = ne
 
   const key = `${creatorBirthdayDateKey(date)}|${String(scope || "global").slice(0, 180)}`;
   try {
+    const { bot } = await import("../db/botData.js");
     const result = await bot.updateOne(
       { _id: "bot", creatorBirthdayGreetings: { $ne: key } },
       {
