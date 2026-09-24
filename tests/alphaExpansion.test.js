@@ -7,10 +7,10 @@ import {
 } from "../utils/alphaFeatureCatalog.js";
 import { PASSIVE_OSINT_COMMANDS } from "../commands/public/passiveOsintPack.js";
 
-test("Alpha expansion exposes at least 160 distinct AI workflow commands", () => {
-	assert.equal(AI_FEATURE_COMMANDS.length, 160);
+test("Alpha expansion exposes at least 280 distinct AI workflow commands", () => {
+	assert.ok(AI_FEATURE_COMMANDS.length >= 280);
 	assert.equal(new Set(AI_FEATURE_COMMANDS).size, AI_FEATURE_COMMANDS.length);
-	assert.equal(Object.keys(AI_FEATURE_CATEGORIES).length, 16);
+	assert.ok(Object.keys(AI_FEATURE_CATEGORIES).length >= 28);
 	for (const [category, commands] of Object.entries(AI_FEATURE_CATEGORIES)) {
 		assert.equal(commands.length, 10, `${category} should contain ten focused tools`);
 		for (const command of commands) {
