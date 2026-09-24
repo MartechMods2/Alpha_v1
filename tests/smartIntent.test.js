@@ -30,3 +30,13 @@ test("group-only intents do not activate in private messages",()=>{
 	assert.ok(SMART_INTENT_EXAMPLES.length>=10);
 	assert.ok(smartIntentSummary().utilities.length>=7);
 });
+
+
+test("smart intents recognise Alpha Fun Lab requests in groups",()=>{
+	assert.equal(detectSmartIntent("give me an aura card",{isGroup:true}).command,"aurafarm");
+	assert.equal(detectSmartIntent("give me a build quest",{isGroup:true}).command,"buildquest");
+	assert.equal(detectSmartIntent("what is my tech prophecy",{isGroup:true}).command,"techprophecy");
+	assert.equal(detectSmartIntent("show me my mystery drop",{isGroup:true}).command,"mysterydrop");
+	assert.equal(detectSmartIntent("turn ship Alpha today into vibe code",{isGroup:true}).command,"vibecode");
+	assert.equal(detectSmartIntent("give me an aura card",{isGroup:false}),null);
+});
