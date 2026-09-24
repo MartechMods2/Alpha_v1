@@ -1,37 +1,82 @@
 import { getMemberPreferences, setMemberPreferences } from "../../db/members.js";
 
-const tones = ["auto", "friendly", "funny", "professional", "gentle", "concise"];
+const tones = ["auto", "friendly", "funny", "professional", "gentle", "concise", "chill", "energetic", "witty", "mentor", "teacher", "developer", "storyteller", "direct", "polished"];
 const pronouns = ["neutral", "he", "she", "they"];
+const lengths = ["auto", "short", "balanced", "detailed"];
+const formats = ["auto", "paragraphs", "bullets", "steps"];
+const emojis = ["low", "normal", "high"];
+const expertise = ["auto", "beginner", "intermediate", "expert"];
+const answerModes = ["auto", "direct", "coach", "tutor", "analyst", "developer", "creator"];
 
-const handler = async (sock, msg, from, args, info) => {
+const showProfile = (pref, prefix) => [
+	"🎭 *Your Alpha Response Profile*",
+	"",
+	`Tone: *${pref.tone}*`,
+	`Length: *${pref.replyLength}*`,
+	`Format: *${pref.replyFormat}*`,
+	`Emoji level: *${pref.emojiLevel}*`,
+	`Expertise: *${pref.expertise}*`,
+	`Answer mode: *${pref.answerMode}*`,
+	`Pronouns: *${pref.pronouns}*`,
+	`Voice: *${pref.voiceProfile}*`,
+	`Text style: *${pref.textStyle}*`,
+	"",
+	`Try: \`${prefix}mymode developer\` · \`${prefix}mylength short\` · \`${prefix}myformat steps\``,
+].join("\n");
+
+const handler = async (_sock, msg, from, args, info) => {
 	const reply = (text) => info.sendMessageWTyping(from, { text }, { quoted: msg });
 	const command = info.command;
-	if (["mystyle", "mystatus"].includes(command) && !args.length) {
-		const pref = await getMemberPreferences(info.senderJid);
-		return reply(`🎭 *Your Alpha Style*\nTone: *${pref.tone}*\nPronouns: *${pref.pronouns}*\n\nUse \`${info.prefix}mytone friendly\` or \`${info.prefix}mypronouns they\`.`);
+	const prefix = info.prefix || process.env.PREFIX || "$";
+
+	if (["mystyle", "mystatus", "myalpha"].includes(command) && !args.length) {
+		return reply(showProfile(await getMemberPreferences(info.senderJid), prefix));
 	}
+
 	if (command === "resetstyle") {
-		await setMemberPreferences(info.senderJid, { tone: "auto", pronouns: "neutral" });
-		return reply("✅ Alpha will use a natural tone and gender-neutral language for you.");
+		const pref = await setMemberPreferences(info.senderJid, {
+			tone: "auto",
+			pronouns: "neutral",
+			replyLength: "auto",
+			replyFormat: "auto",
+			emojiLevel: "normal",
+			expertise: "auto",
+			answerMode: "auto",
+		});
+		return reply(`✅ Alpha response preferences reset.\n\n${showProfile(pref, prefix)}`);
 	}
-	if (command === "mytone") {
-		const tone = String(args[0] || "").toLowerCase();
-		if (!tones.includes(tone)) return reply(`🎭 Choose: ${tones.join(", ")}.`);
-		await setMemberPreferences(info.senderJid, { tone });
-		return reply(`✅ Your Alpha reply tone is now *${tone}*.`);
-	}
-	if (command === "mypronouns") {
-		const pronoun = String(args[0] || "").toLowerCase();
-		if (!pronouns.includes(pronoun)) return reply(`👤 Choose: ${pronouns.join(", ")}.`);
-		await setMemberPreferences(info.senderJid, { pronouns: pronoun });
-		return reply(`✅ Your pronoun preference is now *${pronoun}*.`);
-	}
-	return reply(`🎭 Use \`${info.prefix}mytone friendly\`, \`${info.prefix}mypronouns neutral\`, or \`${info.prefix}resetstyle\`.`);
+
+	const setChoice = async ({ field, value, allowed, label }) => {
+		if (!allowed.includes(value)) return reply(`🎛️ Choose ${label}: ${allowed.join(", ")}.`);
+		const pref = await setMemberPreferences(info.senderJid, { [field]: value });
+		return reply(`✅ Alpha ${label} set to *${pref[field]}*.`);
+	};
+
+	if (command === "mytone") return setChoice({ field: "tone", value: String(args[0] || "").toLowerCase(), allowed: tones, label: "tone" });
+	if (command === "mypronouns") return setChoice({ field: "pronouns", value: String(args[0] || "").toLowerCase(), allowed: pronouns, label: "pronouns" });
+	if (command === "mylength") return setChoice({ field: "replyLength", value: String(args[0] || "").toLowerCase(), allowed: lengths, label: "reply length" });
+	if (command === "myformat") return setChoice({ field: "replyFormat", value: String(args[0] || "").toLowerCase(), allowed: formats, label: "reply format" });
+	if (command === "myemoji") return setChoice({ field: "emojiLevel", value: String(args[0] || "").toLowerCase(), allowed: emojis, label: "emoji level" });
+	if (command === "myexpertise") return setChoice({ field: "expertise", value: String(args[0] || "").toLowerCase(), allowed: expertise, label: "expertise level" });
+	if (command === "mymode") return setChoice({ field: "answerMode", value: String(args[0] || "").toLowerCase(), allowed: answerModes, label: "answer mode" });
+
+	return reply([
+		"🎭 *Alpha Response Controls*",
+		"",
+		`${prefix}mytone <${tones.join("|")}>`,
+		`${prefix}mylength <${lengths.join("|")}>`,
+		`${prefix}myformat <${formats.join("|")}>`,
+		`${prefix}myemoji <${emojis.join("|")}>`,
+		`${prefix}myexpertise <${expertise.join("|")}>`,
+		`${prefix}mymode <${answerModes.join("|")}>`,
+		`${prefix}mypronouns <${pronouns.join("|")}>`,
+		`${prefix}resetstyle`,
+	].join("\n"));
 };
 
 export default () => ({
-	cmd: ["mystyle", "mystatus", "mytone", "mypronouns", "resetstyle"],
-	desc: "Choose how Alpha speaks to you without guessing gender",
-	usage: "mytone friendly | mypronouns they | resetstyle",
+	cmd: ["mystyle", "mystatus", "myalpha", "mytone", "mypronouns", "mylength", "myformat", "myemoji", "myexpertise", "mymode", "resetstyle"],
+	desc: "Personalize Alpha's tone, depth, format, expertise and response mode",
+	usage: "myalpha | mymode developer | mylength short | myformat steps | myemoji low",
 	handler,
 });
