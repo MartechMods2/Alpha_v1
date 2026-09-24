@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getSafeSettings } from "../db/safePackData.js";
 import { redactPii } from "./safePack.js";
+import { getCreatorBirthdayKnowledge } from "./creatorBirthday.js";
 
 const PROVIDERS = Object.freeze([
   "groq",
@@ -38,7 +39,7 @@ const metrics = {
 };
 
 const creatorName = String(process.env.ALPHA_CREATOR_NAME || "Martech").trim() || "Martech";
-const creatorIdentity = `Alpha identity rule: Alpha was created by ${creatorName}. If a user directly asks who created Alpha, who Alpha belongs to, or who its creator/moderator is, answer ${creatorName}. Do not repeatedly mention the creator's name in unrelated replies, generated game prompts, summaries, or ordinary conversation.`;
+const creatorIdentity = () => `Alpha identity rule: Alpha was created by ${creatorName}. If a user directly asks who created Alpha, who Alpha belongs to, or who its creator/moderator is, answer ${creatorName}. Do not repeatedly mention the creator's name in unrelated replies, generated game prompts, summaries, or ordinary conversation. ${getCreatorBirthdayKnowledge()}`;
 
 const clamp = (value, min, max, fallback) => {
   const number = Number(value);
@@ -550,7 +551,7 @@ export const askSafeAi = async ({ groupJid = "direct", systemPrompt, messages })
     ...item,
     content: settings.aiPiiRedaction === false ? String(item.content) : redactPii(item.content),
   }));
-  const effectiveSystemPrompt = `${String(systemPrompt || "").trim()}\n\n${creatorIdentity}`.trim();
+  const effectiveSystemPrompt = `${String(systemPrompt || "").trim()}\n\n${creatorIdentity()}`.trim();
 
   metrics.requests += 1;
   const errors = [];

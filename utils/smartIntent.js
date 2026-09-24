@@ -10,6 +10,7 @@ export const SMART_INTENT_EXAMPLES = [
 	"weather in Lagos", "calculate 25 * 8", "translate to French good morning",
 	"remind me in 2h to call Tunde", "search Wikipedia for Nigerian history", "show my rank",
 	"help us decide the best day for game night", "start would you rather",
+	"give me an aura card", "give me a build quest", "what is my tech prophecy",
 ];
 
 export const detectSmartIntent = (rawText, { isGroup = false } = {}) => {
@@ -53,6 +54,24 @@ export const detectSmartIntent = (rawText, { isGroup = false } = {}) => {
 	if (/^(?:show|open|send)\s+(?:me\s+)?(?:the\s+)?(?:help|commands|menu)$/i.test(text)) return { command: "smarthelp", args: [], label: "help" };
 
 	if (isGroup) {
+		if (/^(?:give|show|make|get)\s+(?:me\s+)?(?:an?\s+)?aura(?:\s+farming)?\s+card$/i.test(text)) {
+			return { command: "aurafarm", args: [], label: "Aura Farming card", groupOnly: true };
+		}
+		if (/^(?:give|show|get)\s+(?:me\s+)?(?:my\s+)?glitch\s+card$/i.test(text)) {
+			return { command: "glitchcard", args: [], label: "glitch card", groupOnly: true };
+		}
+		if (/^(?:give|show|get)\s+(?:me\s+)?(?:a\s+)?build\s+quest$/i.test(text)) {
+			return { command: "buildquest", args: [], label: "build quest", groupOnly: true };
+		}
+		if (/^(?:what(?:'s|\s+is)\s+)?(?:my\s+)?tech\s+prophecy$/i.test(text)) {
+			return { command: "techprophecy", args: [], label: "tech prophecy", groupOnly: true };
+		}
+		if (/^(?:give|show|get)\s+(?:me\s+)?(?:my\s+)?mystery\s+drop$/i.test(text)) {
+			return { command: "mysterydrop", args: [], label: "mystery drop", groupOnly: true };
+		}
+		match = text.match(/^(?:make|turn)\s+(.+?)\s+(?:into\s+)?vibe\s+code$/i);
+		if (match) return { command: "vibecode", args: clean(match[1]).split(/\s+/), label: "vibe code", groupOnly: true };
+
 		match = text.match(/^(?:start|play)\s+(trivia|math\s+game|scramble|riddle|tic\s*tac\s*toe|connect\s*four|would\s+you\s+rather|wyr|truth|dare|icebreaker)$/i);
 		if (match) {
 			const routes = { trivia:"trivia", "math game":"mathgame", scramble:"scramble", riddle:"riddle", "tic tac toe":"ttt", "connect four":"connect4", "would you rather":"wyr", wyr:"wyr", truth:"truth", dare:"dare", icebreaker:"icebreaker" };
@@ -78,5 +97,5 @@ export const detectSmartIntent = (rawText, { isGroup = false } = {}) => {
 export const smartIntentSummary = () => ({
 	media: ["music", "lyrics", "music videos", "videos", "GIFs", "images", "sound effects"],
 	utilities: ["weather", "calculation", "translation", "reminders", "Wikipedia", "web search", "rank"],
-	groups: ["native polls", "AI decision polls", "Would You Rather", "truth/dare", "icebreakers", "trivia", "math games", "scramble", "riddles", "tic-tac-toe", "Connect Four", "leaderboards"],
+	groups: ["native polls", "AI decision polls", "Aura Farming cards", "build quests", "tech prophecies", "mystery drops", "Would You Rather", "truth/dare", "icebreakers", "trivia", "math games", "scramble", "riddles", "tic-tac-toe", "Connect Four", "leaderboards"],
 });

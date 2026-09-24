@@ -10,6 +10,7 @@ import { getChatMessages } from "../../utils/chatLogger.js";
 import { getMediaRuntimeConfig } from "../../utils/mediaJobs.js";
 import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../utils/alphaQuota.js";
 import { notifyAlphaOwnerFailure } from "../../utils/alphaErrorReporter.js";
+import { buildCreatorBirthdayGreeting, claimCreatorBirthdayGreeting, isCreatorBirthdayToday } from "../../utils/creatorBirthday.js";
 import { askSafeAi, hasConfiguredAiProvider } from "../../utils/safeAi.js";
 import {
 	ALPHA_TRUST_BOUNDARY,
@@ -498,11 +499,26 @@ const handler = async (
 	const {
 		sendMessageWTyping,
 		isGroup,
+		isOwner,
 		evv,
 		extendedMessageOriginal,
 	} = msgInfoObj;
 	if (!getMediaRuntimeConfig().alphaGlobalEnabled) {
 		return sendMessageWTyping(from, { text: "⚡ Alpha is temporarily disabled by the administrator." }, { quoted: msg });
+	}
+
+	// Creator birthday is reactive only: no reminders, countdowns or scheduled sends.
+	// On September 25, Alpha shows the special greeting once per chat when the
+	// creator directly uses Alpha.
+	if (isOwner && isCreatorBirthdayToday()) {
+		try {
+			const shouldGreet = await claimCreatorBirthdayGreeting({ scope: from || "direct" });
+			if (shouldGreet) {
+				await sendMessageWTyping(from, { text: buildCreatorBirthdayGreeting() }, { quoted: msg });
+			}
+		} catch (birthdayError) {
+			console.warn("[CREATOR_BIRTHDAY] Greeting check failed:", birthdayError.message);
+		}
 	}
 
 	// ---------------------------------------------------------------------------------------------
