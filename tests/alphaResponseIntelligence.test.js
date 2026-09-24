@@ -27,10 +27,10 @@ test("Alpha adaptive response engine recognizes troubleshooting and writing inte
 });
 
 test("Alpha output budget adapts to reply depth", () => {
-  assert.equal(alphaResponseTokenBudget({ prompt: "hi", directiveMode: "brief", preferences: {} }), 320);
-  assert.equal(alphaResponseTokenBudget({ prompt: "x", directiveMode: "deep", preferences: {} }), 1400);
-  assert.equal(alphaResponseTokenBudget({ prompt: "x", directiveMode: "auto", preferences: { replyLength: "detailed" } }), 1400);
-  assert.equal(alphaResponseTokenBudget({ prompt: "x", directiveMode: "auto", preferences: { replyLength: "short" } }), 320);
+  assert.equal(alphaResponseTokenBudget({ prompt: "hi", directiveMode: "brief", preferences: {} }), 480);
+  assert.equal(alphaResponseTokenBudget({ prompt: "x", directiveMode: "deep", preferences: {} }), 1500);
+  assert.equal(alphaResponseTokenBudget({ prompt: "x", directiveMode: "auto", preferences: { replyLength: "detailed" } }), 1500);
+  assert.equal(alphaResponseTokenBudget({ prompt: "x", directiveMode: "auto", preferences: { replyLength: "short" } }), 480);
 });
 
 test("Alpha response cleanup removes filler, headings and duplicate long lines", () => {
