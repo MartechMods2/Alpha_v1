@@ -208,14 +208,7 @@ export const speakerAwareHistory = (conversationHistory = []) =>
 
 export const cleanAlphaResponse = (value, assistantName = "Alpha") => {
   let text = String(value || "").replace(/\u0000/g, "").trim();
-  const escaped = String(assistantName || "Alpha").replace(/[.*+?^${}()|[\]\\]/g, "\\export const cleanAlphaResponse = (value, assistantName = "Alpha") => {
-  let text = String(value || "").replace(/\u0000/g, "").trim();
   const escaped = String(assistantName || "Alpha").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  text = text.replace(new RegExp(`^(?:⚡\\s*)?${escaped}(?:\\s*⚡)?\\s*[:\\-]?\\s*`, "i"), "");
-  text = text.replace(/\n{4,}/g, "\n\n\n").trim();
-  return text.slice(0, 6000);
-};
-");
   text = text.replace(new RegExp(`^(?:⚡\\s*)?${escaped}(?:\\s*⚡)?\\s*[:\\-]?\\s*`, "i"), "");
   text = text.replace(/^(?:sure|absolutely|of course|certainly)[!,.]?\s+(?=[A-Z0-9*])/i, "");
   text = text.replace(/^#{1,4}\s+(.+)$/gm, "*$1*");
