@@ -45,7 +45,7 @@ const generalHelp = (prefix) => {
 	const lines = Object.entries(AI_FEATURE_CATEGORIES).map(([category, commands]) =>
 		`• *${category.replace(/_/g, " ")}* — ${commands.length} tools — ${prefix}aifeatures ${category}`,
 	);
-	return `🧠 *Alpha 160 AI Workflow Pack*\n\n${lines.join("\n")}\n\nExamples:\n${prefix}aisummarize <text>\n${prefix}aimeetingminutes <notes>\n${prefix}ailessonplan Primary 4 fractions\n${prefix}aibusinesscase <idea>\n${prefix}aieditorialreview <text>\n\nYou can also reply to a message with a command such as ${prefix}aisummarize.`;
+	return `🧠 *Alpha ${AI_FEATURE_COMMANDS.length} AI Workflow Pack*\n\n${lines.join("\n")}\n\nExamples:\n${prefix}aisummarize <text>\n${prefix}aibugtriage <error>\n${prefix}aimvpplan <idea>\n${prefix}aistudysession <topic + time>\n${prefix}aivideooutline <topic>\n${prefix}aifeedbackanalysis <feedback>\n\nYou can also reply to a message with a command such as ${prefix}aisummarize.`;
 };
 
 const handler = async (sock, msg, from, args, info) => {
@@ -117,7 +117,7 @@ const handler = async (sock, msg, from, args, info) => {
 
 export default () => ({
 	cmd: ["aifeatures", "aitools", "aiworkflows", ...AI_FEATURE_COMMANDS],
-	desc: "160 practical Alpha AI workflows for writing, work, school, publishing, business, planning and creativity",
+	desc: `${AI_FEATURE_COMMANDS.length} practical Alpha AI workflows across writing, work, study, creator tools, software, community and thinking`,
 	usage: "aifeatures | aifeatures publishing | aisummarize <text> | reply + aisummarize",
 	handler,
 });
