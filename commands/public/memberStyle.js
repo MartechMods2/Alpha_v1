@@ -7,6 +7,12 @@ const formats = ["auto", "paragraphs", "bullets", "steps"];
 const emojis = ["low", "normal", "high"];
 const expertise = ["auto", "beginner", "intermediate", "expert"];
 const answerModes = ["auto", "direct", "coach", "tutor", "analyst", "developer", "creator"];
+const inlineModes = [
+	"brief", "concise", "deep", "steps", "eli5", "beginner", "expert", "formal",
+	"direct", "coach", "tutor", "analyst", "developer", "compare", "brainstorm",
+	"critique", "checklist", "example", "quiz", "creative", "whatsapp", "rewrite",
+	"explain", "action",
+];
 
 const showProfile = (pref, prefix) => [
 	"🎭 *Your Alpha Response Profile*",
@@ -31,6 +37,20 @@ const handler = async (_sock, msg, from, args, info) => {
 
 	if (["mystyle", "mystatus", "myalpha"].includes(command) && !args.length) {
 		return reply(showProfile(await getMemberPreferences(info.senderJid), prefix));
+	}
+	if (["alphamodes", "responsemodes"].includes(command)) {
+		return reply([
+			"🧠 *Alpha Inline Response Modes*",
+			"",
+			inlineModes.map((mode) => `*${mode}:*`).join(" · "),
+			"",
+			"Put a mode before your request, for example:",
+			`${prefix}alpha developer: review this error`,
+			`${prefix}alpha brief: explain APIs`,
+			`${prefix}alpha compare: option A vs option B`,
+			"",
+			`For persistent preferences use *${prefix}myalpha*.`,
+		].join("\n"));
 	}
 
 	if (command === "resetstyle") {
@@ -75,8 +95,8 @@ const handler = async (_sock, msg, from, args, info) => {
 };
 
 export default () => ({
-	cmd: ["mystyle", "mystatus", "myalpha", "mytone", "mypronouns", "mylength", "myformat", "myemoji", "myexpertise", "mymode", "resetstyle"],
+	cmd: ["mystyle", "mystatus", "myalpha", "alphamodes", "responsemodes", "mytone", "mypronouns", "mylength", "myformat", "myemoji", "myexpertise", "mymode", "resetstyle"],
 	desc: "Personalize Alpha's tone, depth, format, expertise and response mode",
-	usage: "myalpha | mymode developer | mylength short | myformat steps | myemoji low",
+	usage: "myalpha | alphamodes | mymode developer | mylength short | myformat steps | myemoji low",
 	handler,
 });
