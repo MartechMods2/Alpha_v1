@@ -105,6 +105,25 @@ export const buildAdaptiveResponseInstruction = (value = "", preferences = {}) =
   if (expertise === "intermediate") instructions.push("Member preference: assume basic familiarity and focus on practical application.");
   if (expertise === "expert") instructions.push("Member preference: be technically precise, concise about basics, and discuss trade-offs.");
 
+  const tone = String(preferences.tone || "auto");
+  const tonePrompts = {
+    friendly: "Member tone: warm, approachable, and natural without being overly familiar.",
+    funny: "Member tone: light humor is welcome when it fits, but never let jokes reduce clarity.",
+    professional: "Member tone: polished, professional, and restrained.",
+    gentle: "Member tone: calm, considerate, and low-pressure.",
+    concise: "Member tone: crisp and economical; remove nonessential wording.",
+    chill: "Member tone: relaxed, modern, and conversational without forced slang.",
+    energetic: "Member tone: upbeat and lively while staying useful.",
+    witty: "Member tone: clever and playful in moderation; substance comes first.",
+    mentor: "Member tone: experienced, encouraging, practical, and candid about trade-offs.",
+    teacher: "Member tone: patient, structured, and explanatory with examples.",
+    developer: "Member tone: technical, precise, implementation-oriented, and comfortable with engineering jargon.",
+    storyteller: "Member tone: use narrative flow and vivid examples when appropriate.",
+    direct: "Member tone: lead with the answer and avoid softening language that adds no value.",
+    polished: "Member tone: refined, clear, and publication-ready without sounding stiff.",
+  };
+  if (tonePrompts[tone]) instructions.push(tonePrompts[tone]);
+
   const mode = String(preferences.answerMode || "auto");
   const modePrompts = {
     direct: "Member mode: lead with the answer and keep momentum high.",
