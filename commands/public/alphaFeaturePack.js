@@ -3,6 +3,7 @@ import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../utils/alp
 import { alphaPublicFailureMessage, notifyAlphaOwnerFailure } from "../../utils/alphaErrorReporter.js";
 import { getMemberPreferences } from "../../db/members.js";
 import { applyAlphaTextStyle } from "../../utils/alphaPresentation.js";
+import { alphaResponseTokenBudget, buildAdaptiveResponseInstruction } from "../../utils/alphaBrain.js";
 import {
 	AI_FEATURE_CATEGORIES,
 	AI_FEATURE_COMMANDS,
@@ -45,7 +46,7 @@ const generalHelp = (prefix) => {
 	const lines = Object.entries(AI_FEATURE_CATEGORIES).map(([category, commands]) =>
 		`• *${category.replace(/_/g, " ")}* — ${commands.length} tools — ${prefix}aifeatures ${category}`,
 	);
-	return `🧠 *Alpha 160 AI Workflow Pack*\n\n${lines.join("\n")}\n\nExamples:\n${prefix}aisummarize <text>\n${prefix}aimeetingminutes <notes>\n${prefix}ailessonplan Primary 4 fractions\n${prefix}aibusinesscase <idea>\n${prefix}aieditorialreview <text>\n\nYou can also reply to a message with a command such as ${prefix}aisummarize.`;
+	return `🧠 *Alpha ${AI_FEATURE_COMMANDS.length} AI Workflow Pack*\n\n${lines.join("\n")}\n\nExamples:\n${prefix}aisummarize <text>\n${prefix}aibugtriage <error>\n${prefix}aimvpplan <idea>\n${prefix}aistudysession <topic + time>\n${prefix}aivideooutline <topic>\n${prefix}aifeedbackanalysis <feedback>\n\nYou can also reply to a message with a command such as ${prefix}aisummarize.`;
 };
 
 const handler = async (sock, msg, from, args, info) => {
@@ -86,7 +87,17 @@ const handler = async (sock, msg, from, args, info) => {
 		return reply("⏳ Your Alpha AI workflow limit for today has been reached. Try again later.");
 	}
 
-	const systemPrompt = `You are Alpha's focused workflow engine.\nTask: ${feature.instruction}\nCategory: ${feature.category}.\nReturn only a useful answer for the user's supplied material. Be accurate, practical and concise enough for WhatsApp. Do not invent facts, citations, prices, standards, people, dates or credentials. Clearly mark assumptions. Do not use markdown headings with #; use short labels, bullets and *single-asterisk* emphasis when useful. Respect privacy. For security-related material, stay defensive and authorized: do not provide phishing, credential theft, malware, evasion, destructive actions, or instructions to intrude into systems.`;
+	const prefs = await getMemberPreferences(senderJid).catch(() => ({
+		textStyle: "normal",
+		tone: "auto",
+		replyLength: "auto",
+		replyFormat: "auto",
+		emojiLevel: "normal",
+		expertise: "auto",
+		answerMode: "auto",
+	}));
+	const adaptiveInstruction = buildAdaptiveResponseInstruction(input, prefs);
+	const systemPrompt = `You are Alpha's focused workflow engine.\nTask: ${feature.instruction}\nCategory: ${feature.category}.\n${adaptiveInstruction}\nReturn only a useful answer for the user's supplied material. Be accurate, practical and concise enough for WhatsApp. Do not invent facts, citations, prices, standards, people, dates or credentials. Clearly mark assumptions. Do not use markdown headings with #; use short labels, bullets and *single-asterisk* emphasis when useful. Respect privacy. For security-related material, stay defensive and authorized: do not provide phishing, credential theft, malware, evasion, destructive actions, or instructions to intrude into systems.`;
 
 	let providerSucceeded = false;
 	try {
@@ -94,9 +105,9 @@ const handler = async (sock, msg, from, args, info) => {
 			groupJid: isGroup ? from : "direct",
 			systemPrompt,
 			messages: [{ role: "user", content: input }],
+			maxTokens: alphaResponseTokenBudget({ prompt: input, preferences: prefs }),
 		});
 		providerSucceeded = true;
-		const prefs = await getMemberPreferences(senderJid).catch(() => ({ textStyle: "normal" }));
 		const response = text || "Alpha returned no text for that workflow.";
 		return reply(applyAlphaTextStyle(response, prefs.textStyle));
 	} catch (error) {
@@ -117,7 +128,7 @@ const handler = async (sock, msg, from, args, info) => {
 
 export default () => ({
 	cmd: ["aifeatures", "aitools", "aiworkflows", ...AI_FEATURE_COMMANDS],
-	desc: "160 practical Alpha AI workflows for writing, work, school, publishing, business, planning and creativity",
+	desc: `${AI_FEATURE_COMMANDS.length} practical Alpha AI workflows across writing, work, study, creator tools, software, community and thinking`,
 	usage: "aifeatures | aifeatures publishing | aisummarize <text> | reply + aisummarize",
 	handler,
 });

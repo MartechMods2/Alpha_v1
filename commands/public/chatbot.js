@@ -15,6 +15,8 @@ import { askSafeAi, hasConfiguredAiProvider } from "../../utils/safeAi.js";
 import {
 	ALPHA_TRUST_BOUNDARY,
 	alphaRuntimeInstruction,
+	alphaResponseTokenBudget,
+	buildAdaptiveResponseInstruction,
 	cleanAlphaResponse,
 	compactAlphaMessages,
 	extractAlphaDirective,
@@ -267,14 +269,21 @@ async function chat(
 				? groupAssistantSystemPrompt
 				: alphaSystemPrompt;
 		const preferences = await getMemberPreferences(senderJid);
-		const preferencePrompt = `The current member selected reply tone: ${preferences.tone}. Their selected pronouns: ${preferences.pronouns}. If tone is auto, adapt gently to the message. If pronouns are neutral, use their name or gender-neutral language. Never infer gender.`;
+		const preferencePrompt = [
+			`The current member selected reply tone: ${preferences.tone}.`,
+			`Pronouns: ${preferences.pronouns}. Reply length: ${preferences.replyLength}. Reply format: ${preferences.replyFormat}.`,
+			`Emoji level: ${preferences.emojiLevel}. Expertise: ${preferences.expertise}. Answer mode: ${preferences.answerMode}.`,
+			"If tone or other preferences are auto, adapt naturally to the user's request. If pronouns are neutral, use their name or gender-neutral language. Never infer gender.",
+		].join(" ");
 		const directive = extractAlphaDirective(prompt);
+		const adaptiveInstruction = buildAdaptiveResponseInstruction(directive.prompt || prompt, preferences);
 		const systemPrompt = [
 			baseSystemPrompt,
 			`The assistant display name is ${mediaConfig.alphaName}.`,
 			preferencePrompt,
 			alphaRuntimeInstruction(),
 			ALPHA_TRUST_BOUNDARY,
+			adaptiveInstruction,
 			directive.instruction,
 			mediaConfig.alphaSystemPrompt || "",
 		].filter(Boolean).join("\n").trim();
@@ -368,6 +377,11 @@ ${chatContext}
 			groupJid: isGroup ? from : "direct",
 			systemPrompt,
 			messages,
+			maxTokens: alphaResponseTokenBudget({
+				prompt: directive.prompt || prompt,
+				directiveMode: directive.mode,
+				preferences,
+			}),
 		});
 		aiProviderSucceeded = true;
 		console.log(`[ALPHA_AI] provider=${provider} latency=${meta?.latencyMs || 0}ms attempts=${meta?.attempts || 1} failover=${Boolean(meta?.failover)}`);
@@ -548,7 +562,7 @@ const handler = async (
 			from,
 			{
 				text:
-					"⚡Alpha⚡ is listening. Enter some text. You can also start with *brief:*, *deep:*, *steps:*, *eli5:*, *formal:* or *creative:*.",
+					"⚡Alpha⚡ is listening. You can also start with modes such as *brief:*, *deep:*, *steps:*, *direct:*, *coach:*, *tutor:*, *developer:*, *compare:* or *creative:*.",
 			},
 			{
 				quoted: msg,

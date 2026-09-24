@@ -545,7 +545,7 @@ const runProvider = async (
 };
 export const hasConfiguredAiProvider = () => providerOrder().some(providerConfigured);
 
-export const askSafeAi = async ({ groupJid = "direct", systemPrompt, messages }) => {
+export const askSafeAi = async ({ groupJid = "direct", systemPrompt, messages, maxTokens }) => {
   const settings = groupJid.endsWith("@g.us") ? await getSafeSettings(groupJid) : { aiPiiRedaction: true };
   const safeMessages = messages.map((item) => ({
     ...item,
@@ -562,7 +562,14 @@ export const askSafeAi = async ({ groupJid = "direct", systemPrompt, messages })
     if (!providerConfigured(name)) continue;
     triedConfigured += 1;
     try {
-      const result = await runProvider(name, effectiveSystemPrompt, safeMessages);
+      const result = await runProvider(
+        name,
+        effectiveSystemPrompt,
+        safeMessages,
+        Number.isFinite(Number(maxTokens))
+          ? { maxTokens: Math.min(clamp(maxTokens, 100, 2400, maxOutputTokens()), maxOutputTokens()) }
+          : {},
+      );
       metrics.successes += 1;
       if (errors.length > 0) metrics.failovers += 1;
       return {
