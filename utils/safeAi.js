@@ -567,7 +567,7 @@ export const askSafeAi = async ({ groupJid = "direct", systemPrompt, messages, m
         effectiveSystemPrompt,
         safeMessages,
         Number.isFinite(Number(maxTokens))
-          ? { maxTokens: clamp(maxTokens, 100, 2400, maxOutputTokens()) }
+          ? { maxTokens: Math.min(clamp(maxTokens, 100, 2400, maxOutputTokens()), maxOutputTokens()) }
           : {},
       );
       metrics.successes += 1;
