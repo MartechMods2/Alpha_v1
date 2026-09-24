@@ -141,12 +141,14 @@ export const buildAdaptiveResponseInstruction = (value = "", preferences = {}) =
 export const alphaResponseTokenBudget = ({ prompt = "", directiveMode = "auto", preferences = {} } = {}) => {
   const text = String(prompt || "");
   const pref = String(preferences.replyLength || "auto");
-  if (directiveMode === "brief" || directiveMode === "concise" || pref === "short") return 320;
-  if (directiveMode === "deep" || directiveMode === "expert" || pref === "detailed") return 1400;
-  if (directiveMode === "steps" || directiveMode === "analyst" || directiveMode === "developer") return 1000;
-  if (text.length > 1800) return 1000;
-  if (text.length > 600) return 800;
-  return 650;
+  // Keep even short replies above the reasoning-starvation zone seen with some
+  // free reasoning models, while still saving output budget on simple requests.
+  if (directiveMode === "brief" || directiveMode === "concise" || pref === "short") return 480;
+  if (directiveMode === "deep" || directiveMode === "expert" || pref === "detailed") return 1500;
+  if (directiveMode === "steps" || directiveMode === "analyst" || directiveMode === "developer") return 1100;
+  if (text.length > 1800) return 1100;
+  if (text.length > 600) return 900;
+  return 800;
 };
 
 export const alphaRuntimeInstruction = () => {
