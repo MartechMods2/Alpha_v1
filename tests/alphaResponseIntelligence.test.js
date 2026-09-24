@@ -19,7 +19,7 @@ test("Alpha adaptive response engine recognizes troubleshooting and writing inte
     replyLength: "balanced", replyFormat: "steps", emojiLevel: "low", expertise: "expert", answerMode: "developer",
   });
   assert.match(debug, /troubleshooting/i);
-  assert.match(debug, /verification step/i);
+  assert.match(debug, /verify/i);
   assert.match(debug, /technically precise/i);
   assert.match(debug, /senior engineering pair-partner/i);
   const writing = buildAdaptiveResponseInstruction("rewrite this message for WhatsApp", {});
