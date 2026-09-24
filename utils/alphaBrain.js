@@ -210,7 +210,7 @@ export const cleanAlphaResponse = (value, assistantName = "Alpha") => {
   let text = String(value || "").replace(/\u0000/g, "").trim();
   const escaped = String(assistantName || "Alpha").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   text = text.replace(new RegExp(`^(?:⚡\\s*)?${escaped}(?:\\s*⚡)?\\s*[:\\-]?\\s*`, "i"), "");
-  text = text.replace(/^(?:sure|absolutely|of course|certainly)[!,.]?\s+(?=[A-Z0-9*])/i, "");
+  text = text.replace(/^(?:sure|absolutely|of course|certainly)[!,.]?\s+(?=[A-Z0-9*#])/i, "");
   text = text.replace(/^#{1,4}\s+(.+)$/gm, "*$1*");
   const seen = new Set();
   text = text
