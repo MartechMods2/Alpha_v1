@@ -83,20 +83,18 @@ export const claimCreatorBirthdayGreeting = async ({ scope = "global", date = ne
 
   const key = `${creatorBirthdayDateKey(date)}|${String(scope || "global").slice(0, 180)}`;
   try {
-    const { bot } = await import("../db/botData.js");
-    const result = await bot.updateOne(
-      { _id: "bot", creatorBirthdayGreetings: { $ne: key } },
-      {
-        $push: {
-          creatorBirthdayGreetings: {
-            $each: [key],
-            $slice: -50,
-          },
-        },
-      },
-    );
-    return Number(result?.modifiedCount || 0) > 0;
+    const { default: mdClient } = await import("../db/client.js");
+    const events = mdClient.db("MyBotDataDB").collection("AlphaCreatorEvents");
+    await events.insertOne({
+      _id: key,
+      type: "creator-birthday-greeting",
+      dateKey: creatorBirthdayDateKey(date),
+      scope: String(scope || "global").slice(0, 180),
+      createdAt: new Date(),
+    });
+    return true;
   } catch (error) {
+    if (error?.code === 11000) return false;
     console.warn("[CREATOR_BIRTHDAY] Could not persist greeting claim:", error.message);
     if (fallbackClaims.has(key)) return false;
     fallbackClaims.add(key);
