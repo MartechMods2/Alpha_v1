@@ -3,6 +3,7 @@ import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../utils/alp
 import { alphaPublicFailureMessage, notifyAlphaOwnerFailure } from "../../utils/alphaErrorReporter.js";
 import { getMemberPreferences } from "../../db/members.js";
 import { applyAlphaTextStyle } from "../../utils/alphaPresentation.js";
+import { alphaResponseTokenBudget, buildAdaptiveResponseInstruction } from "../../utils/alphaBrain.js";
 import {
 	AI_FEATURE_CATEGORIES,
 	AI_FEATURE_COMMANDS,
@@ -86,7 +87,17 @@ const handler = async (sock, msg, from, args, info) => {
 		return reply("⏳ Your Alpha AI workflow limit for today has been reached. Try again later.");
 	}
 
-	const systemPrompt = `You are Alpha's focused workflow engine.\nTask: ${feature.instruction}\nCategory: ${feature.category}.\nReturn only a useful answer for the user's supplied material. Be accurate, practical and concise enough for WhatsApp. Do not invent facts, citations, prices, standards, people, dates or credentials. Clearly mark assumptions. Do not use markdown headings with #; use short labels, bullets and *single-asterisk* emphasis when useful. Respect privacy. For security-related material, stay defensive and authorized: do not provide phishing, credential theft, malware, evasion, destructive actions, or instructions to intrude into systems.`;
+	const prefs = await getMemberPreferences(senderJid).catch(() => ({
+		textStyle: "normal",
+		tone: "auto",
+		replyLength: "auto",
+		replyFormat: "auto",
+		emojiLevel: "normal",
+		expertise: "auto",
+		answerMode: "auto",
+	}));
+	const adaptiveInstruction = buildAdaptiveResponseInstruction(input, prefs);
+	const systemPrompt = `You are Alpha's focused workflow engine.\nTask: ${feature.instruction}\nCategory: ${feature.category}.\n${adaptiveInstruction}\nReturn only a useful answer for the user's supplied material. Be accurate, practical and concise enough for WhatsApp. Do not invent facts, citations, prices, standards, people, dates or credentials. Clearly mark assumptions. Do not use markdown headings with #; use short labels, bullets and *single-asterisk* emphasis when useful. Respect privacy. For security-related material, stay defensive and authorized: do not provide phishing, credential theft, malware, evasion, destructive actions, or instructions to intrude into systems.`;
 
 	let providerSucceeded = false;
 	try {
@@ -94,9 +105,9 @@ const handler = async (sock, msg, from, args, info) => {
 			groupJid: isGroup ? from : "direct",
 			systemPrompt,
 			messages: [{ role: "user", content: input }],
+			maxTokens: alphaResponseTokenBudget({ prompt: input, preferences: prefs }),
 		});
 		providerSucceeded = true;
-		const prefs = await getMemberPreferences(senderJid).catch(() => ({ textStyle: "normal" }));
 		const response = text || "Alpha returned no text for that workflow.";
 		return reply(applyAlphaTextStyle(response, prefs.textStyle));
 	} catch (error) {
