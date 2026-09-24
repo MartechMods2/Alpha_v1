@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { cleanFeatureText, dateKey, safeMemberName } from "../../../utils/featureSuite.js";
+import { isCreatorBirthdayToday } from "../../../utils/creatorBirthday.js";
 
 const COMMANDS = [
 	"aurafarm", "auracard",
@@ -84,7 +85,7 @@ const vibeCode = (input, name) => {
 	].join("\n");
 };
 
-const auraCard = ({ senderJid, updateName, input }) => {
+const auraCard = ({ senderJid, updateName, input, birthdayMode = false }) => {
 	const name = safeMemberName(updateName, senderJid);
 	const seed = hashNumber(`${dateKey()}|${senderJid}|aurafarm|${input}`);
 	const theme = cleanFeatureText(input, 80);
@@ -102,6 +103,7 @@ const auraCard = ({ senderJid, updateName, input }) => {
 		`🏷️ Title: *${pick(ROLES, seed, 3)}*`,
 		`✨ Passive Perk: ${pick(PERKS, seed, 7)}.`,
 		`🔧 Daily Buff: ${pick(PATCHES, seed, 11)}.`,
+		birthdayMode ? "🎂 Birthday Overclock: *CREATOR AURA x100*" : "",
 		"",
 		"_For fun only — not a real assessment._",
 	].filter(Boolean).join("\n");
@@ -173,14 +175,14 @@ const mysteryDrop = ({ senderJid, updateName }) => {
 };
 
 const handler = async (_sock, msg, from, args, info) => {
-	const { command, senderJid, updateName, sendMessageWTyping } = info;
+	const { command, senderJid, updateName, isOwner, sendMessageWTyping } = info;
 	const reply = (body) => sendMessageWTyping(from, { text: body }, { quoted: msg });
 	const input = args.join(" ");
 
 	switch (command) {
 		case "aurafarm":
 		case "auracard":
-			return reply(auraCard({ senderJid, updateName: updateName || msg?.pushName, input }));
+			return reply(auraCard({ senderJid, updateName: updateName || msg?.pushName, input, birthdayMode: Boolean(isOwner && isCreatorBirthdayToday()) }));
 		case "glitchcard":
 			return reply(glitchCard({ senderJid, updateName: updateName || msg?.pushName }));
 		case "buildquest":
