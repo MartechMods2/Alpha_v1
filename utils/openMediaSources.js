@@ -409,8 +409,8 @@ export const findWhatsAppPlayableAudio = async (query, reference = null) => {
 		}))
 		.filter((entry) => entry.score >= 0.68)
 		.sort((left, right) =>
-			Number(right.candidate.fullLength === true) - Number(left.candidate.fullLength === true)
-			|| right.score - left.score
+			right.score - left.score
+			|| Number(right.candidate.fullLength === true) - Number(left.candidate.fullLength === true)
 			|| right.priority - left.priority);
 
 	return matched[0] ? { ...matched[0].candidate, matchScore: matched[0].score } : null;
