@@ -101,6 +101,20 @@ export const selectBestAudioCandidate = (candidates, query, reference = null, mi
 	return { ...best.candidate, matchScore: best.score };
 };
 
+const numericDuration = (value) => {
+	const number = Number(value || 0);
+	return Number.isFinite(number) && number > 0 ? number : 0;
+};
+
+export const isDurationCompatible = (candidate, reference = null) => {
+	if (!candidate || candidate.fullLength !== true) return true;
+	const candidateSeconds = numericDuration(candidate.durationSec);
+	const referenceSeconds = numericDuration(reference?.duration);
+	if (!candidateSeconds || !referenceSeconds) return true;
+	const tolerance = Math.max(35, referenceSeconds * 0.22);
+	return Math.abs(candidateSeconds - referenceSeconds) <= tolerance;
+};
+
 const http = axios.create({
 	timeout: REQUEST_TIMEOUT_MS,
 	maxRedirects: 4,
@@ -162,6 +176,7 @@ export const searchAudiusTrack = async (query, apiKey = process.env.AUDIUS_API_K
 			source: "Audius",
 			license: "Artist-authorized Audius API stream; provider terms apply",
 			fullLength: true,
+			durationSec: Number(track.duration || 0) || 0,
 		}));
 	return selectBestAudioCandidate(candidates, query, null, 0.68);
 };
@@ -208,6 +223,7 @@ export const searchAudiomackTrack = async (
 			source: "Audiomack",
 			license: "Official Audiomack stream; artist and provider terms apply",
 			fullLength: true,
+			durationSec: Number(track.duration || track.duration_seconds || 0) || 0,
 		}));
 	return selectBestAudioCandidate(candidates, query, null, 0.68);
 };
@@ -228,6 +244,7 @@ export const searchJamendoTrack = async (query, clientId = process.env.JAMENDO_C
 			source: "Jamendo",
 			license: track.license_ccurl || "Jamendo licence",
 			fullLength: true,
+			durationSec: Number(track.duration || 0) || 0,
 		}));
 	return selectBestAudioCandidate(candidates, query, null, 0.72);
 };
@@ -391,7 +408,11 @@ export const searchOfficialYouTubeVideo = async (query) => {
 	};
 };
 
-export const findWhatsAppPlayableAudio = async (query, reference = null) => {
+export const findWhatsAppPlayableAudio = async (
+	query,
+	reference = null,
+	{ requireFullLength = false } = {},
+) => {
 	const providerResults = await Promise.all([
 		searchAudiusTrack(query).catch(() => null),
 		searchAudiomackTrack(query).catch(() => null),
@@ -401,11 +422,13 @@ export const findWhatsAppPlayableAudio = async (query, reference = null) => {
 		searchArchiveMedia(query, "audio").catch(() => null),
 	]);
 
-	// Re-score every provider against the requested track and the official-video
-	// metadata. This prevents "a valid audio file" from being mistaken for the
-	// requested song merely because a provider returned it first.
+	// Re-score every provider against both the requested track and the official
+	// YouTube metadata. playy can additionally require a genuinely full-length
+	// source so an Apple/Deezer preview is never presented as the whole song.
 	const matched = providerResults
 		.filter(Boolean)
+		.filter((candidate) => !requireFullLength || candidate.fullLength === true)
+		.filter((candidate) => isDurationCompatible(candidate, reference))
 		.map((candidate) => ({
 			candidate,
 			score: scoreAudioCandidate(candidate, query, reference),
