@@ -162,6 +162,7 @@ export const searchAudiusTrack = async (query, apiKey = process.env.AUDIUS_API_K
 			source: "Audius",
 			license: "Artist-authorized Audius API stream; provider terms apply",
 			fullLength: true,
+			duration: Number(track.duration || 0),
 		}));
 	return selectBestAudioCandidate(candidates, query, null, 0.68);
 };
@@ -208,6 +209,7 @@ export const searchAudiomackTrack = async (
 			source: "Audiomack",
 			license: "Official Audiomack stream; artist and provider terms apply",
 			fullLength: true,
+			duration: Number(track.duration || track.duration_seconds || 0),
 		}));
 	return selectBestAudioCandidate(candidates, query, null, 0.68);
 };
@@ -228,6 +230,7 @@ export const searchJamendoTrack = async (query, clientId = process.env.JAMENDO_C
 			source: "Jamendo",
 			license: track.license_ccurl || "Jamendo licence",
 			fullLength: true,
+			duration: Number(track.duration || 0),
 		}));
 	return selectBestAudioCandidate(candidates, query, null, 0.72);
 };
@@ -264,13 +267,22 @@ const archiveFile = async (item, kind) => {
 	});
 };
 
-export const searchArchiveMedia = async (query, kind) => {
+export const searchArchiveMedia = async (query, kind, reference = null) => {
 	const items = await archiveSearch(query, kind === "audio" ? "audio" : "movies");
-	for (const item of items) {
-		const result = await archiveFile(item, kind).catch(() => null);
-		if (result) return result;
+	if (kind !== "audio") {
+		for (const item of items) {
+			const result = await archiveFile(item, kind).catch(() => null);
+			if (result) return result;
+		}
+		return null;
 	}
-	return null;
+
+	const candidates = [];
+	for (const item of items.slice(0, 5)) {
+		const result = await archiveFile(item, kind).catch(() => null);
+		if (result) candidates.push(result);
+	}
+	return selectBestAudioCandidate(candidates, query, reference, 0.74);
 };
 
 export const searchApplePreview = async (query, kind = "audio") => {
@@ -289,6 +301,8 @@ export const searchApplePreview = async (query, kind = "audio") => {
 			license: "Official limited preview; Apple terms apply",
 			fullLength: false,
 			pageUrl: item.trackViewUrl,
+			duration: Number(item.trackTimeMillis || 0) / 1000,
+			previewSeconds: 30,
 		}));
 	return selectBestAudioCandidate(candidates, query, null, 0.68);
 };
@@ -309,6 +323,8 @@ export const searchDeezerPreview = async (query) => {
 			license: "Official limited preview; Deezer terms apply",
 			fullLength: false,
 			pageUrl: track.link,
+			duration: Number(track.duration || 0),
+			previewSeconds: 30,
 		}));
 	return selectBestAudioCandidate(candidates, query, null, 0.68);
 };
@@ -391,38 +407,47 @@ export const searchOfficialYouTubeVideo = async (query) => {
 	};
 };
 
-export const findWhatsAppPlayableAudio = async (query, reference = null) => {
+export const findWhatsAppFullAudio = async (query, reference = null) => {
 	const providerResults = await Promise.all([
 		searchAudiusTrack(query).catch(() => null),
 		searchAudiomackTrack(query).catch(() => null),
-		searchApplePreview(query, "audio").catch(() => null),
-		searchDeezerPreview(query).catch(() => null),
 		searchJamendoTrack(query).catch(() => null),
-		searchArchiveMedia(query, "audio").catch(() => null),
+		searchArchiveMedia(query, "audio", reference).catch(() => null),
 	]);
 
-	// Re-score every provider against the requested track and the official-video
-	// metadata. This prevents "a valid audio file" from being mistaken for the
-	// requested song merely because a provider returned it first.
 	const matched = providerResults
-		.filter(Boolean)
+		.filter((candidate) => candidate?.fullLength === true)
 		.map((candidate) => ({
 			candidate,
 			score: scoreAudioCandidate(candidate, query, reference),
-			priority: candidate.source === "Audius" || candidate.source === "Audiomack"
-				? 3
-				: candidate.source.includes("Apple") || candidate.source.includes("Deezer")
-					? 2
-					: 1,
+			priority: candidate.source === "Audius" || candidate.source === "Audiomack" ? 3 : 1,
 		}))
-		.filter((entry) => entry.score >= 0.68)
-		.sort((left, right) =>
-			right.score - left.score
-			|| Number(right.candidate.fullLength === true) - Number(left.candidate.fullLength === true)
-			|| right.priority - left.priority);
+		.filter((entry) => entry.score >= 0.72)
+		.sort((left, right) => right.score - left.score || right.priority - left.priority);
 
 	return matched[0] ? { ...matched[0].candidate, matchScore: matched[0].score } : null;
 };
+
+export const findWhatsAppPreviewAudio = async (query, reference = null) => {
+	const previews = await Promise.all([
+		searchApplePreview(query, "audio").catch(() => null),
+		searchDeezerPreview(query).catch(() => null),
+	]);
+	const matched = previews
+		.filter((candidate) => candidate?.fullLength === false)
+		.map((candidate) => ({
+			candidate,
+			score: scoreAudioCandidate(candidate, query, reference),
+		}))
+		.filter((entry) => entry.score >= 0.68)
+		.sort((left, right) => right.score - left.score);
+	return matched[0] ? { ...matched[0].candidate, matchScore: matched[0].score } : null;
+};
+
+export const findWhatsAppPlayableAudio = async (query, reference = null) =>
+	(await findWhatsAppFullAudio(query, reference)) ||
+	(await findWhatsAppPreviewAudio(query, reference));
+
 
 export const findOpenAudio = async (query) =>
 	(await searchAudiusTrack(query).catch(() => null)) ||
@@ -432,9 +457,8 @@ export const findOpenAudio = async (query) =>
 	(await searchDeezerPreview(query).catch(() => null)) ||
 	(await searchArchiveMedia(query, "audio").catch(() => null));
 
-export const findOfficialPreview = async (query) =>
-	(await searchApplePreview(query, "audio").catch(() => null)) ||
-	(await searchDeezerPreview(query).catch(() => null));
+export const findOfficialPreview = async (query, reference = null) =>
+	findWhatsAppPreviewAudio(query, reference);
 
 export const searchPexelsVideo = async (query, apiKey = process.env.PEXELS_API_KEY) => {
 	if (!apiKey) return null;
