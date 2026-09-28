@@ -53,6 +53,16 @@ test("audio-provider matching rejects unrelated Jamendo-style results", () => {
 	);
 });
 
+test("natural artist-title searches still accept the correct provider track", () => {
+	const candidate = {
+		title: "Forgiveness",
+		artist: "Asake",
+		source: "Audius",
+		fullLength: true,
+	};
+	assert.ok(scoreAudioCandidate(candidate, "Asake Forgiveness") >= 0.8);
+});
+
 test("YouTube music ranking rejects non-YouTube and overlong candidates", () => {
 	assert.equal(scoreYouTubeMusicCandidate({ url: "https://example.com/song", title: "Official Music Video" }, "song"), -Infinity);
 	assert.equal(scoreYouTubeMusicCandidate({
