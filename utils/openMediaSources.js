@@ -22,6 +22,77 @@ export const parseArtistTitle = (value) => {
 	};
 };
 
+const stripMusicDecorators = (value) =>
+	clean(value, 180)
+		.toLowerCase()
+		.normalize("NFKD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.replace(/\([^)]*\)|\[[^\]]*\]/g, " ")
+		.replace(/\b(official|music|video|audio|lyrics?|visualizer|hd|4k|vevo|topic|remastered|remaster)\b/g, " ")
+		.replace(/[^a-z0-9]+/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+
+const tokenSet = (value) => new Set(stripMusicDecorators(value).split(" ").filter((token) => token.length > 1));
+
+const tokenSimilarity = (left, right) => {
+	const a = tokenSet(left);
+	const b = tokenSet(right);
+	if (!a.size || !b.size) return 0;
+	let common = 0;
+	for (const token of a) if (b.has(token)) common += 1;
+	return common / Math.max(a.size, b.size);
+};
+
+const normalizedArtist = (value) =>
+	stripMusicDecorators(value)
+		.replace(/\b(records?|music|entertainment|tv|channel)\b/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+
+const referenceArtistTitle = (query, reference = null) => {
+	const explicit = parseArtistTitle(query);
+	if (explicit.artist) return explicit;
+	const referenceTitle = parseArtistTitle(reference?.title || "");
+	return {
+		query: explicit.query,
+		artist: referenceTitle.artist || normalizedArtist(reference?.artist || ""),
+		title: referenceTitle.artist ? referenceTitle.title : explicit.title,
+	};
+};
+
+export const scoreAudioCandidate = (candidate, query, reference = null) => {
+	if (!candidate?.title) return 0;
+	const wanted = referenceArtistTitle(query, reference);
+	const titleScore = tokenSimilarity(candidate.title, wanted.title);
+	const artistWanted = normalizedArtist(wanted.artist);
+	const artistFound = normalizedArtist(candidate.artist || "");
+	const artistScore = artistWanted && artistFound ? tokenSimilarity(artistFound, artistWanted) : 0;
+	const combinedScore = tokenSimilarity(
+		`${candidate.artist || ""} ${candidate.title || ""}`,
+		`${wanted.artist || ""} ${wanted.title || wanted.query || query}`,
+	);
+
+	// A clearly wrong title must never be rescued by provider relevance alone.
+	if (wanted.title && titleScore < 0.5) return 0;
+	if (artistWanted && artistFound && artistScore < 0.5) return 0;
+
+	let score = (titleScore * 0.62) + (artistScore * 0.28) + (combinedScore * 0.10);
+	if (stripMusicDecorators(candidate.title) === stripMusicDecorators(wanted.title)) score += 0.12;
+	if (artistWanted && artistFound && artistFound === artistWanted) score += 0.08;
+	return Math.min(1, score);
+};
+
+export const selectBestAudioCandidate = (candidates, query, reference = null, minimum = 0.68) => {
+	const ranked = (candidates || [])
+		.filter(Boolean)
+		.map((candidate) => ({ candidate, score: scoreAudioCandidate(candidate, query, reference) }))
+		.sort((left, right) => right.score - left.score);
+	const best = ranked[0];
+	if (!best || best.score < minimum) return null;
+	return { ...best.candidate, matchScore: best.score };
+};
+
 const http = axios.create({
 	timeout: REQUEST_TIMEOUT_MS,
 	maxRedirects: 4,
@@ -72,18 +143,19 @@ export const searchAudiusTrack = async (query, apiKey = process.env.AUDIUS_API_K
 		headers: audiusHeaders(apiKey),
 		params: { query: clean(query, 120), limit: 10, app_name: "AlphaWhatsAppBot" },
 	});
-	const track = (data?.data || []).find((entry) => entry?.id && entry?.is_streamable !== false && entry?.is_available !== false);
-	if (!track) return null;
-	return normalizeResult({
-		url: `https://api.audius.co/v1/tracks/${encodeURIComponent(track.id)}/stream?app_name=AlphaWhatsAppBot`,
-		title: track.title,
-		artist: track.user?.name,
-		mime: "audio/mpeg",
-		ext: "mp3",
-		source: "Audius",
-		license: "Artist-authorized Audius API stream; provider terms apply",
-		fullLength: true,
-	});
+	const candidates = (data?.data || [])
+		.filter((entry) => entry?.id && entry?.is_streamable !== false && entry?.is_available !== false)
+		.map((track) => normalizeResult({
+			url: `https://api.audius.co/v1/tracks/${encodeURIComponent(track.id)}/stream?app_name=AlphaWhatsAppBot`,
+			title: track.title,
+			artist: track.user?.name,
+			mime: "audio/mpeg",
+			ext: "mp3",
+			source: "Audius",
+			license: "Artist-authorized Audius API stream; provider terms apply",
+			fullLength: true,
+		}));
+	return selectBestAudioCandidate(candidates, query, null, 0.68);
 };
 
 const oauthEncode = (value) => encodeURIComponent(String(value)).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -117,18 +189,19 @@ export const searchAudiomackTrack = async (
 		params,
 		headers: { Authorization: audiomackAuthorization("GET", url, params, consumerKey, consumerSecret) },
 	});
-	const track = (data?.results || []).find((entry) => entry?.streaming_url && entry?.live !== false);
-	if (!track) return null;
-	return normalizeResult({
-		url: track.streaming_url,
-		title: track.title,
-		artist: track.artist || track.uploader?.name,
-		mime: "audio/mpeg",
-		ext: "mp3",
-		source: "Audiomack",
-		license: "Official Audiomack stream; artist and provider terms apply",
-		fullLength: true,
-	});
+	const candidates = (data?.results || [])
+		.filter((entry) => entry?.streaming_url && entry?.live !== false)
+		.map((track) => normalizeResult({
+			url: track.streaming_url,
+			title: track.title,
+			artist: track.artist || track.uploader?.name,
+			mime: "audio/mpeg",
+			ext: "mp3",
+			source: "Audiomack",
+			license: "Official Audiomack stream; artist and provider terms apply",
+			fullLength: true,
+		}));
+	return selectBestAudioCandidate(candidates, query, null, 0.68);
 };
 
 export const searchJamendoTrack = async (query, clientId = process.env.JAMENDO_CLIENT_ID) => {
@@ -136,18 +209,19 @@ export const searchJamendoTrack = async (query, clientId = process.env.JAMENDO_C
 	const { data } = await http.get("https://api.jamendo.com/v3.0/tracks/", {
 		params: { client_id: clientId, format: "json", limit: 5, search: clean(query, 120), audioformat: "mp32" },
 	});
-	const track = data?.results?.find((entry) => entry.audio && entry.audiodownload_allowed !== false);
-	if (!track) return null;
-	return normalizeResult({
-		url: track.audiodownload || track.audio,
-		title: track.name,
-		artist: track.artist_name,
-		mime: "audio/mpeg",
-		ext: "mp3",
-		source: "Jamendo",
-		license: track.license_ccurl || "Jamendo licence",
-		fullLength: true,
-	});
+	const candidates = (data?.results || [])
+		.filter((entry) => entry.audio && entry.audiodownload_allowed !== false)
+		.map((track) => normalizeResult({
+			url: track.audiodownload || track.audio,
+			title: track.name,
+			artist: track.artist_name,
+			mime: "audio/mpeg",
+			ext: "mp3",
+			source: "Jamendo",
+			license: track.license_ccurl || "Jamendo licence",
+			fullLength: true,
+		}));
+	return selectBestAudioCandidate(candidates, query, null, 0.72);
 };
 
 const archiveSearch = async (query, mediaType) => {
@@ -195,38 +269,40 @@ export const searchApplePreview = async (query, kind = "audio") => {
 	const { data } = await http.get("https://itunes.apple.com/search", {
 		params: { term: clean(query, 120), media: "music", entity: kind === "video" ? "musicVideo" : "song", limit: 5, country: "NG" },
 	});
-	const item = data?.results?.find((entry) => entry.previewUrl);
-	if (!item) return null;
-	return normalizeResult({
-		url: item.previewUrl,
-		title: item.trackName,
-		artist: item.artistName,
-		mime: kind === "video" ? "video/mp4" : "audio/mp4",
-		ext: kind === "video" ? "mp4" : "m4a",
-		source: "Apple Music preview",
-		license: "Official limited preview; Apple terms apply",
-		fullLength: false,
-		pageUrl: item.trackViewUrl,
-	});
+	const candidates = (data?.results || [])
+		.filter((entry) => entry.previewUrl)
+		.map((item) => normalizeResult({
+			url: item.previewUrl,
+			title: item.trackName,
+			artist: item.artistName,
+			mime: kind === "video" ? "video/mp4" : "audio/mp4",
+			ext: kind === "video" ? "mp4" : "m4a",
+			source: "Apple Music preview",
+			license: "Official limited preview; Apple terms apply",
+			fullLength: false,
+			pageUrl: item.trackViewUrl,
+		}));
+	return selectBestAudioCandidate(candidates, query, null, 0.68);
 };
 
 export const searchDeezerPreview = async (query) => {
 	const { data } = await http.get("https://api.deezer.com/search", {
 		params: { q: clean(query, 120), limit: 10, order: "RANKING", strict: "on" },
 	});
-	const track = data?.data?.find((entry) => entry.preview);
-	if (!track) return null;
-	return normalizeResult({
-		url: track.preview,
-		title: track.title,
-		artist: track.artist?.name,
-		mime: "audio/mpeg",
-		ext: "mp3",
-		source: "Deezer preview",
-		license: "Official limited preview; Deezer terms apply",
-		fullLength: false,
-		pageUrl: track.link,
-	});
+	const candidates = (data?.data || [])
+		.filter((entry) => entry.preview)
+		.map((track) => normalizeResult({
+			url: track.preview,
+			title: track.title,
+			artist: track.artist?.name,
+			mime: "audio/mpeg",
+			ext: "mp3",
+			source: "Deezer preview",
+			license: "Official limited preview; Deezer terms apply",
+			fullLength: false,
+			pageUrl: track.link,
+		}));
+	return selectBestAudioCandidate(candidates, query, null, 0.68);
 };
 
 
@@ -307,13 +383,38 @@ export const searchOfficialYouTubeVideo = async (query) => {
 	};
 };
 
-export const findWhatsAppPlayableAudio = async (query) =>
-	(await searchAudiusTrack(query).catch(() => null)) ||
-	(await searchAudiomackTrack(query).catch(() => null)) ||
-	(await searchJamendoTrack(query).catch(() => null)) ||
-	(await searchArchiveMedia(query, "audio").catch(() => null)) ||
-	(await searchApplePreview(query, "audio").catch(() => null)) ||
-	(await searchDeezerPreview(query).catch(() => null));
+export const findWhatsAppPlayableAudio = async (query, reference = null) => {
+	const providerResults = await Promise.all([
+		searchAudiusTrack(query).catch(() => null),
+		searchAudiomackTrack(query).catch(() => null),
+		searchApplePreview(query, "audio").catch(() => null),
+		searchDeezerPreview(query).catch(() => null),
+		searchJamendoTrack(query).catch(() => null),
+		searchArchiveMedia(query, "audio").catch(() => null),
+	]);
+
+	// Re-score every provider against the requested track and the official-video
+	// metadata. This prevents "a valid audio file" from being mistaken for the
+	// requested song merely because a provider returned it first.
+	const matched = providerResults
+		.filter(Boolean)
+		.map((candidate) => ({
+			candidate,
+			score: scoreAudioCandidate(candidate, query, reference),
+			priority: candidate.source === "Audius" || candidate.source === "Audiomack"
+				? 3
+				: candidate.source.includes("Apple") || candidate.source.includes("Deezer")
+					? 2
+					: 1,
+		}))
+		.filter((entry) => entry.score >= 0.68)
+		.sort((left, right) =>
+			Number(right.candidate.fullLength === true) - Number(left.candidate.fullLength === true)
+			|| right.score - left.score
+			|| right.priority - left.priority);
+
+	return matched[0] ? { ...matched[0].candidate, matchScore: matched[0].score } : null;
+};
 
 export const findOpenAudio = async (query) =>
 	(await searchAudiusTrack(query).catch(() => null)) ||
