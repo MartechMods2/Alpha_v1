@@ -1,4 +1,5 @@
 import axios from "axios";
+import yts from "yt-search";
 import { createHmac, randomBytes } from "node:crypto";
 import dns from "node:dns/promises";
 import { isIP } from "node:net";
@@ -227,6 +228,92 @@ export const searchDeezerPreview = async (query) => {
 		pageUrl: track.link,
 	});
 };
+
+
+const youtubePageUrl = (value) => {
+	try {
+		const url = new URL(String(value || ""));
+		const host = url.hostname.toLowerCase().replace(/^www\./, "");
+		return url.protocol === "https:" && ["youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(host);
+	} catch {
+		return false;
+	}
+};
+
+const musicTokens = (value) =>
+	new Set(
+		clean(value, 180)
+			.toLowerCase()
+			.replace(/\b(official|music|video|audio|lyrics?|visualizer|hd|4k|vevo|topic)\b/g, " ")
+			.replace(/[^a-z0-9]+/g, " ")
+			.split(" ")
+			.filter((token) => token.length > 1),
+	);
+
+export const scoreYouTubeMusicCandidate = (video, query = "") => {
+	if (!video?.url || !youtubePageUrl(video.url)) return -Infinity;
+	const seconds = Number(video.seconds || 0);
+	if (seconds && (seconds < 30 || seconds > 15 * 60)) return -Infinity;
+
+	const title = clean(video.title, 180).toLowerCase();
+	const author = clean(video.author?.name || video.author || "", 120).toLowerCase();
+	let score = 0;
+
+	if (video.author?.verified) score += 8;
+	if (/official music video/.test(title)) score += 8;
+	else if (/official video/.test(title)) score += 6;
+	else if (/official audio/.test(title)) score += 4;
+	if (/\bvevo\b/.test(author)) score += 5;
+	if (/\btopic\b/.test(author)) score += 2;
+	if (/official/.test(author)) score += 2;
+
+	if (/\b(lyrics?|karaoke|cover|reaction|review|tutorial|slowed|sped up|nightcore|instrumental)\b/.test(title)) score -= 7;
+	if (/\b(shorts?|status|edit|fanmade|fan made)\b/.test(title)) score -= 5;
+
+	const wanted = musicTokens(query);
+	const found = musicTokens(`${title} ${author}`);
+	if (wanted.size) {
+		let overlap = 0;
+		for (const token of wanted) if (found.has(token)) overlap += 1;
+		score += Math.min(8, overlap * 2);
+	}
+
+	return score;
+};
+
+export const rankYouTubeMusicCandidates = (videos = [], query = "") =>
+	[...videos]
+		.map((video) => ({ video, score: scoreYouTubeMusicCandidate(video, query) }))
+		.filter((entry) => Number.isFinite(entry.score))
+		.sort((left, right) => right.score - left.score);
+
+export const searchOfficialYouTubeVideo = async (query) => {
+	const normalized = clean(query, 120);
+	if (!normalized) return null;
+	const result = await yts(`${normalized} official music video`);
+	const ranked = rankYouTubeMusicCandidates(result?.videos || result?.all || [], normalized);
+	const best = ranked[0];
+	if (!best?.video) return null;
+	const video = best.video;
+	return {
+		title: clean(video.title || normalized, 120),
+		artist: clean(video.author?.name || video.author || "", 80),
+		url: video.url,
+		thumbnail: String(video.thumbnail || "").slice(0, 500),
+		duration: Number(video.seconds || 0),
+		score: best.score,
+		likelyOfficial: best.score >= 8,
+		source: "YouTube",
+	};
+};
+
+export const findWhatsAppPlayableAudio = async (query) =>
+	(await searchAudiusTrack(query).catch(() => null)) ||
+	(await searchAudiomackTrack(query).catch(() => null)) ||
+	(await searchJamendoTrack(query).catch(() => null)) ||
+	(await searchArchiveMedia(query, "audio").catch(() => null)) ||
+	(await searchApplePreview(query, "audio").catch(() => null)) ||
+	(await searchDeezerPreview(query).catch(() => null));
 
 export const findOpenAudio = async (query) =>
 	(await searchAudiusTrack(query).catch(() => null)) ||
