@@ -4,6 +4,8 @@ import {
 	findMusicLinks,
 	findOpenAudio,
 	findOpenVideo,
+	findWhatsAppFullAudio,
+	findWhatsAppPreviewAudio,
 	findWhatsAppPlayableAudio,
 	findOfficialPreview,
 	openMusicProviderStatus,
@@ -44,9 +46,21 @@ const checkCooldown = (senderJid) => {
 	cooldowns.set(senderJid, now + COOLDOWN_MS);
 };
 
+const formatDuration = (seconds) => {
+	const total = Math.round(Number(seconds || 0));
+	if (!total || total < 1) return "";
+	const mins = Math.floor(total / 60);
+	const secs = String(total % 60).padStart(2, "0");
+	return `${mins}:${secs}`;
+};
+
 const sourceCaption = (result) => {
-	const length = result.fullLength === false ? "Official preview" : "Full public/licensed file";
-	return `🎵 *${safe(result.title)}*${result.artist ? `\n🎤 ${safe(result.artist)}` : ""}\n📚 Source: ${safe(result.source)}\n🛡️ ${length}`;
+	const preview = result.fullLength === false;
+	const previewText = preview
+		? `Official preview${result.previewSeconds ? ` (~${Math.round(result.previewSeconds)}s)` : ""}`
+		: "Full provider-authorized/licensed file";
+	const originalDuration = result.duration ? formatDuration(result.duration) : "";
+	return `🎵 *${safe(result.title)}*${result.artist ? `\n🎤 ${safe(result.artist)}` : ""}\n📚 Source: ${safe(result.source)}\n🛡️ ${previewText}${originalDuration ? `\n⏱️ Track length: ${originalDuration}` : ""}`;
 };
 
 const sendResult = async ({ result, sendMessageWTyping, from, msg, forceDocument = false, extraCaption = "" }) => {
@@ -72,6 +86,8 @@ const sendResult = async ({ result, sendMessageWTyping, from, msg, forceDocument
 const helpText = (prefix) => `📥 *Alpha Media Search V2*\n\n` +
 	`${prefix}playy Artist - Song name\n` +
 	`${prefix}playaudio Artist - Song name\n` +
+	`${prefix}playfull Artist - Song name\n` +
+	`${prefix}playpreview Artist - Song name\n` +
 	`${prefix}music Artist - Song name\n` +
 	`${prefix}naijasong Artist - Song name\n` +
 	`${prefix}afrobeats Artist - Song name\n` +
@@ -91,7 +107,7 @@ const helpText = (prefix) => `📥 *Alpha Media Search V2*\n\n` +
 	`${prefix}stockvideo Search words\n` +
 	`${prefix}naijacharts\n` +
 	`${prefix}file Nature sounds\n\n` +
-	`Works in groups and private chats. Full audio uses provider-authorized or licensed sources. For *playy*, Alpha may use YouTube only to identify the likely official video page; it does not copy or convert protected YouTube streams. If full audio is unavailable, Alpha may send an official preview or the YouTube watch link.`;
+	`Works in groups and private chats. Full audio uses provider-authorized or licensed sources. *playy/playaudio/playfull* now send only a verified full-length source; they no longer silently substitute a ~30-second Apple/Deezer preview. Use *playpreview* when you specifically want the official preview. YouTube is used only to identify the likely official watch page; Alpha does not copy or convert protected YouTube streams.`;
 
 const providerText = () => {
 	const status = openMusicProviderStatus();
@@ -214,10 +230,10 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			return sendLinks({ query, sendMessageWTyping, from, msg });
 		}
 
-		if (["playy", "playaudio"].includes(command)) {
-			await reply(sendMessageWTyping, from, msg, "⏳ Finding the official video page and verifying an exact WhatsApp audio match…");
+		if (["playy", "playaudio", "playfull"].includes(command)) {
+			await reply(sendMessageWTyping, from, msg, "⏳ Finding the official video page and checking verified full-length audio sources…");
 			const youtube = await searchOfficialYouTubeVideo(query).catch(() => null);
-			const audio = await findWhatsAppPlayableAudio(query, youtube).catch(() => null);
+			const audio = await findWhatsAppFullAudio(query, youtube).catch(() => null);
 
 			if (audio) {
 				const confidence = Number(audio.matchScore || 0);
@@ -233,22 +249,43 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 				});
 			}
 
+			const preview = await findWhatsAppPreviewAudio(query, youtube).catch(() => null);
 			if (youtube?.url) {
+				const previewHint = preview
+					? `\n\nA matching official preview exists, but Alpha did not send it because *${command}* is full-track mode. Use *${prefix}playpreview ${query}* for the preview.`
+					: "";
 				return reply(
 					sendMessageWTyping,
 					from,
 					msg,
-					`🎬 *${safe(youtube.title || query)}*\n${youtube.artist ? `👤 ${safe(youtube.artist)}\n` : ""}🔗 ${youtube.url}\n\nAlpha found the correct video, but rejected the available audio results because they did not match this track closely enough. No unrelated song was sent.`,
+					`🎬 *${safe(youtube.title || query)}*\n${youtube.artist ? `👤 ${safe(youtube.artist)}\n` : ""}🔗 ${youtube.url}\n\nAlpha found the correct track, but none of the connected providers exposed a verified full-length file that Alpha is allowed to send.${previewHint}`,
 				);
 			}
 
-			throw new Error("No matching official-video page or permitted audio source was found.");
+			throw new Error("No matching official-video page or verified full-length audio source was found.");
+		}
+
+		if (["playpreview", "songpreview", "previewaudio"].includes(command)) {
+			await reply(sendMessageWTyping, from, msg, "⏳ Finding an exact official preview…");
+			const youtube = await searchOfficialYouTubeVideo(query).catch(() => null);
+			const preview = await findWhatsAppPreviewAudio(query, youtube).catch(() => null);
+			if (!preview) throw new Error("No matching official preview was found.");
+			const youtubeLine = youtube?.url
+				? `🎬 YouTube match: ${safe(youtube.title || query)}\n🔗 ${youtube.url}`
+				: "";
+			return sendResult({
+				result: preview,
+				sendMessageWTyping,
+				from,
+				msg,
+				extraCaption: `${youtubeLine}${youtubeLine ? "\n" : ""}ℹ️ This command intentionally sends the provider's short preview, not the full recording.`,
+			});
 		}
 
 		await reply(sendMessageWTyping, from, msg, "⏳ Searching safe public media sources…");
 
-		if (["music", "musicfile", "musicdirect", "streammusic", "naijasong", "afrobeats", "gospelsong", "songpreview", "previewaudio"].includes(command)) {
-			const result = ["songpreview", "previewaudio"].includes(command) ? await findOfficialPreview(query) : await findOpenAudio(query);
+		if (["music", "musicfile", "musicdirect", "streammusic", "naijasong", "afrobeats", "gospelsong"].includes(command)) {
+			const result = await findOpenAudio(query);
 			if (!result) throw new Error("No licensed audio or official preview was found.");
 			return sendResult({ result, sendMessageWTyping, from, msg, forceDocument: command === "musicfile" });
 		}
@@ -274,8 +311,8 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 };
 
 export default () => ({
-	cmd: ["playy", "playaudio", "music", "musicfile", "musicdirect", "streammusic", "musicfrom", "naijasong", "afrobeats", "gospelsong", "songpreview", "previewaudio", "songlink", "video", "videofile", "musicvideo", "stockvideo", "lyrics", "syncedlyrics", "musicartist", "trackinfo", "naijacharts", "trendingnaija", "newnaija", "albumart", "musiccover", "file", "mediahelp", "mediasources", "mediatest", "mediadiagnose", "providercheck"],
+	cmd: ["playy", "playaudio", "playfull", "playpreview", "music", "musicfile", "musicdirect", "streammusic", "musicfrom", "naijasong", "afrobeats", "gospelsong", "songpreview", "previewaudio", "songlink", "video", "videofile", "musicvideo", "stockvideo", "lyrics", "syncedlyrics", "musicartist", "trackinfo", "naijacharts", "trendingnaija", "newnaija", "albumart", "musiccover", "file", "mediahelp", "mediasources", "mediatest", "mediadiagnose", "providercheck"],
 	desc: "Find official music pages and send provider-authorized/licensed audio, video, lyrics and open media",
-	usage: "playy <artist - title> | music <artist - title> | naijasong <artist - title> | musicvideo <query> | lyrics <artist - title>",
+	usage: "playy <artist - title> | playpreview <artist - title> | music <artist - title> | naijasong <artist - title> | musicvideo <query> | lyrics <artist - title>",
 	handler,
 });
