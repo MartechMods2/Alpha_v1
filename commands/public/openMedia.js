@@ -4,6 +4,7 @@ import {
 	findMusicLinks,
 	findOpenAudio,
 	findOpenVideo,
+	findWhatsAppPlayableAudio,
 	findOfficialPreview,
 	openMusicProviderStatus,
 	parseArtistTitle,
@@ -20,6 +21,7 @@ import {
 	searchLyrics,
 	searchMusicBrainz,
 	searchNigeriaChart,
+	searchOfficialYouTubeVideo,
 	searchPexelsVideo,
 } from "../../utils/openMediaSources.js";
 
@@ -47,13 +49,13 @@ const sourceCaption = (result) => {
 	return `🎵 *${safe(result.title)}*${result.artist ? `\n🎤 ${safe(result.artist)}` : ""}\n📚 Source: ${safe(result.source)}\n🛡️ ${length}`;
 };
 
-const sendResult = async ({ result, sendMessageWTyping, from, msg, forceDocument = false }) => {
+const sendResult = async ({ result, sendMessageWTyping, from, msg, forceDocument = false, extraCaption = "" }) => {
 	const buffer = await downloadOpenMedia(result);
 	const detected = await fileTypeFromBuffer(buffer).catch(() => null);
 	const mime = detected?.mime || result.mime || "application/octet-stream";
 	const ext = detected?.ext || result.ext || "bin";
 	const fileName = `${safe(result.artist ? `${result.artist} - ${result.title}` : result.title, 90)}.${ext}`;
-	const caption = sourceCaption(result);
+	const caption = `${sourceCaption(result)}${extraCaption ? `\n${extraCaption}` : ""}`;
 	if (!forceDocument && mime.startsWith("audio/")) {
 		await sendMessageWTyping(from, { text: caption }, { quoted: msg });
 		return sendMessageWTyping(from, { audio: buffer, mimetype: mime, fileName, ptt: false }, { quoted: msg });
@@ -68,6 +70,8 @@ const sendResult = async ({ result, sendMessageWTyping, from, msg, forceDocument
 };
 
 const helpText = (prefix) => `📥 *Alpha Media Search V2*\n\n` +
+	`${prefix}playy Artist - Song name\n` +
+	`${prefix}playaudio Artist - Song name\n` +
 	`${prefix}music Artist - Song name\n` +
 	`${prefix}naijasong Artist - Song name\n` +
 	`${prefix}afrobeats Artist - Song name\n` +
@@ -87,7 +91,7 @@ const helpText = (prefix) => `📥 *Alpha Media Search V2*\n\n` +
 	`${prefix}stockvideo Search words\n` +
 	`${prefix}naijacharts\n` +
 	`${prefix}file Nature sounds\n\n` +
-	`Works in groups and private chats. Full downloads use public/licensed catalogues. If a commercial track is unavailable, Alpha may send a clearly labelled official preview instead.`;
+	`Works in groups and private chats. Full audio uses provider-authorized or licensed sources. For *playy*, Alpha may use YouTube only to identify the likely official video page; it does not copy or convert protected YouTube streams. If full audio is unavailable, Alpha may send an official preview or the YouTube watch link.`;
 
 const providerText = () => {
 	const status = openMusicProviderStatus();
@@ -149,7 +153,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	if (command === "mediahelp") return reply(sendMessageWTyping, from, msg, helpText(prefix));
 	if (command === "mediasources") {
 		return reply(sendMessageWTyping, from, msg,
-			`📡 *Nigerian-first Music Sources*\n\n${providerText()}\n${process.env.PEXELS_API_KEY ? "✅ pexels — LINKED" : "⚪ pexels — NOT LINKED"}\n   stock video\n✅ Wikimedia Commons — READY — no key required\n   open files\n\nAudiomack is skipped unless official partner credentials are present. YouTube, scraping, cookies and rotating proxies are not used by these commands.`);
+			`📡 *Nigerian-first Music Sources*\n\n${providerText()}\n${process.env.PEXELS_API_KEY ? "✅ pexels — LINKED" : "⚪ pexels — NOT LINKED"}\n   stock video\n✅ Wikimedia Commons — READY — no key required\n   open files\n\nAudiomack is skipped unless official partner credentials are present. YouTube is used only for public watch-page discovery in *playy/playaudio*; protected YouTube audio is not downloaded or converted. Scraping cookies and rotating proxies are not used by these commands.`);
 	}
 
 	let cooldownStarted = false;
@@ -210,6 +214,38 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			return sendLinks({ query, sendMessageWTyping, from, msg });
 		}
 
+		if (["playy", "playaudio"].includes(command)) {
+			await reply(sendMessageWTyping, from, msg, "⏳ Finding the official video page and a permitted WhatsApp audio source…");
+			const [youtube, audio] = await Promise.all([
+				searchOfficialYouTubeVideo(query).catch(() => null),
+				findWhatsAppPlayableAudio(query).catch(() => null),
+			]);
+
+			if (audio) {
+				const youtubeLine = youtube?.url
+					? `🎬 YouTube match: ${safe(youtube.title || query)}\n🔗 ${youtube.url}`
+					: "";
+				return sendResult({
+					result: audio,
+					sendMessageWTyping,
+					from,
+					msg,
+					extraCaption: youtubeLine,
+				});
+			}
+
+			if (youtube?.url) {
+				return reply(
+					sendMessageWTyping,
+					from,
+					msg,
+					`🎬 *${safe(youtube.title || query)}*\n${youtube.artist ? `👤 ${safe(youtube.artist)}\n` : ""}🔗 ${youtube.url}\n\nAlpha found the YouTube watch page, but no provider-authorized full audio or official preview was available to send as a WhatsApp audio file.`,
+				);
+			}
+
+			throw new Error("No matching official-video page or permitted audio source was found.");
+		}
+
 		await reply(sendMessageWTyping, from, msg, "⏳ Searching safe public media sources…");
 
 		if (["music", "musicfile", "musicdirect", "streammusic", "naijasong", "afrobeats", "gospelsong", "songpreview", "previewaudio"].includes(command)) {
@@ -239,8 +275,8 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 };
 
 export default () => ({
-	cmd: ["music", "musicfile", "musicdirect", "streammusic", "musicfrom", "naijasong", "afrobeats", "gospelsong", "songpreview", "previewaudio", "songlink", "video", "videofile", "musicvideo", "stockvideo", "lyrics", "syncedlyrics", "musicartist", "trackinfo", "naijacharts", "trendingnaija", "newnaija", "albumart", "musiccover", "file", "mediahelp", "mediasources", "mediatest", "mediadiagnose", "providercheck"],
-	desc: "Search and send licensed music, video, lyrics and open media in groups or DMs",
-	usage: "music <artist - title> | naijasong <artist - title> | musicvideo <query> | lyrics <artist - title>",
+	cmd: ["playy", "playaudio", "music", "musicfile", "musicdirect", "streammusic", "musicfrom", "naijasong", "afrobeats", "gospelsong", "songpreview", "previewaudio", "songlink", "video", "videofile", "musicvideo", "stockvideo", "lyrics", "syncedlyrics", "musicartist", "trackinfo", "naijacharts", "trendingnaija", "newnaija", "albumart", "musiccover", "file", "mediahelp", "mediasources", "mediatest", "mediadiagnose", "providercheck"],
+	desc: "Find official music pages and send provider-authorized/licensed audio, video, lyrics and open media",
+	usage: "playy <artist - title> | music <artist - title> | naijasong <artist - title> | musicvideo <query> | lyrics <artist - title>",
 	handler,
 });
