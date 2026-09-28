@@ -215,13 +215,12 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		}
 
 		if (["playy", "playaudio"].includes(command)) {
-			await reply(sendMessageWTyping, from, msg, "⏳ Finding the official video page and a permitted WhatsApp audio source…");
-			const [youtube, audio] = await Promise.all([
-				searchOfficialYouTubeVideo(query).catch(() => null),
-				findWhatsAppPlayableAudio(query).catch(() => null),
-			]);
+			await reply(sendMessageWTyping, from, msg, "⏳ Finding the official video page and verifying an exact WhatsApp audio match…");
+			const youtube = await searchOfficialYouTubeVideo(query).catch(() => null);
+			const audio = await findWhatsAppPlayableAudio(query, youtube).catch(() => null);
 
 			if (audio) {
+				const confidence = Number(audio.matchScore || 0);
 				const youtubeLine = youtube?.url
 					? `🎬 YouTube match: ${safe(youtube.title || query)}\n🔗 ${youtube.url}`
 					: "";
@@ -230,7 +229,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 					sendMessageWTyping,
 					from,
 					msg,
-					extraCaption: youtubeLine,
+					extraCaption: `${youtubeLine}${youtubeLine ? "\n" : ""}✅ Exact-track verification: ${Math.round(confidence * 100)}%`,
 				});
 			}
 
@@ -239,7 +238,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 					sendMessageWTyping,
 					from,
 					msg,
-					`🎬 *${safe(youtube.title || query)}*\n${youtube.artist ? `👤 ${safe(youtube.artist)}\n` : ""}🔗 ${youtube.url}\n\nAlpha found the YouTube watch page, but no provider-authorized full audio or official preview was available to send as a WhatsApp audio file.`,
+					`🎬 *${safe(youtube.title || query)}*\n${youtube.artist ? `👤 ${safe(youtube.artist)}\n` : ""}🔗 ${youtube.url}\n\nAlpha found the correct video, but rejected the available audio results because they did not match this track closely enough. No unrelated song was sent.`,
 				);
 			}
 
