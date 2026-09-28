@@ -6,8 +6,6 @@ import {
 	findOpenVideo,
 	findWhatsAppFullAudio,
 	findWhatsAppPreviewAudio,
-	findWhatsAppPlayableAudio,
-	findOfficialPreview,
 	openMusicProviderStatus,
 	parseArtistTitle,
 	searchCoverArt,
