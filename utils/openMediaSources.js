@@ -73,14 +73,22 @@ export const scoreAudioCandidate = (candidate, query, reference = null) => {
 		`${wanted.artist || ""} ${wanted.title || wanted.query || query}`,
 	);
 
-	// A clearly wrong title must never be rescued by provider relevance alone.
-	if (wanted.title && titleScore < 0.5) return 0;
-	if (artistWanted && artistFound && artistScore < 0.5) return 0;
+	// When Alpha knows both artist and title (from "Artist - Title" or the
+	// official-video metadata), be intentionally strict.
+	if (artistWanted) {
+		if (wanted.title && titleScore < 0.5) return 0;
+		if (artistFound && artistScore < 0.5) return 0;
+		let score = (titleScore * 0.62) + (artistScore * 0.28) + (combinedScore * 0.10);
+		if (stripMusicDecorators(candidate.title) === stripMusicDecorators(wanted.title)) score += 0.12;
+		if (artistFound && artistFound === artistWanted) score += 0.08;
+		return Math.min(1, score);
+	}
 
-	let score = (titleScore * 0.62) + (artistScore * 0.28) + (combinedScore * 0.10);
-	if (stripMusicDecorators(candidate.title) === stripMusicDecorators(wanted.title)) score += 0.12;
-	if (artistWanted && artistFound && artistFound === artistWanted) score += 0.08;
-	return Math.min(1, score);
+	// For natural searches such as "Asake Forgiveness", allow the provider's
+	// artist+title fields together to satisfy the query without weakening the
+	// wrong-song guard.
+	const looseScore = Math.max(titleScore, combinedScore);
+	return looseScore >= 0.65 ? Math.min(1, (looseScore * 0.9) + (titleScore * 0.1)) : 0;
 };
 
 export const selectBestAudioCandidate = (candidates, query, reference = null, minimum = 0.68) => {
