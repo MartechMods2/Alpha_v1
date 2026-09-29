@@ -120,20 +120,6 @@ const handler = async (sock, msg, from, args, info) => {
         body,
         fromCommand: true,
       });
-      if (!handled) return reply("🎭 That action does not match your current Truth or Dare turn. Use `$td status`.");
-      return;
-    }
-
-    if (action === "answer") {
-      const body = args.slice(1).join(" ").trim();
-      if (!body) return reply(`❌ Usage: *${prefix}td answer <your truth answer>*`);
-      const handled = await handleTruthDareAction({
-        sock,
-        groupJid: from,
-        senderJid,
-        body,
-        fromCommand: true,
-      });
       if (!handled) return reply("🎭 Alpha is not waiting for your Truth answer right now.");
       return;
     }
