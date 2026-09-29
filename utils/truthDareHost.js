@@ -489,25 +489,30 @@ export const startTruthDareSession = async ({
   };
   sessions.set(groupJid, session);
 
-  const pollMessage = await sock.sendMessage(groupJid, {
-    poll: {
-      name: `🎭 Alpha Truth or Dare · ${safeRounds} round${safeRounds === 1 ? "" : "s"} · ${safeTheme}\nVote to join. The game starter is already enrolled. Lobby closes in 30 seconds.`,
-      values: [JOIN_OPTION, SKIP_OPTION],
-      selectableCount: 1,
-    },
-  }, { quoted: msg });
+  try {
+    const pollMessage = await sock.sendMessage(groupJid, {
+      poll: {
+        name: `🎭 Alpha Truth or Dare · ${safeRounds} round${safeRounds === 1 ? "" : "s"} · ${safeTheme}\nVote to join. The game starter is already enrolled. Lobby closes in 30 seconds.`,
+        values: [JOIN_OPTION, SKIP_OPTION],
+        selectableCount: 1,
+      },
+    }, { quoted: msg });
 
-  session.pollId = pollMessage?.key?.id || "";
-  if (session.pollId) {
-    await registerInteractivePoll({
-      sentMessage: pollMessage,
-      groupJid,
-      type: "truth-dare-lobby",
-      ownerJid: starter.jid,
-      options: [JOIN_OPTION, SKIP_OPTION],
-      payload: { sessionId: session.id, rounds: safeRounds, theme: safeTheme },
-      ttlMs: LOBBY_MS + 60_000,
-    });
+    session.pollId = pollMessage?.key?.id || "";
+    if (session.pollId) {
+      await registerInteractivePoll({
+        sentMessage: pollMessage,
+        groupJid,
+        type: "truth-dare-lobby",
+        ownerJid: starter.jid,
+        options: [JOIN_OPTION, SKIP_OPTION],
+        payload: { sessionId: session.id, rounds: safeRounds, theme: safeTheme },
+        ttlMs: LOBBY_MS + 60_000,
+      });
+    }
+  } catch (pollError) {
+    console.warn("[TRUTH_DARE] poll lobby unavailable, using command fallback:", pollError.message);
+    session.pollId = "";
   }
 
   await sendMessageWTyping(groupJid, {
@@ -519,7 +524,9 @@ export const startTruthDareSession = async ({
         `Theme: *${safeTheme}* · Rounds: *${safeRounds}*`,
         `Up to *${MAX_PLAYERS} players*.`,
         "",
-        "Everyone else: vote *Join game* in the poll or type `$td join`.",
+        session.pollId
+          ? "Everyone else: vote *Join game* in the poll or type `$td join`."
+          : "WhatsApp poll creation was unavailable, so everyone else should type `$td join`.",
         "Alpha will shuffle players, manage every turn, keep time, score the game and announce the winner automatically.",
         "",
         `🎯 Truth = *${TRUTH_POINTS} pts*`,
