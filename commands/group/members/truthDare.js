@@ -99,9 +99,20 @@ const handler = async (sock, msg, from, args, info) => {
     }
 
     if (["truth", "t", "dare", "d", "skip", "s", "pass", "done", "complete", "completed", "finished"].includes(action)) {
-      const body = action === "truth" && args.length > 1
-        ? args.slice(1).join(" ")
-        : action;
+      const handled = await handleTruthDareAction({
+        sock,
+        groupJid: from,
+        senderJid,
+        body: action,
+        fromCommand: true,
+      });
+      if (!handled) return reply("🎭 That action does not match your current Truth or Dare turn. Use `$td status`.");
+      return;
+    }
+
+    if (action === "answer") {
+      const body = args.slice(1).join(" ").trim();
+      if (!body) return reply(`❌ Usage: *${prefix}td answer <your truth answer>*`);
       const handled = await handleTruthDareAction({
         sock,
         groupJid: from,
