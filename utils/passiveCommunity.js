@@ -1,6 +1,7 @@
 import messageQueue from "../queue/messageQueue.js";
 import { getGroupData } from "../db/groupData.js";
 import { handlePassiveScoredGameAnswer } from "../commands/group/members/scoredGames.js";
+import { handleTruthDareAction } from "./truthDareHost.js";
 import { maybeJoinActiveConversation, recordHumanActivity } from "./humanEngagement.js";
 import { handleExplicitAlphaDelivery } from "./alphaDeliveryRouter.js";
 import {
@@ -103,6 +104,17 @@ export const handlePassiveCommunityMessage = async (sock, msg) => {
 
   if (senderJid && await handleExplicitAlphaDelivery({ sock, msg, groupJid: from, senderJid, body })) return true;
   if (senderJid && await handleDesireSlashShortcut({ sock, msg, from, senderJid, body })) return true;
+
+  // Hosted Truth or Dare listens to ordinary turn replies such as
+  // "truth", "dare", "skip", a Truth answer, or "done". Only the active
+  // player can advance the session, so other group conversation is untouched.
+  if (senderJid && await handleTruthDareAction({
+    sock,
+    groupJid: from,
+    senderJid,
+    body,
+    fromCommand: false,
+  })) return true;
 
   if (!body.startsWith("#") || body.length < 2) {
     void maybeJoinActiveConversation({ sock, msg, groupJid: from }).catch((error) => console.warn("[HUMAN ENGAGEMENT] active join skipped:", error.message));
