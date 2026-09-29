@@ -1,8 +1,11 @@
 import { recordGameResult } from "../db/gameData.js";
 import {
+  deleteTruthDareSessionSnapshot,
   getTruthDareLeaderboard,
   getTruthDareProfile,
+  getTruthDareSessionSnapshot,
   recordTruthDareSessionPlayer,
+  saveTruthDareSessionSnapshot,
 } from "../db/truthDareData.js";
 import messageQueue from "../queue/messageQueue.js";
 import {
@@ -43,6 +46,51 @@ const clean = (value, max = 300) => String(value || "").replace(/\s+/g, " ").tri
 const sendQueued = (sock, jid, content, options = {}) =>
   messageQueue.enqueue(jid, () => sock.sendMessage(jid, content, options), 1);
 
+const snapshotOf = (session) => ({
+  id: session.id,
+  status: session.status,
+  phase: session.phase,
+  startedBy: session.startedBy,
+  participants: session.participants.map((player) => ({
+    jid: player.jid,
+    aliases: [...(player.aliases || [])],
+    name: player.name,
+    score: player.score || 0,
+    truths: player.truths || 0,
+    dares: player.dares || 0,
+    skips: player.skips || 0,
+    timeouts: player.timeouts || 0,
+    completed: player.completed || 0,
+    streak: player.streak || 0,
+    bestStreak: player.bestStreak || 0,
+    perfectBonus: player.perfectBonus || 0,
+  })),
+  turnOrderJids: session.turnOrder.map((player) => player.jid),
+  currentRound: session.currentRound,
+  currentIndex: session.currentIndex,
+  rounds: session.rounds,
+  theme: session.theme,
+  truthDeck: [...session.truthDeck],
+  dareDeck: [...session.dareDeck],
+  pollId: session.pollId || "",
+  timerToken: session.timerToken || 0,
+  startedAt: session.startedAt,
+  phaseExpiresAt: session.phaseExpiresAt || 0,
+  choice: session.choice || "",
+  currentPrompt: session.currentPrompt || "",
+  promptMessageId: session.promptMessageId || "",
+  turnMessageId: session.turnMessageId || "",
+});
+
+const persistSession = async (session) => {
+  if (!session || session.status === "finished") return;
+  try {
+    await saveTruthDareSessionSnapshot(session.groupJid, snapshotOf(session));
+  } catch (error) {
+    console.warn("[TRUTH_DARE] session snapshot failed:", error.message);
+  }
+};
+
 const clearTimer = (session) => {
   if (session?.timer) clearTimeout(session.timer);
   if (session) session.timer = null;
@@ -50,7 +98,9 @@ const clearTimer = (session) => {
 
 const schedule = (session, ms, callback) => {
   clearTimer(session);
+  const delay = Math.max(250, Number(ms) || 250);
   const token = ++session.timerToken;
+  session.phaseExpiresAt = Date.now() + delay;
   const timer = setTimeout(async () => {
     if (!sessions.has(session.groupJid) || sessions.get(session.groupJid) !== session) return;
     if (token !== session.timerToken) return;
@@ -59,9 +109,10 @@ const schedule = (session, ms, callback) => {
     } catch (error) {
       console.error("[TRUTH_DARE] timer failed:", error.message);
     }
-  }, ms);
+  }, delay);
   timer.unref?.();
   session.timer = timer;
+  void persistSession(session);
 };
 
 const shuffle = (items) => {
