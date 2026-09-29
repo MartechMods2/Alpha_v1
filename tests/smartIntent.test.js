@@ -23,6 +23,18 @@ test("natural group decisions route to AI polls while explicit pipe polls stay m
 	assert.equal(detectSmartIntent("start would you rather",{isGroup:true}).command,"wyr");
 });
 
+test("natural Truth or Dare requests route to the hosted td game",()=>{
+	assert.deepEqual(
+		detectSmartIntent("start truth or dare",{isGroup:true}),
+		{command:"td",args:["start"],label:"Truth or Dare",groupOnly:true},
+	);
+	assert.deepEqual(
+		detectSmartIntent("host truth and dare 3 funny",{isGroup:true}),
+		{command:"td",args:["start","3","funny"],label:"Truth or Dare",groupOnly:true},
+	);
+	assert.equal(detectSmartIntent("start truth or dare",{isGroup:false}),null);
+});
+
 test("group-only intents do not activate in private messages",()=>{
 	assert.equal(detectSmartIntent("start trivia",{isGroup:false}),null);
 	assert.equal(detectSmartIntent("start trivia",{isGroup:true}).command,"trivia");
