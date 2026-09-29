@@ -451,7 +451,7 @@ const gameHelp = () => alphaPanel({
 		"• Alpha shuffles voters, gives each a 60-second turn, records 0 on timeout/wrong answer, and awards correct points automatically.",
 		"",
 		"*SOCIAL GAMES*",
-		"• `$td start [1-4] [theme]` — Alpha-hosted Truth or Dare with lobby, automatic turns, timers, scoring and winner.",
+		"• `$td start [1-5] [theme]` — Alpha-hosted Truth or Dare with lobby, automatic turns, timers, scoring and winner.",
 		"• `$truth` · `$dare` · `$wyr` · `$icebreaker` — one-shot social prompts with safe local fallback.",
 		"• `$compliment` · `$coin` · `$dice [sides]` · `$8ball question` · `$choose A | B | C`",
 		"",
