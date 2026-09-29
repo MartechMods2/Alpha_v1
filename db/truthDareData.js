@@ -1,6 +1,7 @@
 import mdClient from "./client.js";
 
 const truthDareStats = mdClient.db("MyBotDataDB").collection("TruthDareStats");
+const truthDareSessions = mdClient.db("MyBotDataDB").collection("TruthDareSessions");
 
 const safeName = (value) =>
   String(value || "Player")
@@ -59,4 +60,25 @@ export const getTruthDareLeaderboard = (groupJid, limit = 10) =>
     .limit(Math.max(1, Math.min(20, Number(limit) || 10)))
     .toArray();
 
-export { truthDareStats };
+
+export const saveTruthDareSessionSnapshot = async (groupJid, snapshot) => {
+  const payload = { ...snapshot, groupJid, updatedAt: new Date() };
+  delete payload._id;
+  return truthDareSessions.updateOne(
+    { _id: groupJid },
+    {
+      $set: payload,
+      $setOnInsert: { createdAt: new Date() },
+    },
+    { upsert: true },
+  );
+};
+
+export const getTruthDareSessionSnapshot = (groupJid) =>
+  truthDareSessions.findOne({ _id: groupJid });
+
+export const deleteTruthDareSessionSnapshot = (groupJid) =>
+  truthDareSessions.deleteOne({ _id: groupJid });
+
+
+export { truthDareSessions, truthDareStats };

@@ -127,9 +127,9 @@ class MessageQueue {
 					if (waitMs > 0) {
 						await new Promise((resolve) => setTimeout(resolve, waitMs));
 					}
-					await message.sendFunction();
+					const sendResult = await message.sendFunction();
 					this.lastSentAt.set(chatId, Date.now());
-					message.resolve?.();
+					message.resolve?.(sendResult);
 				} catch (err) {
 					console.error(`Queue send error for ${chatId}:`, err.message);
 					import("../db/safePackData.js").then(({ recordQueueFailure }) => recordQueueFailure(chatId, err)).catch(() => {});
