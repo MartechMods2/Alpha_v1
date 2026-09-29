@@ -19,10 +19,10 @@ test("Truth or Dare ships with a large safe themed local prompt library", () => 
 
 test("td command aliases and complete lifecycle controls are registered", async () => {
   const source = await readFile(new URL("../commands/group/members/truthDare.js", import.meta.url), "utf8");
-  for (const alias of ["td", "truthdare", "truthordare", "tord"]) {
+  for (const alias of ["td", "tod", "truthdare", "truthordare", "tord", "todgame"]) {
     assert.match(source, new RegExp(`"${alias}"`));
   }
-  for (const action of ["start", "join", "leave", "close", "stop", "next", "status", "score", "leaderboard", "stats", "answer"]) {
+  for (const action of ["start", "join", "leave", "close", "stop", "next", "resume", "rules", "status", "score", "leaderboard", "stats", "answer"]) {
     assert.match(source, new RegExp(`"${action}"`));
   }
 });
@@ -37,8 +37,12 @@ test("host engine auto-enrols starter and owns lobby, turns, timers, scoring and
   assert.match(source, /TRUTH_POINTS = 10/);
   assert.match(source, /DARE_POINTS = 15/);
   assert.match(source, /PERFECT_BONUS = 5/);
+  assert.match(source, /MAX_ROUNDS = 5/);
   assert.match(source, /streakBonus/);
   assert.match(source, /recordTruthDareSessionPlayer/);
+  assert.match(source, /saveTruthDareSessionSnapshot/);
+  assert.match(source, /restoreTruthDareSession/);
+  assert.match(source, /deleteTruthDareSessionSnapshot/);
   assert.match(source, /recordGameResult/);
   assert.match(source, /finishSession/);
   assert.match(source, /Truth or Dare Complete/);
@@ -49,10 +53,26 @@ test("passive community routing lets only the active turn engine consume natural
   const source = await readFile(new URL("../utils/passiveCommunity.js", import.meta.url), "utf8");
   assert.match(source, /handleTruthDareAction/);
   assert.match(source, /fromCommand: false/);
+  assert.match(source, /mediaResponse: Boolean\(mediaResponse\)/);
 });
 
 test("hosted game never penalizes a skip with negative points", async () => {
   const source = await readFile(new URL("../utils/truthDareHost.js", import.meta.url), "utf8");
   assert.match(source, /gets \*0 points\* this turn/);
   assert.doesNotMatch(source, /score\s*-=/);
+});
+
+
+test("queued sends return the WhatsApp message result so hosted games can track prompt ids", async () => {
+  const source = await readFile(new URL("../queue/messageQueue.js", import.meta.url), "utf8");
+  assert.match(source, /const sendResult = await message\.sendFunction\(\)/);
+  assert.match(source, /message\.resolve\?\.\(sendResult\)/);
+});
+
+test("active Truth or Dare snapshots are stored separately from permanent player stats", async () => {
+  const source = await readFile(new URL("../db/truthDareData.js", import.meta.url), "utf8");
+  assert.match(source, /TruthDareSessions/);
+  assert.match(source, /saveTruthDareSessionSnapshot/);
+  assert.match(source, /getTruthDareSessionSnapshot/);
+  assert.match(source, /deleteTruthDareSessionSnapshot/);
 });
