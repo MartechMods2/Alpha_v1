@@ -38,6 +38,15 @@ const contextInfoOf = (msg) => {
     {};
 };
 
+const truthDareMediaResponse = (msg) => {
+  const message = msg?.message || {};
+  if (message.audioMessage) return "audio";
+  if (message.imageMessage) return "image";
+  if (message.videoMessage) return "video";
+  if (message.stickerMessage) return "sticker";
+  return "";
+};
+
 const digits = (value) => String(value || "").replace(/\D/g, "");
 const configuredCreatorNumbers = () => String(process.env.MY_NUMBER || process.env.CREATOR_NUMBER || "")
   .split(/[,;\s]+/)
@@ -90,10 +99,11 @@ export const handlePassiveCommunityMessage = async (sock, msg) => {
   const from = msg?.key?.remoteJid || "";
   if (!from.endsWith("@g.us") || msg?.key?.fromMe || !msg?.message) return false;
   const body = bodyOf(msg).trim();
-  if (!body) return false;
+  const mediaResponse = truthDareMediaResponse(msg);
+  if (!body && !mediaResponse) return false;
   const senderJid = msg?.key?.participant || msg?.key?.participantPn || msg?.key?.participantAlt || contextInfoOf(msg)?.participant || "";
 
-  if (senderJid) {
+  if (senderJid && body) {
     recordHumanActivity({ groupJid: from, senderJid, body });
     if (!body.startsWith(commandPrefix) && !body.startsWith("/") && !body.startsWith("#")) {
       recordDesireActivity({ groupJid: from, senderJid, body });
@@ -102,19 +112,20 @@ export const handlePassiveCommunityMessage = async (sock, msg) => {
   await reactCreatorMention(sock, msg, from, body);
   void maybeSendConsentReminder({ sock, groupJid: from, senderJid, body }).catch((error) => console.warn("[DESIRE CONSENT]", error.message));
 
-  if (senderJid && await handleExplicitAlphaDelivery({ sock, msg, groupJid: from, senderJid, body })) return true;
-  if (senderJid && await handleDesireSlashShortcut({ sock, msg, from, senderJid, body })) return true;
-
-  // Hosted Truth or Dare listens to ordinary turn replies such as
-  // "truth", "dare", "skip", a Truth answer, or "done". Only the active
-  // player can advance the session, so other group conversation is untouched.
+  // Give the active Truth or Dare turn first refusal on natural replies/media.
+  // Only the current player can advance the session, so unrelated group chat is untouched.
   if (senderJid && await handleTruthDareAction({
     sock,
     groupJid: from,
     senderJid,
-    body,
+    body: body || `[${mediaResponse} response]`,
     fromCommand: false,
+    mediaResponse: Boolean(mediaResponse),
   })) return true;
+
+  if (!body) return false;
+  if (senderJid && await handleExplicitAlphaDelivery({ sock, msg, groupJid: from, senderJid, body })) return true;
+  if (senderJid && await handleDesireSlashShortcut({ sock, msg, from, senderJid, body })) return true;
 
   if (!body.startsWith("#") || body.length < 2) {
     void maybeJoinActiveConversation({ sock, msg, groupJid: from }).catch((error) => console.warn("[HUMAN ENGAGEMENT] active join skipped:", error.message));
