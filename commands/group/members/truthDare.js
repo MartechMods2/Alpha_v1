@@ -4,9 +4,11 @@ import {
   handleTruthDareAction,
   joinTruthDareLobby,
   leaveTruthDareLobby,
+  restoreTruthDareSession,
   startTruthDareSession,
   stopTruthDareSession,
   truthDareHelpText,
+  truthDareRulesText,
   truthDarePersistentBoardText,
   truthDareProfileText,
   truthDareScoreText,
@@ -20,7 +22,7 @@ const parseStart = (args = []) => {
   let theme = "classic";
   for (const raw of args) {
     const value = String(raw || "").toLowerCase();
-    if (/^[1-4]$/.test(value)) rounds = Number(value);
+    if (/^[1-5]$/.test(value)) rounds = Number(value);
     else if (THEMES.has(value)) theme = value;
   }
   return { rounds, theme };
@@ -61,6 +63,7 @@ const handler = async (sock, msg, from, args, info) => {
 
     if (action === "join") {
       const result = await joinTruthDareLobby({
+        sock,
         groupJid: from,
         senderJid,
         senderName: updateName || msg?.pushName || "",
@@ -69,7 +72,7 @@ const handler = async (sock, msg, from, args, info) => {
     }
 
     if (["leave", "sitout"].includes(action)) {
-      const result = leaveTruthDareLobby({ groupJid: from, senderJid });
+      const result = await leaveTruthDareLobby({ sock, groupJid: from, senderJid });
       return reply(result.message);
     }
 
@@ -91,7 +94,17 @@ const handler = async (sock, msg, from, args, info) => {
       return;
     }
 
-    if (["status", "state"].includes(action)) return reply(truthDareStatusText(from));
+    if (action === "resume") {
+      const recovered = await restoreTruthDareSession({ sock, groupJid: from });
+      return reply(recovered ? `⚡ Truth or Dare session is active again.\n\n${truthDareStatusText(from)}` : "🎭 No saved Truth or Dare session was found.");
+    }
+
+    if (["rules", "rule"].includes(action)) return reply(truthDareRulesText(prefix));
+
+    if (["status", "state", "players"].includes(action)) {
+      await restoreTruthDareSession({ sock, groupJid: from });
+      return reply(truthDareStatusText(from));
+    }
     if (["score", "scores", "liveboard"].includes(action)) return reply(truthDareScoreText(from));
     if (["board", "leaderboard", "ranking"].includes(action)) return reply(await truthDarePersistentBoardText(from));
     if (["stats", "profile", "card"].includes(action)) {
@@ -132,8 +145,8 @@ const handler = async (sock, msg, from, args, info) => {
 };
 
 export default () => ({
-  cmd: ["td", "truthdare", "truthordare", "tord"],
+  cmd: ["td", "tod", "truthdare", "truthordare", "tord", "todgame"],
   desc: "Alpha-hosted Truth or Dare with lobby, automatic turns, timers, scoring, stats and winner",
-  usage: "td start [1-4] [classic|funny|deep|friendship|tech|random] | td join | td score | td stop",
+  usage: "td start [1-5] [classic|funny|deep|friendship|tech|random] | td join | td score | td board | td stop",
   handler,
 });
