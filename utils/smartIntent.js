@@ -9,7 +9,7 @@ export const SMART_INTENT_EXAMPLES = [
 	"find a funny reaction GIF", "send an African classroom photo", "play an applause sound effect",
 	"weather in Lagos", "calculate 25 * 8", "translate to French good morning",
 	"remind me in 2h to call Tunde", "search Wikipedia for Nigerian history", "show my rank",
-	"help us decide the best day for game night", "start would you rather",
+	"help us decide the best day for game night", "start would you rather", "start truth or dare",
 	"give me an aura card", "give me a build quest", "what is my tech prophecy",
 ];
 
@@ -72,6 +72,14 @@ export const detectSmartIntent = (rawText, { isGroup = false } = {}) => {
 		match = text.match(/^(?:make|turn)\s+(.+?)\s+(?:into\s+)?vibe\s+code$/i);
 		if (match) return { command: "vibecode", args: clean(match[1]).split(/\s+/), label: "vibe code", groupOnly: true };
 
+		match = text.match(/^(?:start|play|host)\s+(?:a\s+)?(?:game\s+of\s+)?truth\s*(?:or|&|and)\s*dare(?:\s+(\d))?(?:\s+(classic|funny|deep|friendship|tech|random))?$/i);
+		if (match) {
+			const args = ["start"];
+			if (match[1]) args.push(match[1]);
+			if (match[2]) args.push(match[2].toLowerCase());
+			return { command: "td", args, label: "Truth or Dare", groupOnly: true };
+		}
+
 		match = text.match(/^(?:start|play)\s+(trivia|math\s+game|scramble|riddle|tic\s*tac\s*toe|connect\s*four|would\s+you\s+rather|wyr|truth|dare|icebreaker)$/i);
 		if (match) {
 			const routes = { trivia:"trivia", "math game":"mathgame", scramble:"scramble", riddle:"riddle", "tic tac toe":"ttt", "connect four":"connect4", "would you rather":"wyr", wyr:"wyr", truth:"truth", dare:"dare", icebreaker:"icebreaker" };
@@ -97,5 +105,5 @@ export const detectSmartIntent = (rawText, { isGroup = false } = {}) => {
 export const smartIntentSummary = () => ({
 	media: ["music", "lyrics", "music videos", "videos", "GIFs", "images", "sound effects"],
 	utilities: ["weather", "calculation", "translation", "reminders", "Wikipedia", "web search", "rank"],
-	groups: ["native polls", "AI decision polls", "Aura Farming cards", "build quests", "tech prophecies", "mystery drops", "Would You Rather", "truth/dare", "icebreakers", "trivia", "math games", "scramble", "riddles", "tic-tac-toe", "Connect Four", "leaderboards"],
+	groups: ["native polls", "AI decision polls", "Aura Farming cards", "build quests", "tech prophecies", "mystery drops", "hosted Truth or Dare", "Would You Rather", "truth/dare", "icebreakers", "trivia", "math games", "scramble", "riddles", "tic-tac-toe", "Connect Four", "leaderboards"],
 });
