@@ -724,15 +724,14 @@ export const handleTruthDareAction = async ({
   }
 
   if (session.choice === "dare") {
-    if (!["done", "complete", "completed", "finished", "finish"].includes(action)) {
-      return fromCommand;
-    }
+    if (!["done", "complete", "completed", "finished", "finish"].includes(action)) return false;
     await completeResponse(sock, session, player, "dare");
     return true;
   }
 
   const prefix = String(process.env.PREFIX || "$");
   if (!fromCommand && (raw.startsWith(prefix) || raw.startsWith("/") || raw.startsWith("#"))) return false;
+  if (["done", "complete", "completed", "finished", "finish"].includes(action)) return false;
   await completeResponse(sock, session, player, "truth");
   return true;
 };
