@@ -4,6 +4,15 @@ import { useToast } from '../App.jsx'
 
 const TYPE_FILTERS = ['all', 'public', 'group', 'admin', 'owner']
 
+const truthDareGuide = [
+  ['Start and lobby', '$td start opens a 30-second lobby and automatically joins the person who starts it. Use $td start 3 funny lobby=2m for three funny rounds and a two-minute lobby. The lobby timer accepts lobby=30s through lobby=10m.'],
+  ['Join or leave', 'Others vote Join game in the poll or type $td join. Type $td leave to leave before the lobby closes. A poll vote is applied when the lobby closes; at least two players are needed. Maximum: 20 players.'],
+  ['Close and resume', 'The starter, a group admin, or the bot owner can use $td close to end the lobby early. $td resume restores a saved session after a restart; $td status shows the current phase.'],
+  ['Take a turn', 'Alpha shuffles the players. Only the named player types truth, dare, or skip (or $td truth / $td dare / $td skip). The choice window is 45 seconds. For Truth, send an answer in chat or $td answer <text>. For Dare, perform it and type done. Some matching media dares accept a photo, video, voice note, or sticker. Responses have 90 seconds. Skips and timeouts earn 0.'],
+  ['Scores and winner', 'Truth earns 10 points; Dare earns 15. Consecutive completed turns add 2, 4, or 6 points. Completing every round without a skip or timeout adds 5 points. Alpha posts round scoreboards and announces the highest scorer (or tied winners) after the last round. $td score shows live scores; $td board shows saved totals; $td stats shows your profile.'],
+  ['Host controls', '$td next skips the active turn; $td stop ends the game and saves points earned so far. The starter participates like any other player, including when they are a group admin. If you are using Alpha’s own WhatsApp account, use the $td commands for your turns. Use $td help and $td rules in chat for a shorter reference.'],
+]
+
 export default function Commands() {
   const toast = useToast()
   const [all,     setAll]     = useState([])
@@ -108,11 +117,20 @@ export default function Commands() {
                 {rows.map(c => {
                   const uses = c.cmd.reduce((acc, k) => acc + (stats[k] || 0), 0)
                   const pct  = Math.round((uses / maxUses) * 100)
+                  const isTruthDare = c.cmd.includes('td')
                   return (
                   <tr key={c.cmd[0]} className={c.disabledGlobally ? 'row-disabled' : ''}>
                     <td><strong style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{c.cmd.join(', ')}</strong></td>
                     <td><span className={`badge badge-${c.type}`}>{c.type}</span></td>
-                    <td style={{ color: 'var(--text-soft)', maxWidth: 280 }}>{c.desc || '—'}</td>
+                    <td style={{ color: 'var(--text-soft)', maxWidth: 280 }}>
+                      {c.desc || '—'}
+                      {isTruthDare && <details style={{ marginTop: 10, maxWidth: 520 }}>
+                        <summary style={{ cursor: 'pointer', color: 'var(--accent)', fontWeight: 600 }}>Full Truth or Dare guide</summary>
+                        <div style={{ paddingTop: 8, lineHeight: 1.5 }}>
+                          {truthDareGuide.map(([title, description]) => <p key={title} style={{ margin: '0 0 12px' }}><strong>{title}</strong><br />{description}</p>)}
+                        </div>
+                      </details>}
+                    </td>
                     <td><code>{c.usage || c.cmd[0]}</code></td>
                     <td style={{ minWidth: 80 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

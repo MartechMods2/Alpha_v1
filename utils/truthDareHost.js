@@ -29,9 +29,10 @@ import {
 const sessions = new Map();
 
 const LOBBY_MS = 30_000;
+const MAX_LOBBY_MS = 10 * 60_000;
 const CHOICE_MS = 45_000;
 const RESPONSE_MS = 90_000;
-const SESSION_TTL_MS = 50 * 60_000;
+const SESSION_GRACE_MS = 10 * 60_000;
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 20;
 const MIN_ROUNDS = 1;
@@ -175,6 +176,7 @@ const snapshotOf = (session) => ({
   currentIndex: session.currentIndex,
   rounds: session.rounds,
   theme: session.theme,
+  lobbyMs: session.lobbyMs,
   truthDeck: [...(session.truthDeck || [])],
   dareDeck: [...(session.dareDeck || [])],
   pollId: session.pollId || "",
@@ -223,7 +225,11 @@ const schedule = (session, ms, callback) => {
   void persistSession(session);
 };
 
-const sessionIsExpired = (session) => Date.now() - Number(session.startedAt || 0) > SESSION_TTL_MS;
+const sessionLifetimeMs = (session) =>
+  (Number(session.lobbyMs) || LOBBY_MS) +
+  (Number(session.rounds) || 2) * Math.max(2, session.participants.length) * (CHOICE_MS + RESPONSE_MS) +
+  SESSION_GRACE_MS;
+const sessionIsExpired = (session) => Date.now() - Number(session.startedAt || 0) > sessionLifetimeMs(session);
 
 const cleanupExpiredSession = async (sock, session) => {
   if (!sessionIsExpired(session)) return false;
@@ -232,7 +238,7 @@ const cleanupExpiredSession = async (sock, session) => {
   await deleteTruthDareSessionSnapshot(session.groupJid).catch(() => {});
   if (session.pollId) await finishInteractivePoll(session.pollId, { result: "truth-dare-expired" }).catch(() => {});
   await sendQueued(sock, session.groupJid, {
-    text: "⌛ *Truth or Dare expired after 50 minutes.* Start a fresh game with `$td start`.",
+    text: "⌛ *Truth or Dare session expired.* Start a fresh game with `$td start`.",
   }).catch(() => {});
   return true;
 };
@@ -343,6 +349,7 @@ export const restoreTruthDareSession = async ({ sock, groupJid }) => {
     currentIndex: Math.max(0, Number(snapshot.currentIndex || 0)),
     rounds: Math.min(MAX_ROUNDS, Math.max(MIN_ROUNDS, Number(snapshot.rounds || 2))),
     theme: normalizeTruthDareTheme(snapshot.theme),
+    lobbyMs: Math.min(MAX_LOBBY_MS, Math.max(LOBBY_MS, Number(snapshot.lobbyMs) || LOBBY_MS)),
     truthDeck: Array.isArray(snapshot.truthDeck) ? snapshot.truthDeck : [],
     dareDeck: Array.isArray(snapshot.dareDeck) ? snapshot.dareDeck : [],
     pollId: snapshot.pollId || "",
@@ -628,6 +635,7 @@ export const startTruthDareSession = async ({
   groupMetadata,
   rounds = 2,
   theme = "classic",
+  lobbyMs = LOBBY_MS,
   sendMessageWTyping,
 }) => {
   const recovered = await restoreTruthDareSession({ sock, groupJid });
@@ -641,6 +649,8 @@ export const startTruthDareSession = async ({
 
   const safeRounds = Math.min(MAX_ROUNDS, Math.max(MIN_ROUNDS, Number.parseInt(rounds, 10) || 2));
   const safeTheme = normalizeTruthDareTheme(theme);
+  const safeLobbyMs = Math.min(MAX_LOBBY_MS, Math.max(LOBBY_MS, Number(lobbyMs) || LOBBY_MS));
+  const lobbyDuration = safeLobbyMs % 60_000 === 0 ? `${safeLobbyMs / 60_000} minute${safeLobbyMs === 60_000 ? "" : "s"}` : `${safeLobbyMs / 1_000} seconds`;
   const metadata = groupMetadata || await sock.groupMetadata(groupJid);
   const starter = participantFromJid(metadata, starterJid, starterName);
 
@@ -657,6 +667,7 @@ export const startTruthDareSession = async ({
     currentIndex: 0,
     rounds: safeRounds,
     theme: safeTheme,
+    lobbyMs: safeLobbyMs,
     truthDeck: buildTruthDareDeck({ theme: safeTheme, type: "truth" }),
     dareDeck: buildTruthDareDeck({ theme: safeTheme, type: "dare" }),
     pollId: "",
@@ -674,7 +685,7 @@ export const startTruthDareSession = async ({
   try {
     const pollMessage = await sock.sendMessage(groupJid, {
       poll: {
-        name: `🎭 Alpha Truth or Dare · ${safeRounds} round${safeRounds === 1 ? "" : "s"} · ${safeTheme}\nVote to join. The starter is already enrolled. Lobby closes in 30 seconds.`,
+        name: `🎭 Alpha Truth or Dare · ${safeRounds} round${safeRounds === 1 ? "" : "s"} · ${safeTheme}\nVote to join. The starter is already enrolled. Lobby closes in ${lobbyDuration}.`,
         values: [JOIN_OPTION, SKIP_OPTION],
         selectableCount: 1,
       },
@@ -689,7 +700,7 @@ export const startTruthDareSession = async ({
         ownerJid: starter.jid,
         options: [JOIN_OPTION, SKIP_OPTION],
         payload: { sessionId: session.id, rounds: safeRounds, theme: safeTheme },
-        ttlMs: LOBBY_MS + 60_000,
+        ttlMs: safeLobbyMs + 60_000,
       });
     }
   } catch (pollError) {
@@ -704,6 +715,7 @@ export const startTruthDareSession = async ({
       lines: [
         `Starter: *${starter.name}* — auto-joined, so the admin/host can play too.`,
         `Theme: *${safeTheme}* · Rounds: *${safeRounds}*`,
+        `Lobby: *${lobbyDuration}*`,
         `Up to *${MAX_PLAYERS} players*.`,
         "",
         session.pollId
@@ -721,7 +733,7 @@ export const startTruthDareSession = async ({
   }, { quoted: msg });
 
   await persistSession(session);
-  schedule(session, LOBBY_MS, () => closeLobbyInternal(sock, session));
+  schedule(session, safeLobbyMs, () => closeLobbyInternal(sock, session));
   return true;
 };
 
@@ -807,6 +819,7 @@ export const truthDareStatusText = (groupJid) => {
       lines: [
         `Players joined: *${session.participants.length}/${MAX_PLAYERS}*`,
         `Rounds: *${session.rounds}* · Theme: *${session.theme}*`,
+        `Lobby closes in: *${Math.max(0, Math.ceil((session.phaseExpiresAt - Date.now()) / 1_000))} seconds*`,
         ...session.participants.map((player, index) => `${index + 1}. ${player.name}`),
       ],
       footer: "Vote Join or use `$td join`. Starter/admin can use `$td close`.",
@@ -950,6 +963,7 @@ export const truthDareHelpText = (prefix = "$") => alphaPanel({
   lines: [
     `*${prefix}td start* — 2 rounds, classic theme`,
     `*${prefix}td start 3 funny* — 3 rounds, funny theme`,
+    `*${prefix}td start 3 funny lobby=2m* — keep the lobby open for 2 minutes (30s–10m; e.g. lobby=90s)`,
     `Themes: *${truthDareThemes.join(", ")}*`,
     `*${prefix}td join* / *${prefix}td leave* — lobby fallback`,
     `*${prefix}td close* — starter/admin closes lobby early`,

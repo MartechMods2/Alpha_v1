@@ -14,19 +14,7 @@ import {
   truthDareScoreText,
   truthDareStatusText,
 } from "../../../utils/truthDareHost.js";
-
-const THEMES = new Set(["classic", "funny", "deep", "friendship", "tech", "random"]);
-
-const parseStart = (args = []) => {
-  let rounds = 2;
-  let theme = "classic";
-  for (const raw of args) {
-    const value = String(raw || "").toLowerCase();
-    if (/^[1-5]$/.test(value)) rounds = Number(value);
-    else if (THEMES.has(value)) theme = value;
-  }
-  return { rounds, theme };
-};
+import { parseTruthDareStart } from "../../../utils/truthDareStartOptions.js";
 
 const handler = async (sock, msg, from, args, info) => {
   const {
@@ -47,7 +35,10 @@ const handler = async (sock, msg, from, args, info) => {
     }
 
     if (["start", "begin", "host"].includes(action)) {
-      const { rounds, theme } = parseStart(args.slice(1));
+      let settings;
+      try { settings = parseTruthDareStart(args.slice(1)); }
+      catch (error) { return reply(`❌ ${error.message}`); }
+      const { rounds, theme, lobbyMs } = settings;
       return startTruthDareSession({
         sock,
         msg,
@@ -57,6 +48,7 @@ const handler = async (sock, msg, from, args, info) => {
         groupMetadata,
         rounds,
         theme,
+        lobbyMs,
         sendMessageWTyping,
       });
     }
@@ -147,6 +139,6 @@ const handler = async (sock, msg, from, args, info) => {
 export default () => ({
   cmd: ["td", "tod", "truthdare", "truthordare", "tord", "todgame"],
   desc: "Alpha-hosted Truth or Dare with lobby, automatic turns, timers, scoring, stats and winner",
-  usage: "td start [1-5] [classic|funny|deep|friendship|tech|random] | td join | td score | td board | td stop",
+  usage: "td start [1-5] [theme] [lobby=90s|lobby=2m] | td join | td score | td board | td stop",
   handler,
 });

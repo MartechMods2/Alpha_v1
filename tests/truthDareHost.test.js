@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { parseTruthDareStart } from "../utils/truthDareStartOptions.js";
 import {
   buildTruthDareDeck,
   normalizeTruthDareTheme,
@@ -25,6 +26,15 @@ test("td command aliases and complete lifecycle controls are registered", async 
   for (const action of ["start", "join", "leave", "close", "stop", "next", "resume", "rules", "status", "score", "leaderboard", "stats", "answer"]) {
     assert.match(source, new RegExp(`"${action}"`));
   }
+});
+
+test("start parses a bounded per-game lobby duration", () => {
+  assert.deepEqual(parseTruthDareStart([]), { rounds: 2, theme: "classic", lobbyMs: 30_000 });
+  assert.deepEqual(parseTruthDareStart(["3", "funny", "lobby=2m"]), { rounds: 3, theme: "funny", lobbyMs: 120_000 });
+  assert.equal(parseTruthDareStart(["lobby=90s"]).lobbyMs, 90_000);
+  assert.throws(() => parseTruthDareStart(["lobby=20s"]), /between 30 seconds and 10 minutes/);
+  assert.throws(() => parseTruthDareStart(["lobby=11m"]), /between 30 seconds and 10 minutes/);
+  assert.throws(() => parseTruthDareStart(["lobby=abc"]), /Use lobby=/);
 });
 
 test("host engine auto-enrols starter and owns lobby, turns, timers, scoring and persistence", async () => {
