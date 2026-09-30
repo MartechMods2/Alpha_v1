@@ -4,6 +4,7 @@ import { setGroupBirthday } from "../db/groupTools.js";
 import messageQueue from "../queue/messageQueue.js";
 import { isSameGroupUser } from "./groupParticipants.js";
 import { alphaPanel, safeDisplayName } from "./alphaStyle.js";
+import { encodePollMessage, rememberPollMessage } from "./pollMessageStore.js";
 
 const optionHash = (option) => createHash("sha256").update(String(option)).digest();
 
@@ -16,10 +17,12 @@ const selectedOptionName = (options, selectedOptions = []) => {
 	return "";
 };
 
-const voteAuthor = (pollUpdate, groupJid) => {
+const voteAuthor = (pollUpdate, groupJid, sock) => {
 	const key = pollUpdate?.pollUpdateMessageKey || {};
 	if (key.participant) return key.participant;
+	if (key.participantPn) return key.participantPn;
 	if (key.participantAlt) return key.participantAlt;
+	if (key.fromMe) return String(sock?.user?.id || "").replace(/:\d+@/, "@");
 	if (key.remoteJid && key.remoteJid !== groupJid) return key.remoteJid;
 	return "";
 };
@@ -29,6 +32,7 @@ const sendQueued = (sock, jid, content) => messageQueue.enqueue(jid, () => sock.
 export const registerInteractivePoll = async ({ sentMessage, groupJid, type, ownerJid = "", options, payload = {}, ttlMs = 10 * 60_000 }) => {
 	const id = sentMessage?.key?.id;
 	if (!id) throw new Error("WhatsApp did not return a poll message id");
+	rememberPollMessage(sentMessage, ttlMs);
 	return createPollSession({
 		_id: id,
 		groupJid,
@@ -36,6 +40,7 @@ export const registerInteractivePoll = async ({ sentMessage, groupJid, type, own
 		ownerJid,
 		options: [...options],
 		payload,
+		creationMessage: sentMessage.message ? encodePollMessage(sentMessage.message) : "",
 		expiresAt: new Date(Date.now() + ttlMs),
 	});
 };
@@ -94,7 +99,7 @@ export const handleInteractivePollUpdate = async (sock, eventItem) => {
 
 	let handled = false;
 	for (const pollUpdate of update.pollUpdates) {
-		const voterJid = voteAuthor(pollUpdate, session.groupJid);
+		const voterJid = voteAuthor(pollUpdate, session.groupJid, sock);
 		if (!voterJid) continue;
 		const option = selectedOptionName(session.options, pollUpdate?.vote?.selectedOptions || []);
 		await replacePollVote(session._id, voterJid, option);

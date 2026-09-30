@@ -4,10 +4,12 @@ import {
   getTruthDareLeaderboard,
   getTruthDareProfile,
   getTruthDareSessionSnapshot,
+  getActiveTruthDareSessionSnapshots,
   recordTruthDareSessionPlayer,
   saveTruthDareSessionSnapshot,
 } from "../db/truthDareData.js";
 import messageQueue from "../queue/messageQueue.js";
+import { getSock } from "../core/socketRef.js";
 import {
   finishInteractivePoll,
   readInteractivePoll,
@@ -45,7 +47,7 @@ const SKIP_OPTION = "⏭️ Sit this one out";
 
 const clean = (value, max = 300) => String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
 const sendQueued = (sock, jid, content, options = {}) =>
-  messageQueue.enqueue(jid, () => sock.sendMessage(jid, content, options), 1);
+  messageQueue.enqueue(jid, () => (getSock() || sock).sendMessage(jid, content, options), 1);
 
 const shuffle = (items) => {
   const copy = [...items];
@@ -297,6 +299,7 @@ async function rearmRecoveredSession(sock, session) {
   const remaining = Math.max(250, Number(session.phaseExpiresAt || 0) - Date.now());
 
   if (session.status === "lobby") {
+    session.phase = "lobby";
     schedule(session, remaining, () => closeLobbyInternal(sock, session));
     return;
   }
@@ -372,6 +375,17 @@ export const restoreTruthDareSession = async ({ sock, groupJid }) => {
   sessions.set(groupJid, session);
   await rearmRecoveredSession(sock, session);
   return session;
+};
+
+export const restoreActiveTruthDareSessions = async ({ sock }) => {
+  const snapshots = await getActiveTruthDareSessionSnapshots();
+  for (const snapshot of snapshots) {
+    try {
+      await restoreTruthDareSession({ sock, groupJid: snapshot.groupJid || snapshot._id });
+    } catch (error) {
+      console.warn("[TRUTH_DARE] automatic recovery failed:", error.message);
+    }
+  }
 };
 
 const finishSession = async (sock, session, { stopped = false } = {}) => {
@@ -578,7 +592,8 @@ async function completeResponse(sock, session, player, type) {
 }
 
 async function closeLobbyInternal(sock, session) {
-  if (!session || session.status !== "lobby") return false;
+  if (!session || session.status !== "lobby" || session.phase === "closing") return false;
+  session.phase = "closing";
   clearTimer(session);
 
   const poll = session.pollId ? await readInteractivePoll(session.pollId).catch(() => null) : null;
@@ -708,6 +723,11 @@ export const startTruthDareSession = async ({
     session.pollId = "";
   }
 
+  // Arm the lobby before the welcome send: a failed/delayed typing message must
+  // not leave a visible poll with no timer or recoverable deadline.
+  schedule(session, safeLobbyMs, () => closeLobbyInternal(sock, session));
+  await persistSession(session);
+
   await sendMessageWTyping(groupJid, {
     text: alphaPanel({
       icon: "🎭",
@@ -728,12 +748,10 @@ export const startTruthDareSession = async ({
         "⚡ Consecutive completed turns earn +2/+4/+6 streak bonuses.",
         `✨ Complete every round without skip/timeout for +${PERFECT_BONUS} bonus.`,
       ],
-      footer: "Skip is always allowed. No negative points. Starter/admin can use `$td close` to close the lobby early.",
+      footer: "The game starts when the lobby timer ends. Starter/admin can use `$td close` to start early. Skip is always allowed.",
     }),
   }, { quoted: msg });
 
-  await persistSession(session);
-  schedule(session, safeLobbyMs, () => closeLobbyInternal(sock, session));
   return true;
 };
 

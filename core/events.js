@@ -6,6 +6,7 @@ import { handlePassiveCommunityMessage } from "../utils/passiveCommunity.js";
 import { handleInteractivePollUpdate } from "../utils/pollManager.js";
 import { handleOwnerMentionReaction } from "../utils/ownerMentionReaction.js";
 import { handleAfkPresence } from "../utils/afkPresence.js";
+import { restoreActiveTruthDareSessions } from "../utils/truthDareHost.js";
 
 const events = async (sock, startSock, cache) => {
 	sock.ev.process(async (event) => {
@@ -75,6 +76,11 @@ const events = async (sock, startSock, cache) => {
 			}
 
 			if (event["connection.update"]) await getConnectionUpdate(startSock, event["connection.update"]);
+			if (event["connection.update"]?.connection === "open") {
+				await restoreActiveTruthDareSessions({ sock }).catch((error) => {
+					console.warn("Truth or Dare recovery failed:", error.message);
+				});
+			}
 			if (event["group-participants.update"]) await getGroupEvent(sock, event["group-participants.update"], cache);
 			if (event["call"]) await getCallEvent(sock, event["call"]);
 

@@ -77,6 +77,9 @@ export const saveTruthDareSessionSnapshot = async (groupJid, snapshot) => {
 export const getTruthDareSessionSnapshot = (groupJid) =>
   truthDareSessions.findOne({ _id: groupJid });
 
+export const getActiveTruthDareSessionSnapshots = () =>
+  truthDareSessions.find({ status: { $in: ["lobby", "playing"] } }).toArray();
+
 export const deleteTruthDareSessionSnapshot = (groupJid) =>
   truthDareSessions.deleteOne({ _id: groupJid });
 

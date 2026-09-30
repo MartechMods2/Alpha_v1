@@ -5,7 +5,7 @@ import { useToast } from '../App.jsx'
 const TYPE_FILTERS = ['all', 'public', 'group', 'admin', 'owner']
 
 const truthDareGuide = [
-  ['Start and lobby', '$td start opens a 30-second lobby and automatically joins the person who starts it. Use $td start 3 funny lobby=2m for three funny rounds and a two-minute lobby. The lobby timer accepts lobby=30s through lobby=10m.'],
+  ['Start and lobby', '$td start opens a 30-second lobby and automatically joins the person who starts it. Use $td start 3 funny lobby=2m for three funny rounds and a two-minute lobby. The lobby timer accepts lobby=30s through lobby=10m. Alpha waits until that timer ends even after people vote; use $td close to start early.'],
   ['Join or leave', 'Others vote Join game in the poll or type $td join. Type $td leave to leave before the lobby closes. A poll vote is applied when the lobby closes; at least two players are needed. Maximum: 20 players.'],
   ['Close and resume', 'The starter, a group admin, or the bot owner can use $td close to end the lobby early. $td resume restores a saved session after a restart; $td status shows the current phase.'],
   ['Take a turn', 'Alpha shuffles the players. Only the named player types truth, dare, or skip (or $td truth / $td dare / $td skip). The choice window is 45 seconds. For Truth, send an answer in chat or $td answer <text>. For Dare, perform it and type done. Some matching media dares accept a photo, video, voice note, or sticker. Responses have 90 seconds. Skips and timeouts earn 0.'],

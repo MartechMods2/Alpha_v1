@@ -3,6 +3,8 @@ import makeWASocket, { makeCacheableSignalKeyStore } from "baileys";
 import { fetchLatestBaileysVersion } from "baileys";
 import { useMongoDBAuthState } from "./auth.js";
 import P from "pino";
+import { getPollCreationMessage } from "../db/pollSessionData.js";
+import { readCachedPollMessage } from "../utils/pollMessageStore.js";
 
 const logger = P({ level: "silent" });
 
@@ -70,11 +72,13 @@ const socket = async () => {
 
 	async function getMessage(key) {
 		try {
+			const pollMessage = readCachedPollMessage(key);
+			if (pollMessage) return pollMessage;
 			const cacheKey = `${key.remoteJid}:${key.id}`;
 			if (messageCache.has(cacheKey)) {
 				return messageCache.get(cacheKey);
 			}
-			return undefined;
+			return await getPollCreationMessage(key);
 		} catch (error) {
 			logger.error("Error in getMessage function:", error);
 			return undefined;

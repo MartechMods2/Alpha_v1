@@ -1,4 +1,5 @@
 import mdClient from "./client.js";
+import { decodePollMessage } from "../utils/pollMessageStore.js";
 
 const pollSessions = mdClient.db("MyBotDataDB").collection("InteractivePollSessions");
 
@@ -22,6 +23,14 @@ export const createPollSession = async (session) => {
 };
 
 export const getPollSession = (id) => pollSessions.findOne({ _id: String(id) });
+
+export const getPollCreationMessage = async (key) => {
+	if (!key?.id || !key?.remoteJid) return undefined;
+	const session = await getPollSession(key.id);
+	if (!session?.creationMessage || session.groupJid !== key.remoteJid ||
+		new Date(session.expiresAt).getTime() <= Date.now()) return undefined;
+	return decodePollMessage(session.creationMessage);
+};
 
 export const replacePollVote = async (id, voterJid, option = "") => {
 	const filter = { _id: String(id), status: "open" };
