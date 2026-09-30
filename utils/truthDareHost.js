@@ -10,10 +10,14 @@ import {
 } from "../db/truthDareData.js";
 import messageQueue from "../queue/messageQueue.js";
 import { getSock } from "../core/socketRef.js";
+import { MAX_HOSTED_ROUNDS } from "./hostedGameOptions.js";
+import { onPollVote } from "./pollVoteEvents.js";
+import { getAutoGameSession } from "./autoGameHost.js";
 import {
   finishInteractivePoll,
   readInteractivePoll,
   registerInteractivePoll,
+  recordInteractivePollChoice,
 } from "./pollManager.js";
 import {
   isSameGroupUser,
@@ -38,7 +42,7 @@ const SESSION_GRACE_MS = 10 * 60_000;
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 20;
 const MIN_ROUNDS = 1;
-const MAX_ROUNDS = 5;
+const MAX_ROUNDS = MAX_HOSTED_ROUNDS;
 const TRUTH_POINTS = 10;
 const DARE_POINTS = 15;
 const PERFECT_BONUS = 5;
@@ -122,6 +126,14 @@ const removeParticipant = (session, jid) => {
   void persistSession(session);
   return true;
 };
+
+onPollVote("truth-dare-lobby", async (poll, vote) => {
+  const session = sessions.get(poll.groupJid);
+  if (!session || session.status !== "lobby" || session.phase === "closing" || session.pollId !== poll._id) return;
+  if (vote.option === JOIN_OPTION) addParticipant(session, vote.voterJid);
+  else removeParticipant(session, vote.voterJid);
+  await persistSession(session);
+});
 
 const currentPlayer = (session) => session.turnOrder[session.currentIndex] || null;
 const formatPlayerMention = (player) => `@${String(player?.jid || "").split("@")[0]}`;
@@ -422,6 +434,7 @@ const finishSession = async (sock, session, { stopped = false } = {}) => {
         timeouts: player.timeouts,
         won,
         perfect: player.perfectBonus > 0,
+        sessionId: session.id,
       }),
       recordGameResult({
         groupJid: session.groupJid,
@@ -431,6 +444,7 @@ const finishSession = async (sock, session, { stopped = false } = {}) => {
         points: player.score,
         won,
         correct: player.completed > 0,
+        resultId: `${session.id}:truthdare:${player.jid}`,
       }),
     ]);
   })).catch((error) => console.warn("[TRUTH_DARE] stat persistence:", error.message));
@@ -596,14 +610,25 @@ async function closeLobbyInternal(sock, session) {
   session.phase = "closing";
   clearTimer(session);
 
-  const poll = session.pollId ? await readInteractivePoll(session.pollId).catch(() => null) : null;
-  if (session.pollId) await finishInteractivePoll(session.pollId, { result: "truth-dare-lobby-closed" }).catch(() => {});
+  let poll = null;
+  if (session.pollId) {
+    try {
+      poll = await finishInteractivePoll(session.pollId, { result: "truth-dare-lobby-closed" });
+      if (!poll) throw new Error("Lobby votes unavailable");
+    }
+    catch (error) {
+      session.phase = "lobby";
+      schedule(session, 15_000, () => closeLobbyInternal(sock, session));
+      await sendQueued(sock, session.groupJid, { text: "🗳️ Alpha could not read the lobby votes yet. Retrying in 15 seconds; you can also use `$td join`." });
+      return false;
+    }
+  }
 
-  const votes = poll?.votes || [];
+  const votes = [...(poll?.votes || [])].sort((a, b) => new Date(a.votedAt || 0) - new Date(b.votedAt || 0));
   for (const vote of votes) {
     if (!vote?.voterJid) continue;
     if (vote.option === JOIN_OPTION) addParticipant(session, vote.voterJid);
-    if (vote.option === SKIP_OPTION) removeParticipant(session, vote.voterJid);
+    if (vote.option === SKIP_OPTION || !vote.option) removeParticipant(session, vote.voterJid);
   }
 
   if (session.participants.length < MIN_PLAYERS) {
@@ -653,6 +678,7 @@ export const startTruthDareSession = async ({
   lobbyMs = LOBBY_MS,
   sendMessageWTyping,
 }) => {
+  if (getAutoGameSession(groupJid)) return sendMessageWTyping(groupJid, { text: "🎮 A hosted game is already active. Use `$game stop` first." }, { quoted: msg });
   const recovered = await restoreTruthDareSession({ sock, groupJid });
   if (recovered) {
     return sendMessageWTyping(groupJid, {
@@ -739,7 +765,7 @@ export const startTruthDareSession = async ({
         `Up to *${MAX_PLAYERS} players*.`,
         "",
         session.pollId
-          ? "Everyone else: vote *Join game* in the poll or type `$td join`."
+          ? "Everyone else: vote *Join game* in the poll or type `$td join`. Check counted players with `$td status`."
           : "Poll creation was unavailable, so everyone else should type `$td join`.",
         "Alpha will shuffle players, manage every turn, keep time, score the game and announce the winner automatically.",
         "",
@@ -760,6 +786,7 @@ export const joinTruthDareLobby = async ({ sock, groupJid, senderJid, senderName
   if (!session || session.status !== "lobby") return { ok: false, message: "🎭 No Truth or Dare lobby is open." };
   const player = addParticipant(session, senderJid, senderName);
   if (!player) return { ok: false, message: `🎭 Lobby is full at ${MAX_PLAYERS} players.` };
+  if (session.pollId) await recordInteractivePollChoice(session.pollId, player.jid, JOIN_OPTION);
   await persistSession(session);
   return { ok: true, message: `✅ *${player.name}* joined Truth or Dare. Players: *${session.participants.length}/${MAX_PLAYERS}*.` };
 };
@@ -768,6 +795,7 @@ export const leaveTruthDareLobby = async ({ sock, groupJid, senderJid }) => {
   const session = sessions.get(groupJid) || await restoreTruthDareSession({ sock, groupJid });
   if (!session || session.status !== "lobby") return { ok: false, message: "🎭 No Truth or Dare lobby is open." };
   const removed = removeParticipant(session, senderJid);
+  if (session.pollId) await recordInteractivePollChoice(session.pollId, normalizeUserJid(senderJid), SKIP_OPTION);
   await persistSession(session);
   return {
     ok: removed,
@@ -980,7 +1008,8 @@ export const truthDareHelpText = (prefix = "$") => alphaPanel({
   title: "Alpha Hosted Truth or Dare",
   lines: [
     `*${prefix}td start* — 2 rounds, classic theme`,
-    `*${prefix}td start 3 funny* — 3 rounds, funny theme`,
+    `*${prefix}td start 10 funny* — 10 rounds, funny theme (choose 1–${MAX_ROUNDS})`,
+    `*${prefix}td start rounds=10 funny lobby=2m* — explicit round and lobby settings`,
     `*${prefix}td start 3 funny lobby=2m* — keep the lobby open for 2 minutes (30s–10m; e.g. lobby=90s)`,
     `Themes: *${truthDareThemes.join(", ")}*`,
     `*${prefix}td join* / *${prefix}td leave* — lobby fallback`,

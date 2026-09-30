@@ -17,8 +17,11 @@ export const recordGameResult = async ({
 	points = 0,
 	won = false,
 	correct = false,
+	resultId = "",
 }) => {
-	const awarded = Math.max(0, Math.min(100, Number(points) || 0));
+	const awarded = Math.max(0, Math.min(resultId ? 10_000 : 100, Number(points) || 0));
+	const duplicate = { $in: [{ $literal: resultId }, { $ifNull: ["$recordedResultIds", []] }] };
+	const once = (value) => resultId ? { $cond: [duplicate, 0, value] } : value;
 	const gameKey = safeGameKey(game);
 	const nextStreak = correct
 		? { $add: [{ $ifNull: ["$streak", 0] }, 1] }
@@ -31,17 +34,21 @@ export const recordGameResult = async ({
 					groupJid,
 					memberJid,
 					name: safeName(name),
-					points: { $add: [{ $ifNull: ["$points", 0] }, awarded] },
-					plays: { $add: [{ $ifNull: ["$plays", 0] }, 1] },
-					wins: { $add: [{ $ifNull: ["$wins", 0] }, won ? 1 : 0] },
-					correct: { $add: [{ $ifNull: ["$correct", 0] }, correct ? 1 : 0] },
-					streak: nextStreak,
-					[gameField(game)]: { $add: [{ $ifNull: [`$${gameField(game)}`, 0] }, awarded] },
+					points: { $add: [{ $ifNull: ["$points", 0] }, once(awarded)] },
+					plays: { $add: [{ $ifNull: ["$plays", 0] }, once(1)] },
+					wins: { $add: [{ $ifNull: ["$wins", 0] }, once(won ? 1 : 0)] },
+					correct: { $add: [{ $ifNull: ["$correct", 0] }, once(correct ? 1 : 0)] },
+					streak: resultId ? { $cond: [duplicate, { $ifNull: ["$streak", 0] }, nextStreak] } : nextStreak,
+					...(resultId ? { recordedResultIds: { $slice: [{ $concatArrays: [
+						{ $filter: { input: { $ifNull: ["$recordedResultIds", []] }, as: "id", cond: { $ne: ["$$id", { $literal: resultId }] } } },
+						{ $literal: [resultId] },
+					] }, -2000] } } : {}),
+					[gameField(game)]: { $add: [{ $ifNull: [`$${gameField(game)}`, 0] }, once(awarded)] },
 					[`gamePlays.${gameKey}`]: {
-						$add: [{ $ifNull: [`$gamePlays.${gameKey}`, 0] }, 1],
+						$add: [{ $ifNull: [`$gamePlays.${gameKey}`, 0] }, once(1)],
 					},
 					[`gameWins.${gameKey}`]: {
-						$add: [{ $ifNull: [`$gameWins.${gameKey}`, 0] }, won ? 1 : 0],
+						$add: [{ $ifNull: [`$gameWins.${gameKey}`, 0] }, once(won ? 1 : 0)],
 					},
 					updatedAt: "$$NOW",
 				},

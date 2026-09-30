@@ -34,21 +34,20 @@ export const getPollCreationMessage = async (key) => {
 
 export const replacePollVote = async (id, voterJid, option = "") => {
 	const filter = { _id: String(id), status: "open" };
-	await pollSessions.updateOne(filter, {
-		$pull: { votes: { voterJid } },
-		$set: { updatedAt: new Date() },
-	});
-	if (!option) return getPollSession(id);
-	await pollSessions.updateOne(filter, {
-		$push: { votes: { voterJid, option, votedAt: new Date() } },
-		$set: { updatedAt: new Date() },
-	});
-	return getPollSession(id);
+	const now = new Date();
+	return pollSessions.findOneAndUpdate(filter, [{ $set: {
+		votes: { $concatArrays: [
+			{ $filter: { input: { $ifNull: ["$votes", []] }, as: "vote", cond: { $ne: ["$$vote.voterJid", { $literal: voterJid }] } } },
+			{ $literal: option ? [{ voterJid, option, votedAt: now }] : [] },
+		] },
+		updatedAt: now,
+	} }], { returnDocument: "after" });
 };
 
-export const closePollSession = (id, extra = {}) => pollSessions.updateOne(
+export const closePollSession = (id, extra = {}) => pollSessions.findOneAndUpdate(
 	{ _id: String(id) },
 	{ $set: { status: "closed", closedAt: new Date(), updatedAt: new Date(), ...extra } },
+	{ returnDocument: "after" },
 );
 
 export const deleteExpiredPollSessions = () => pollSessions.deleteMany({

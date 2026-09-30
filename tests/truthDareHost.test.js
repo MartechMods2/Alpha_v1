@@ -32,6 +32,10 @@ test("start parses a bounded per-game lobby duration", () => {
   assert.deepEqual(parseTruthDareStart([]), { rounds: 2, theme: "classic", lobbyMs: 30_000 });
   assert.deepEqual(parseTruthDareStart(["3", "funny", "lobby=2m"]), { rounds: 3, theme: "funny", lobbyMs: 120_000 });
   assert.equal(parseTruthDareStart(["lobby=90s"]).lobbyMs, 90_000);
+  assert.equal(parseTruthDareStart(["10", "funny"]).rounds, 10);
+  assert.equal(parseTruthDareStart(["rounds=100"]).rounds, 100);
+  assert.throws(() => parseTruthDareStart(["0"]), /Choose 1–100 rounds/);
+  assert.throws(() => parseTruthDareStart(["101"]), /Choose 1–100 rounds/);
   assert.throws(() => parseTruthDareStart(["lobby=20s"]), /between 30 seconds and 10 minutes/);
   assert.throws(() => parseTruthDareStart(["lobby=11m"]), /between 30 seconds and 10 minutes/);
   assert.throws(() => parseTruthDareStart(["lobby=abc"]), /Use lobby=/);
@@ -47,7 +51,7 @@ test("host engine auto-enrols starter and owns lobby, turns, timers, scoring and
   assert.match(source, /TRUTH_POINTS = 10/);
   assert.match(source, /DARE_POINTS = 15/);
   assert.match(source, /PERFECT_BONUS = 5/);
-  assert.match(source, /MAX_ROUNDS = 5/);
+  assert.match(source, /MAX_ROUNDS = MAX_HOSTED_ROUNDS/);
   assert.match(source, /streakBonus/);
   assert.match(source, /recordTruthDareSessionPlayer/);
   assert.match(source, /saveTruthDareSessionSnapshot/);

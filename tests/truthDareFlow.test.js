@@ -26,9 +26,9 @@ test("poll votes survive a long lobby and drive automatic turns, scoring and win
   const pollDb = asModule(`
     const h = globalThis.__alphaTdFlow;
     export async function createPollSession(session) { const row = {...session, votes: [], status: 'open'}; h.polls.set(session._id, row); return row; }
-    export async function getPollSession(id) { return h.polls.get(id); }
+    export async function getPollSession(id) { if (h.failRead) throw new Error('DB read unavailable'); return h.polls.get(id); }
     export async function replacePollVote(id, voterJid, option) { const p = h.polls.get(id); p.votes = p.votes.filter(v => v.voterJid !== voterJid); if (option) p.votes.push({voterJid, option}); return p; }
-    export async function closePollSession(id) { const p = h.polls.get(id); if (p) p.status = 'closed'; }
+    export async function closePollSession(id) { if (h.failClose) throw new Error('DB close unavailable'); const p = h.polls.get(id); if (p) p.status = 'closed'; }
   `);
   const queue = asModule("export default { enqueue: async (_jid, send) => send() };");
   const participantsUrl = await loadWithMocks("../utils/groupParticipants.js", {
@@ -55,6 +55,7 @@ test("poll votes survive a long lobby and drive automatic turns, scoring and win
     "../queue/messageQueue.js": queue,
     "./pollManager.js": pollUrl,
     "./groupParticipants.js": participantsUrl,
+    "./autoGameHost.js": asModule("export const getAutoGameSession = () => null;"),
   });
   const host = await import(hostUrl);
   const pollManager = await import(pollUrl);
@@ -72,7 +73,7 @@ test("poll votes survive a long lobby and drive automatic turns, scoring and win
         message: content.poll ? { pollCreationMessageV3: content.poll, messageContextInfo: { messageSecret: secret } } : content };
     },
   };
-  await host.startTruthDareSession({ sock, groupJid, starterJid, starterName: "Admin", groupMetadata: metadata, rounds: 1,
+  await host.startTruthDareSession({ sock, groupJid, starterJid, starterName: "Admin", groupMetadata: metadata, rounds: 10,
     lobbyMs: 600_000, sendMessageWTyping: sock.sendMessage });
   const session = host.getTruthDareSession(groupJid);
   assert.equal(session.participants.length, 1, "starter auto-enrolled");
@@ -93,9 +94,14 @@ test("poll votes survive a long lobby and drive automatic turns, scoring and win
     pollUpdateMessageKey: { participantPn: playerJid },
     vote: { selectedOptions: [createHash("sha256").update("✅ Join game").digest()] },
   }] } });
+  assert.equal(session.participants.length, 2, "vote counts immediately before lobby closes");
+  h.failRead = true;
+  h.failClose = true;
   const lobbyTimer = h.timers.find(timer => timer.delay === 600_000);
   assert.ok(lobbyTimer);
   await lobbyTimer.callback();
+  h.failRead = false;
+  h.failClose = false;
   assert.equal(session.status, "playing");
   assert.equal(session.participants.length, 2, "stored vote enrolls second player");
 
@@ -108,11 +114,11 @@ test("poll votes survive a long lobby and drive automatic turns, scoring and win
     const choice = player.jid === starterJid ? "truth" : "dare";
     assert.equal(await host.handleTruthDareAction({ sock, groupJid, senderJid: player.jid, body: choice }), true);
     assert.equal(await host.handleTruthDareAction({ sock, groupJid, senderJid: player.jid, body: choice === "truth" ? "My answer" : "done" }), true);
-    assert.ok(++turns <= 2);
+    assert.ok(++turns <= 20);
   }
-  assert.equal(turns, 2);
-  assert.equal(h.results.find(row => row.memberJid === starterJid).points, 15);
-  assert.equal(h.results.find(row => row.memberJid === playerJid).points, 20);
+  assert.equal(turns, 20);
+  assert.equal(h.results.find(row => row.memberJid === starterJid).points, 153);
+  assert.equal(h.results.find(row => row.memberJid === playerJid).points, 203);
   assert.match(h.sent.at(-1).text, /Truth or Dare Complete/);
   assert.match(h.sent.at(-1).text, /Winner/);
   assert.equal(h.snapshots.has(groupJid), false);

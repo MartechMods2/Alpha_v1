@@ -139,6 +139,6 @@ const handler = async (sock, msg, from, args, info) => {
 export default () => ({
   cmd: ["td", "tod", "truthdare", "truthordare", "tord", "todgame"],
   desc: "Alpha-hosted Truth or Dare with lobby, automatic turns, timers, scoring, stats and winner",
-  usage: "td start [1-5] [theme] [lobby=90s|lobby=2m] | td join | td score | td board | td stop",
+  usage: "td start [1-100|rounds=10] [theme] [lobby=90s|lobby=2m] | td join | td score | td board | td stop",
   handler,
 });

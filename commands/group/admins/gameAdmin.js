@@ -1,6 +1,7 @@
 import { resetGroupGameScores } from "../../../db/gameData.js";
 import { clearActiveGame } from "../members/scoredGames.js";
 import { clearGroupBattle } from "../members/quizBattle.js";
+import { controlAutoGame } from "../../../utils/autoGameHost.js";
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const { sendMessageWTyping } = msgInfoObj;
@@ -8,6 +9,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	if (String(args[0] || "").toLowerCase() !== "confirm") {
 		return reply("⚠️ This permanently clears this group's game scores. Use `gamereset confirm`.");
 	}
+	await controlAutoGame({ sock, groupJid: from, senderJid: msgInfoObj.senderJid, action: "stop", isAdmin: true });
 	const result = await resetGroupGameScores(from);
 	clearActiveGame(from);
 	clearGroupBattle(from);

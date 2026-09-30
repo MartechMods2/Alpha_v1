@@ -7,6 +7,7 @@ import { handleInteractivePollUpdate } from "../utils/pollManager.js";
 import { handleOwnerMentionReaction } from "../utils/ownerMentionReaction.js";
 import { handleAfkPresence } from "../utils/afkPresence.js";
 import { restoreActiveTruthDareSessions } from "../utils/truthDareHost.js";
+import { restoreActiveAutoGames } from "../utils/autoGameHost.js";
 
 const events = async (sock, startSock, cache) => {
 	sock.ev.process(async (event) => {
@@ -80,6 +81,7 @@ const events = async (sock, startSock, cache) => {
 				await restoreActiveTruthDareSessions({ sock }).catch((error) => {
 					console.warn("Truth or Dare recovery failed:", error.message);
 				});
+				await restoreActiveAutoGames({ sock }).catch(error => console.warn("Hosted game recovery failed:", error.message));
 			}
 			if (event["group-participants.update"]) await getGroupEvent(sock, event["group-participants.update"], cache);
 			if (event["call"]) await getCallEvent(sock, event["call"]);

@@ -23,10 +23,11 @@ export const recordTruthDareSessionPlayer = async ({
   timeouts = 0,
   won = false,
   perfect = false,
+  sessionId = "",
 }) => {
-  const cleanPoints = Math.max(0, Math.min(500, Number(points) || 0));
-  return truthDareStats.findOneAndUpdate(
-    { _id: statId(groupJid, memberJid) },
+  const cleanPoints = Math.max(0, Math.min(10_000, Number(points) || 0));
+  try { return await truthDareStats.findOneAndUpdate(
+    { _id: statId(groupJid, memberJid), ...(sessionId ? { recordedSessions: { $ne: sessionId } } : {}) },
     {
       $set: {
         groupJid,
@@ -35,6 +36,7 @@ export const recordTruthDareSessionPlayer = async ({
         updatedAt: new Date(),
       },
       $setOnInsert: { createdAt: new Date() },
+      ...(sessionId ? { $push: { recordedSessions: { $each: [sessionId], $slice: -2000 } } } : {}),
       $inc: {
         sessions: 1,
         points: cleanPoints,
@@ -47,7 +49,10 @@ export const recordTruthDareSessionPlayer = async ({
       },
     },
     { upsert: true, returnDocument: "after" },
-  );
+  ); } catch (error) {
+    if (sessionId && error?.code === 11000) return truthDareStats.findOne({ _id: statId(groupJid, memberJid) });
+    throw error;
+  }
 };
 
 export const getTruthDareProfile = (groupJid, memberJid) =>
