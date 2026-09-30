@@ -1,32 +1,9 @@
-import { getGroupData, createGroupData, group } from "../../db/groupData.js";
-import { getMemberData, createMembersData, member } from "../../db/members.js";
-import axios from "axios";
-import fs from "fs";
+import calcCommand from "../public/calc.js";
 
-const handler = async (sock, msg, from, args, msgInfoObj) => {
-	const { sendMessageWTyping, evv, command, extendedMessageOriginal } = msgInfoObj;
-
-	let taggedJid;
-	if (extendedMessageOriginal) {
-		taggedJid = extendedMessageOriginal.participant || extendedMessageOriginal.mentionedJid?.[0];
-	}
-
-	if (args.length === 0) {
-		return sendMessageWTyping(from, { text: `❌ empty query!` }, { quoted: msg });
-	}
-	try {
-		let resultTest = eval(evv);
-		if (typeof resultTest === "object")
-			sendMessageWTyping(from, { text: JSON.stringify(resultTest) }, { quoted: msg });
-		else sendMessageWTyping(from, { text: resultTest.toString() }, { quoted: msg });
-	} catch (err) {
-		sendMessageWTyping(from, { text: err.toString() }, { quoted: msg });
-	}
+const handler = async (sock, msg, from, args, info) => {
+  // Owner commands are also available to configured moderators. Never execute
+  // arbitrary JavaScript with the bot's credentials or database connection.
+  if (!args.length) return info.sendMessageWTyping(from, { text: `Use ${info.prefix}test 25 * 4 + 10 to test arithmetic. Use Dashboard → Command Lab to test command syntax and offline handlers.` }, { quoted: msg });
+  return calcCommand().handler(sock, msg, from, args, info);
 };
-
-export default () => ({
-	cmd: ["test", "code"],
-	desc: "Test your code",
-	usage: "test | code",
-	handler,
-});
+export default () => ({ cmd: ["test", "code"], desc: "Safely test arithmetic; use the dashboard Command Lab for commands", usage: "test <expression> | code <expression>", handler });

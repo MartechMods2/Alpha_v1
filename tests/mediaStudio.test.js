@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import nodeWebpmux from "node-webpmux";
+import { setStickerMetadata } from "../utils/stickerMetadata.js";
 import {
 	createMemeImage,
 	createPhotoGrid,
@@ -52,4 +54,16 @@ test("profile and rank card renderer produces a PNG", async () => {
 	const card = await createProfileCard({ name: "Alpha Player", subtitle: "Gold Rank", points: 450 });
 	assert.ok(card.length > 1000);
 	assert.equal(card.subarray(1, 4).toString(), "PNG");
+});
+
+test("sticker pack metadata is added and removed using the supported WebP API", async () => {
+  const sticker = await convertMediaToSticker(createTextStickerImage("Metadata test"), { inputExtension: "png", pack: "Alpha", author: "Tests" });
+  const image = new nodeWebpmux.Image();
+  await image.load(sticker);
+  assert.ok(image.exif.includes(Buffer.from('"sticker-pack-name":"Alpha"')));
+  assert.ok(image.exif.includes(Buffer.from('"sticker-pack-publisher":"Tests"')));
+  const stripped = await setStickerMetadata(sticker, { remove: true });
+  const withoutExif = new nodeWebpmux.Image();
+  await withoutExif.load(stripped);
+  assert.equal(withoutExif.exif, undefined);
 });

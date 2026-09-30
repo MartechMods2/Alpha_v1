@@ -8,6 +8,8 @@ import ManagementSuite from './pages/ManagementSuite.jsx'
 import CustomizationStudio from './pages/CustomizationStudio.jsx'
 import EngagementCenter from './pages/EngagementCenter.jsx'
 import Commands from './pages/Commands.jsx'
+import CommandGuide from './pages/CommandGuide.jsx'
+import CommandLab from './pages/CommandLab.jsx'
 import Groups from './pages/Groups.jsx'
 import Members from './pages/Members.jsx'
 import Analytics from './pages/Analytics.jsx'
@@ -81,6 +83,8 @@ export default function App() {
               <Route path="control-center" element={<ControlCenter />} />
               <Route path="templates" element={<TemplateLibrary />} />
               <Route path="commands" element={<Commands />} />
+              <Route path="command-guide" element={<CommandGuide />} />
+              <Route path="command-lab" element={<CommandLab />} />
               <Route path="groups" element={<Groups />} />
               <Route path="members" element={<Members />} />
               <Route path="analytics" element={<Analytics />} />

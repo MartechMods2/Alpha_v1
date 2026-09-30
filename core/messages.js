@@ -7,7 +7,8 @@ import { escapeHtml } from "../notify/telegram.js";
 import { readFileEfficiently } from "../utils/file.js";
 import { getGroupMeta, setGroupMeta, checkRateLimit } from "../cache/redisCache.js";
 
-const prefix = process.env.PREFIX;
+const prefix = process.env.PREFIX || "$";
+import { parseCommandSegment } from "../utils/multiCommand.js";
 const moderatos = (process.env.MODERATORS || "")
 	.split(",")
 	.map((number) => number.replace(/[^0-9]/g, ""))
@@ -52,15 +53,10 @@ import { runSmartIntent } from "../commands/public/smartIntent.js";
 import { consumeOwnerIntentCooldown, detectOwnerIntent, isMartechOwner } from "../utils/ownerIntent.js";
 
 // ── FOOLPROOF REWRITE FOR OWNER/BOT IDENTIFICATION ─────────────────
-const cleanMyNum = (process.env.MY_NUMBER || "").split(",")[0].replace(/[^0-9]/g, "");
 const cleanBotNum = (process.env.BOT_NUMBER || "").split(",")[0].replace(/[^0-9]/g, "");
-
-const myNumber = [
-	cleanMyNum + "@s.whatsapp.net",
-	cleanMyNum + "@lid",
-	// Add support for direct incoming string segments
-	cleanMyNum
-];
+const myNumber = (process.env.MY_NUMBER || "").split(",")
+	.map(number => number.replace(/[^0-9]/g, "")).filter(Boolean)
+	.flatMap(number => [number + "@s.whatsapp.net", number + "@lid"]);
 
 const botNumber = [
 	cleanBotNum + "@s.whatsapp.net",
@@ -86,7 +82,7 @@ const getCommand = async (sock, msg, cache) => {
 	const startTime = process.hrtime();
 
 	try {
-		if (!sock || !sock.user) return;
+		if (!sock?.user || !msg?.message || !msg?.key?.remoteJid) return;
 		const messageKeys = Object.keys(msg.message);
 		if (messageKeys.length === 0) return;
 		if (msg.key.fromMe && !msg.key.remoteJid) return;
@@ -109,7 +105,7 @@ const getCommand = async (sock, msg, cache) => {
 		const sendMessageWTyping = async (to, msgObj, messageOptions) => {
 			try {
 				if (!to || !msgObj) return;
-				if (!sock || !sock.user) return;
+				if (!sock?.user || !msg?.message || !msg?.key?.remoteJid) return;
 
 				const mediaTypes = ["sticker", "image", "audio", "video", "document"];
 				const messageType = Object.keys(msgObj)[0];
@@ -201,24 +197,22 @@ const getCommand = async (sock, msg, cache) => {
 				body = body.startsWith(prefix) ? body : prefix + body;
 		}
 
-		if (body[1] == " ") body = body[0] + body.slice(2);
-		const isCmd = body.startsWith(prefix);
-		const evv = body
-			.trim()
-			.split(/ +/)
-			.slice(isCmd ? 1 : 0)
-			.join(" ");
-		const command = body.slice(1).trim().split(/ +/).shift().toLowerCase();
-		const args = body.trim().split(/ +/).slice(1);
+		const parsedCommand = parseCommandSegment(body, prefix);
+		const isCmd = Boolean(parsedCommand);
+		const command = parsedCommand?.command || "";
+		const args = parsedCommand?.args || [];
+		const evv = parsedCommand?.evv ?? body.trim();
 		//-------------------------------------------------------------------------------------------------------------//
 		const isGroup = from.endsWith("@g.us");
-		const senderJid = isGroup
+		const senderJid = msg.key.fromMe
+			? String(sock.user.id || "").replace(/:\d+@/, "@")
+			: isGroup
 			? msg.key.participant || msg.key.participantPn || msg.key.participantAlt
 			: msg.key.remoteJid;
 		let isOwner = myNumber.includes(senderJid) || msg.key.fromMe === true;
 		if (!senderJid || !senderJid.includes("@")) return;
 
-		const updateId = msg.key.fromMe ? botNumber[0] : senderJid;
+		const updateId = senderJid;
 		const updateName = msg.key.fromMe ? sock.user.name : msg.pushName;
 
 		let groupMetadata = "";
@@ -778,7 +772,7 @@ const getCommand = async (sock, msg, cache) => {
 						"dev",
 				});
 			}
-			let blockCommandsInDB = await groupData?.cmdBlocked;
+			const blockCommandsInDB = Array.isArray(groupData?.cmdBlocked) ? groupData.cmdBlocked : [];
 			if (command != "") {
 				if (blockCommandsInDB.includes(command)) {
 					return sendMessageWTyping(from, { text: `Command blocked for this group.` }, { quoted: msg });

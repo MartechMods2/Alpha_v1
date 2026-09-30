@@ -12,7 +12,7 @@ import messageQueue from "../queue/messageQueue.js";
 import { getSock } from "../core/socketRef.js";
 import { MAX_HOSTED_ROUNDS } from "./hostedGameOptions.js";
 import { onPollVote } from "./pollVoteEvents.js";
-import { getAutoGameSession } from "./autoGameHost.js";
+import { getAutoGameSession, restoreAutoGame } from "./autoGameHost.js";
 import {
   finishInteractivePoll,
   readInteractivePoll,
@@ -169,6 +169,7 @@ const turnPoints = (player, type) => {
 const snapshotOf = (session) => ({
   id: session.id,
   status: session.status,
+  stopped: Boolean(session.stopped),
   phase: session.phase,
   startedBy: session.startedBy,
   participants: session.participants.map((player) => ({
@@ -203,13 +204,15 @@ const snapshotOf = (session) => ({
   turnMessageId: session.turnMessageId || "",
 });
 
-async function persistSession(session) {
-  if (!session || session.status === "finished") return;
-  try {
-    await saveTruthDareSessionSnapshot(session.groupJid, snapshotOf(session));
-  } catch (error) {
-    console.warn("[TRUTH_DARE] session snapshot failed:", error.message);
-  }
+function persistSession(session) {
+  if (!session || session.status === "finished") return Promise.resolve(true);
+  const snapshot = snapshotOf(session);
+  const next = (session.saveTail || Promise.resolve()).catch(() => {}).then(async () => {
+    try { await saveTruthDareSessionSnapshot(session.groupJid, snapshot); return true; }
+    catch (error) { console.warn("[TRUTH_DARE] session snapshot failed:", error.message); return false; }
+  });
+  session.saveTail = next;
+  return next;
 }
 
 const clearTimer = (session) => {
@@ -232,12 +235,21 @@ const schedule = (session, ms, callback) => {
       await callback();
     } catch (error) {
       console.error("[TRUTH_DARE] timer failed:", error.message);
+      if (sessions.get(session.groupJid) === session) schedule(session, 15_000, () => recoverProgress(session));
     }
   }, delay);
   timer.unref?.();
   session.timer = timer;
   void persistSession(session);
 };
+
+async function recoverProgress(session) {
+  const sock = getSock() || session.sock;
+  if (!sock) return;
+  if (session.status === "finishing") return finishSession(sock, session, { stopped: session.stopped });
+  if (session.status === "lobby") return closeLobbyInternal(sock, session);
+  return startNextTurn(sock, session);
+}
 
 const sessionLifetimeMs = (session) =>
   (Number(session.lobbyMs) || LOBBY_MS) +
@@ -281,6 +293,7 @@ async function onChoiceTimeout(sock, session, expectedRound, expectedIndex) {
   player.streak = 0;
   session.phase = "transition";
   session.currentIndex += 1;
+  schedule(session, 15_000, () => startNextTurn(sock, session));
   await persistSession(session);
   await sendQueued(sock, session.groupJid, {
     text: `⌛ ${formatPlayerMention(player)} did not choose in time. *0 points.*\n${truthDareReaction("timeout")}`,
@@ -298,6 +311,7 @@ async function onResponseTimeout(sock, session, expectedRound, expectedIndex) {
   player.streak = 0;
   session.phase = "transition";
   session.currentIndex += 1;
+  schedule(session, 15_000, () => startNextTurn(sock, session));
   await persistSession(session);
   await sendQueued(sock, session.groupJid, {
     text: `⌛ ${formatPlayerMention(player)} ran out of time. *0 points.*\n${truthDareReaction("timeout")}`,
@@ -307,6 +321,10 @@ async function onResponseTimeout(sock, session, expectedRound, expectedIndex) {
 }
 
 async function rearmRecoveredSession(sock, session) {
+  if (session.status === "finishing") {
+    schedule(session, 250, () => finishSession(sock, session, { stopped: session.stopped }));
+    return;
+  }
   if (await cleanupExpiredSession(sock, session)) return;
   const remaining = Math.max(250, Number(session.phaseExpiresAt || 0) - Date.now());
 
@@ -337,7 +355,7 @@ export const restoreTruthDareSession = async ({ sock, groupJid }) => {
   if (sessions.has(groupJid)) return sessions.get(groupJid);
   const snapshot = await getTruthDareSessionSnapshot(groupJid).catch(() => null);
   if (!snapshot) return null;
-  if (!["lobby", "playing"].includes(snapshot.status)) {
+  if (!["lobby", "playing", "finishing"].includes(snapshot.status)) {
     await deleteTruthDareSessionSnapshot(groupJid).catch(() => {});
     return null;
   }
@@ -356,6 +374,7 @@ export const restoreTruthDareSession = async ({ sock, groupJid }) => {
     groupJid,
     groupMetadata: metadata,
     status: snapshot.status,
+    stopped: Boolean(snapshot.stopped),
     phase: snapshot.phase || (snapshot.status === "lobby" ? "lobby" : "transition"),
     startedBy: snapshot.startedBy || participants[0].jid,
     participants,
@@ -384,6 +403,7 @@ export const restoreTruthDareSession = async ({ sock, groupJid }) => {
     session.phase = "transition";
   }
 
+  session.sock = sock;
   sessions.set(groupJid, session);
   await rearmRecoveredSession(sock, session);
   return session;
@@ -402,7 +422,11 @@ export const restoreActiveTruthDareSessions = async ({ sock }) => {
 
 const finishSession = async (sock, session, { stopped = false } = {}) => {
   clearTimer(session);
-  session.status = "finished";
+  session.status = "finishing";
+  session.phase = "finishing";
+  session.stopped = stopped || session.stopped;
+  stopped = Boolean(session.stopped);
+  try {
 
   for (const player of session.participants) {
     const perfect = !stopped &&
@@ -420,6 +444,7 @@ const finishSession = async (sock, session, { stopped = false } = {}) => {
     ? session.participants.filter((player) => player.score === highest)
     : [];
 
+  if (!await persistSession(session)) throw new Error("Final score snapshot unavailable");
   await Promise.all(session.participants.map(async (player) => {
     const won = winners.includes(player);
     await Promise.all([
@@ -447,10 +472,7 @@ const finishSession = async (sock, session, { stopped = false } = {}) => {
         resultId: `${session.id}:truthdare:${player.jid}`,
       }),
     ]);
-  })).catch((error) => console.warn("[TRUTH_DARE] stat persistence:", error.message));
-
-  sessions.delete(session.groupJid);
-  await deleteTruthDareSessionSnapshot(session.groupJid).catch(() => {});
+  }));
 
   const winnerLine = winners.length
     ? `Winner${winners.length > 1 ? "s" : ""}: 🏆 ${winners.map((player) => player.name).join(", ")} — *${highest} pts*`
@@ -479,6 +501,14 @@ const finishSession = async (sock, session, { stopped = false } = {}) => {
     }),
     mentions: winners.map((player) => player.jid),
   });
+  await session.saveTail;
+  await deleteTruthDareSessionSnapshot(session.groupJid);
+  session.status = "finished";
+  sessions.delete(session.groupJid);
+  } catch (error) {
+    console.warn("[TRUTH_DARE] final results pending:", error.message);
+    schedule(session, 15_000, () => finishSession(sock, session, { stopped: session.stopped }));
+  }
 };
 
 async function startNextTurn(sock, session) {
@@ -515,6 +545,10 @@ async function startNextTurn(sock, session) {
   const turnNumber = ((session.currentRound - 1) * session.participants.length) + session.currentIndex + 1;
   const totalTurns = session.rounds * session.participants.length;
 
+  const expectedRound = session.currentRound;
+  const expectedIndex = session.currentIndex;
+  schedule(session, CHOICE_MS, () => onChoiceTimeout(sock, session, expectedRound, expectedIndex));
+  await persistSession(session);
   const sent = await sendQueued(sock, session.groupJid, {
     text: alphaPanel({
       icon: "🎭",
@@ -533,9 +567,6 @@ async function startNextTurn(sock, session) {
   session.turnMessageId = sent?.key?.id || "";
   await persistSession(session);
 
-  const expectedRound = session.currentRound;
-  const expectedIndex = session.currentIndex;
-  schedule(session, CHOICE_MS, () => onChoiceTimeout(sock, session, expectedRound, expectedIndex));
 }
 
 async function completeChoice(sock, session, player, choice) {
@@ -547,6 +578,7 @@ async function completeChoice(sock, session, player, choice) {
     player.streak = 0;
     session.phase = "transition";
     session.currentIndex += 1;
+    schedule(session, 15_000, () => startNextTurn(sock, session));
     await persistSession(session);
     await sendQueued(sock, session.groupJid, {
       text: `${truthDareReaction("skip")}\n${formatPlayerMention(player)} gets *0 points* this turn.`,
@@ -563,6 +595,10 @@ async function completeChoice(sock, session, player, choice) {
     ? "Reply with your answer in the chat. Alpha scores completion, not whether your answer is 'true', and does not save the answer text."
     : "Complete the dare, then type *done*. Type *skip* at any time.";
 
+  const expectedRound = session.currentRound;
+  const expectedIndex = session.currentIndex;
+  schedule(session, RESPONSE_MS, () => onResponseTimeout(sock, session, expectedRound, expectedIndex));
+  await persistSession(session);
   const sent = await sendQueued(sock, session.groupJid, {
     text: alphaPanel({
       icon: choice === "dare" ? "🔥" : "🎯",
@@ -582,9 +618,6 @@ async function completeChoice(sock, session, player, choice) {
   session.promptMessageId = sent?.key?.id || "";
   await persistSession(session);
 
-  const expectedRound = session.currentRound;
-  const expectedIndex = session.currentIndex;
-  schedule(session, RESPONSE_MS, () => onResponseTimeout(sock, session, expectedRound, expectedIndex));
 }
 
 async function completeResponse(sock, session, player, type) {
@@ -596,6 +629,7 @@ async function completeResponse(sock, session, player, type) {
   if (type === "truth") player.truths += 1;
   else player.dares += 1;
   session.currentIndex += 1;
+  schedule(session, 15_000, () => startNextTurn(sock, session));
   await persistSession(session);
 
   await sendQueued(sock, session.groupJid, {
@@ -678,7 +712,7 @@ export const startTruthDareSession = async ({
   lobbyMs = LOBBY_MS,
   sendMessageWTyping,
 }) => {
-  if (getAutoGameSession(groupJid)) return sendMessageWTyping(groupJid, { text: "🎮 A hosted game is already active. Use `$game stop` first." }, { quoted: msg });
+  if (getAutoGameSession(groupJid) || await restoreAutoGame({ sock, groupJid })) return sendMessageWTyping(groupJid, { text: "🎮 A hosted game is already active. Use `$game stop` first." }, { quoted: msg });
   const recovered = await restoreTruthDareSession({ sock, groupJid });
   if (recovered) {
     return sendMessageWTyping(groupJid, {
@@ -721,6 +755,7 @@ export const startTruthDareSession = async ({
     promptMessageId: "",
     turnMessageId: "",
   };
+  session.sock = sock;
   sessions.set(groupJid, session);
 
   try {
@@ -823,8 +858,10 @@ export const stopTruthDareSession = async ({ sock, groupJid, senderJid, isGroupA
   if (session.status === "lobby") {
     clearTimer(session);
     if (session.pollId) await finishInteractivePoll(session.pollId, { result: "truth-dare-stopped" }).catch(() => {});
+    session.status = "finished";
+    await session.saveTail;
+    await deleteTruthDareSessionSnapshot(groupJid);
     sessions.delete(groupJid);
-    await deleteTruthDareSessionSnapshot(groupJid).catch(() => {});
     return { ok: true, message: "🛑 Truth or Dare lobby closed." };
   }
   await finishSession(sock, session, { stopped: true });
@@ -845,6 +882,7 @@ export const forceNextTruthDareTurn = async ({ sock, groupJid, senderJid, isGrou
   clearTimer(session);
   session.phase = "transition";
   session.currentIndex += 1;
+  schedule(session, 15_000, () => startNextTurn(sock, session));
   await persistSession(session);
   await sendQueued(sock, groupJid, {
     text: player ? `⏭️ Host moved past ${player.name}'s turn. *0 points* for this turn.` : "⏭️ Moving to the next turn.",
@@ -971,6 +1009,7 @@ export const handleTruthDareAction = async ({
     player.streak = 0;
     session.phase = "transition";
     session.currentIndex += 1;
+    schedule(session, 15_000, () => startNextTurn(sock, session));
     await persistSession(session);
     await sendQueued(sock, groupJid, {
       text: `${truthDareReaction("skip")}\n${formatPlayerMention(player)} gets *0 points* this turn.`,

@@ -4,7 +4,7 @@ import FormData from "form-data";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import { readFile, writeFile } from "fs/promises";
-import WSF from "wa-sticker-formatter";
+import { setStickerMetadata } from "./stickerMetadata.js";
 import memoryManager from "./memory.js";
 import { isProviderAvailable, reportProviderResult } from "./mediaJobs.js";
 
@@ -155,7 +155,7 @@ export const imageBufferToSticker = async (
 				.on("error", reject)
 				.save(outputPath);
 		});
-		return Buffer.from(await WSF.setMetadata(cleanText(pack, 64), cleanText(author, 64), outputPath));
+		return setStickerMetadata(await readFile(outputPath), { pack: cleanText(pack, 64), author: cleanText(author, 64) });
 	} finally {
 		memoryManager.safeUnlink(inputPath);
 		memoryManager.safeUnlink(outputPath);

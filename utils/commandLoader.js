@@ -17,6 +17,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const mainPath = path.join(__dirname, "../commands/");
 
+const commandDetails = { publicCommands: [], groupCommands: [], adminCommands: [], ownerCommands: [] };
+const commandLoadErrors = [];
+
 let commandsPublic = {};
 let commandsMembers = {};
 let commandsAdmins = {};
@@ -152,7 +155,7 @@ const wrapCommandHandler = (originalHandler, registeredCommand) => async (sock, 
 };
 
 const loadCommands = async (dirPath, commandsObj, cmdDetails) => {
-	const filenames = await readdir(dirPath);
+	const filenames = (await readdir(dirPath)).sort();
 	for (const file of filenames) {
 		if (!file.endsWith(".js")) continue;
 		try {
@@ -177,32 +180,25 @@ const loadCommands = async (dirPath, commandsObj, cmdDetails) => {
 				console.warn(`⚠️ Warning: ${file} has invalid handler`);
 				continue;
 			}
-			cmdDetails.push({ cmd: cmd_info.cmd, desc: cmd_info.desc, usage: cmd_info.usage });
+			cmdDetails.push({ cmd: cmd_info.cmd, desc: cmd_info.desc, usage: cmd_info.usage, source: path.relative(path.join(__dirname, ".."), filePath).replaceAll("\\", "/") });
 			for (const c of cmd_info.cmd) commandsObj[c] = wrapCommandHandler(cmd_info.handler, c);
 		} catch (error) {
+			commandLoadErrors.push({ file, error: error.message });
 			console.error(`❌ Error loading ${file}:`, error.message);
 		}
 	}
 };
 
-const deleteFiles = async (dirPath, extensions) => {
-	const filenames = await readdir(dirPath);
-	filenames.forEach((file) => {
-		if (extensions.some((ext) => file.endsWith(ext))) fs.unlinkSync(dirPath + file);
-	});
-};
-
 const addCommands = async () => {
 	console.log("📦 Loading commands...");
-	await loadCommands(mainPath + "public/", commandsPublic, []);
+	await loadCommands(mainPath + "public/", commandsPublic, commandDetails.publicCommands);
 	console.log(`✅ Loaded ${Object.keys(commandsPublic).length} public commands`);
-	await loadCommands(mainPath + "group/members/", commandsMembers, []);
+	await loadCommands(mainPath + "group/members/", commandsMembers, commandDetails.groupCommands);
 	console.log(`✅ Loaded ${Object.keys(commandsMembers).length} member commands`);
-	await loadCommands(mainPath + "group/admins/", commandsAdmins, []);
+	await loadCommands(mainPath + "group/admins/", commandsAdmins, commandDetails.adminCommands);
 	console.log(`✅ Loaded ${Object.keys(commandsAdmins).length} admin commands`);
-	await loadCommands(mainPath + "owner/", commandsOwners, []);
+	await loadCommands(mainPath + "owner/", commandsOwners, commandDetails.ownerCommands);
 	console.log(`✅ Loaded ${Object.keys(commandsOwners).length} owner commands`);
-	await deleteFiles("./", [".webp", ".jpeg", ".jpg", ".mp3", ".mp4", ".png", ".gif"]);
 	console.log("🎉 All commands loaded successfully!");
 };
 
@@ -210,17 +206,8 @@ let commandsLoaded = false;
 const commandsReadyPromise = addCommands().then(() => { commandsLoaded = true; });
 
 const cmdToText = async () => {
-	const adminCommands = [];
-	const publicCommands = [];
-	const groupCommands = [];
-	const ownerCommands = [];
-	const directCommands = [];
-	await loadCommands(mainPath + "public/", {}, directCommands);
-	await loadCommands(mainPath + "public/", {}, publicCommands);
-	await loadCommands(mainPath + "group/members/", {}, groupCommands);
-	await loadCommands(mainPath + "group/admins/", {}, adminCommands);
-	await loadCommands(mainPath + "owner/", {}, ownerCommands);
-	return { publicCommands, groupCommands, adminCommands, ownerCommands, directCommands };
+	await commandsReadyPromise;
+	return structuredClone({ ...commandDetails, directCommands: commandDetails.publicCommands });
 };
 
-export { commandsPublic, commandsMembers, commandsAdmins, commandsOwners, cmdToText, commandsReadyPromise, commandsLoaded };
+export { commandsPublic, commandsMembers, commandsAdmins, commandsOwners, cmdToText, commandsReadyPromise, commandsLoaded, commandLoadErrors };

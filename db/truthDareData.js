@@ -83,7 +83,7 @@ export const getTruthDareSessionSnapshot = (groupJid) =>
   truthDareSessions.findOne({ _id: groupJid });
 
 export const getActiveTruthDareSessionSnapshots = () =>
-  truthDareSessions.find({ status: { $in: ["lobby", "playing"] } }).toArray();
+  truthDareSessions.find({ status: { $in: ["lobby", "playing", "finishing"] } }).toArray();
 
 export const deleteTruthDareSessionSnapshot = (groupJid) =>
   truthDareSessions.deleteOne({ _id: groupJid });

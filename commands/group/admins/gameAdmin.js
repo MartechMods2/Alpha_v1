@@ -1,6 +1,7 @@
 import { resetGroupGameScores } from "../../../db/gameData.js";
 import { clearActiveGame } from "../members/scoredGames.js";
 import { clearGroupBattle } from "../members/quizBattle.js";
+import { stopTruthDareSession, getTruthDareSession } from "../../../utils/truthDareHost.js";
 import { controlAutoGame } from "../../../utils/autoGameHost.js";
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
@@ -10,6 +11,8 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		return reply("⚠️ This permanently clears this group's game scores. Use `gamereset confirm`.");
 	}
 	await controlAutoGame({ sock, groupJid: from, senderJid: msgInfoObj.senderJid, action: "stop", isAdmin: true });
+	await stopTruthDareSession({ sock, groupJid: from, senderJid: msgInfoObj.senderJid, isGroupAdmin: true });
+	if (getTruthDareSession(from)) return reply("⏳ Truth or Dare scores are still being saved. Try gamereset confirm again after the game finishes saving.");
 	const result = await resetGroupGameScores(from);
 	clearActiveGame(from);
 	clearGroupBattle(from);

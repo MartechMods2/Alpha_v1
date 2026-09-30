@@ -142,6 +142,7 @@ async function advance(sock, session) {
   await drainResult(session);
   if (session.phase === "finishing") return finish(sock, session, session.stopped);
   if (session.phase === "answer") return settle(sock, session, false, "⌛ Time up");
+  if (session.phase === "delivery") return deliverQuestion(sock, session);
   if (session.index >= session.order.length) {
     await send(sock, session.groupJid, { text: alphaPanel({ icon: "🏆", title: `Round ${session.round} Complete`, lines: board(session) }) });
     session.round++;
@@ -149,14 +150,20 @@ async function advance(sock, session) {
     session.order = shuffle(session.players.map(player => player.jid));
     session.index = 0;
   }
-  const player = current(session);
   session.question = createGameRound(session.game, session.option);
-  session.phase = "answer";
+  return deliverQuestion(sock, session);
+}
+
+async function deliverQuestion(sock, session) {
+  const player = current(session);
+  session.phase = "delivery";
+  await persist(session);
   await send(sock, session.groupJid, { text: alphaPanel({ icon: "🎯", title: `${session.question.title} · Round ${session.round}/${session.rounds}`, lines: [
     `Player: *@${player.jid.split("@")[0]}* · Turn ${session.index + 1}/${session.order.length}`,
     `Question: *${session.question.prompt}*`, `Worth: *${session.question.points} pts*`,
     "Answer with *#your answer*, `$answer your answer` or `$game answer your answer`.",
   ], footer: "60 seconds. Wrong answers, skips and timeouts earn 0; Alpha advances automatically." }), mentions: [player.jid] });
+  session.phase = "answer";
   arm(sock, session, TURN_MS, () => settle(sock, session, false, "⌛ Time up"));
   await persist(session);
 }
@@ -246,10 +253,18 @@ export const controlAutoGame = ({ sock, groupJid, senderJid, name, action, isAdm
     return `🎮 ${action === "join" ? "Joined" : "Left"}. Counted players: *${session.players.length}/20*.`;
   }
   if (!allowed(session, senderJid, isAdmin, isOwner)) return "❌ Only the starter, an admin or the bot owner can control the game.";
-  if (action === "close") { if (session.status !== "lobby") return "🎮 The lobby has already closed."; await closeLobby(sock, session); return ""; }
+  if (action === "close") {
+    if (session.status !== "lobby") return "🎮 The lobby has already closed.";
+    try { await closeLobby(sock, session); }
+    catch (error) { arm(sock, session, 15_000, () => advance(sock, session)); throw error; }
+    return "";
+  }
   if (action === "next") { if (session.status !== "playing") return "🎮 Wait until the game starts before skipping a turn."; await settle(sock, session, false, "⏭️ Host skipped turn"); return ""; }
   if (action === "stop") {
-    if (session.status === "playing") { await drainResult(session); await finish(sock, session, true); }
+    if (session.status === "playing") {
+      try { await drainResult(session); await finish(sock, session, true); }
+      catch (error) { arm(sock, session, 15_000, () => advance(sock, session)); throw error; }
+    }
     else { clear(session); if (session.pollId) await finishInteractivePoll(session.pollId); await deleteAutoGame(groupJid); sessions.delete(groupJid); }
     return "🛑 Hosted game stopped. Earned scores were saved.";
   }

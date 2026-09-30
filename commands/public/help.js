@@ -9,7 +9,7 @@ const readMore = more.repeat(4001);
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
 	let { isGroup, sendMessageWTyping } = msgInfoObj;
-	let prefix = process.env.PREFIX;
+	const prefix = msgInfoObj.prefix || process.env.PREFIX || "$";
 
 	const { publicCommands, groupCommands, adminCommands, ownerCommands, directCommands } = await cmdToText();
 

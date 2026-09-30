@@ -16,6 +16,8 @@ export const DASHBOARD_OPERATIONS = Object.freeze([
   { id: 'customize', icon: '✎', label: 'Customize Alpha', description: 'Avatar, identity, fonts, layout, themes and accessibility.', category: 'Navigate', to: '/customize' },
   { id: 'control-center', icon: '⚡', label: 'Control Center', description: 'Group protection and readiness controls.', category: 'Navigate', to: '/control-center' },
   { id: 'templates', icon: '🧩', label: 'Template Library', description: 'Browse Alpha’s built-in communication templates.', category: 'Navigate', to: '/templates' },
+  { id: 'command-guide', icon: '📖', label: 'Command Guide', description: 'Every registered command with syntax, examples and access requirements.', category: 'Navigate', to: '/command-guide' },
+  { id: 'command-lab', icon: '›_', label: 'Command Lab', description: 'Test command syntax and run offline tools in a sandbox.', category: 'Navigate', to: '/command-lab' },
   { id: 'commands', icon: '⌘', label: 'Command Registry', description: 'Search and enable or disable bot commands.', category: 'Navigate', to: '/commands' },
   { id: 'groups', icon: '👥', label: 'Group Manager', description: 'Manage every connected WhatsApp group.', category: 'Navigate', to: '/groups' },
   { id: 'members', icon: '👤', label: 'Member Directory', description: 'Search members and moderation records.', category: 'Navigate', to: '/members' },

@@ -26,6 +26,8 @@ const NAV_SECTIONS = [
       { to: '/members', icon: '👤', label: 'Members' },
       { to: '/templates', icon: '🧩', label: 'Templates' },
       { to: '/commands', icon: '⌘', label: 'Commands' },
+      { to: '/command-guide', icon: '📖', label: 'Command Guide' },
+      { to: '/command-lab', icon: '›_', label: 'Command Lab' },
     ],
   },
   {

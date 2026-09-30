@@ -1,16 +1,13 @@
 import dotenv from "dotenv";
 dotenv.config();
-const myNumber = [
-	process.env.MY_NUMBER.split(",")[0] + "@s.whatsapp.net",
-	process.env.MY_NUMBER.split(",")[1] + "@lid",
-];
+const myNumber = (process.env.MY_NUMBER || "").split(",").map(value => value.replace(/\D/g, "")).filter(Boolean);
 import { member } from "../../db/members.js";
-import { extractPhoneNumber, normalizeJID } from "../../utils/lid.js";
+import { extractPhoneNumber } from "../../utils/lid.js";
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const { command, botNumber, sendMessageWTyping, extendedMessageOriginal } = msgInfoObj;
 
-	if (!extendedMessageOriginal)
+	if (!extendedMessageOriginal?.participant && !extendedMessageOriginal?.mentionedJid?.length)
 		return sendMessageWTyping(from, { text: "❌ Tag / mentioned!" }, { quoted: msg });
 
 	let taggedJid;
@@ -24,20 +21,20 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	if (
 		targetNumber == extractPhoneNumber(botNumber[0]) ||
 		targetNumber == extractPhoneNumber(botNumber[1]) ||
-		myNumber.map((m) => extractPhoneNumber(m)).includes(targetNumber)
+		myNumber.includes(targetNumber)
 	)
 		return sendMessageWTyping(from, { text: `_Command Can't be used on Bot / Mod / Owner_.💀` }, { quoted: msg });
 
 	if (command == "block") {
-		const dbJid = targetNumber + "@lid";
-		member.updateOne({ _id: dbJid }, { $set: { isBlock: true } }).then(() => {
+		const dbJid = taggedJid.replace(/:\d+@/, "@");
+		return member.updateOne({ _id: dbJid }, { $set: { isBlock: true } }).then(() => {
 			sendMessageWTyping(from, { text: `❌ Blocked` }, { quoted: msg });
 		});
 	}
 
 	if (command == "unblock") {
-		const dbJid = targetNumber + "@lid";
-		member.updateOne({ _id: dbJid }, { $set: { isBlock: false } }).then(() => {
+		const dbJid = taggedJid.replace(/:\d+@/, "@");
+		return member.updateOne({ _id: dbJid }, { $set: { isBlock: false } }).then(() => {
 			sendMessageWTyping(from, { text: `✅ *Unblocked*` }, { quoted: msg });
 		});
 	}

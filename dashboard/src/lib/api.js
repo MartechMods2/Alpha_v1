@@ -122,3 +122,6 @@ export function fmtBytes(bytes) {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / 1024 / 1024).toFixed(1) + ' MB'
 }
+
+export const getCommandGuide = () => api.get('/api/admin/command-guide')
+export const testCommand = (input) => api.post('/api/admin/command-lab', input)

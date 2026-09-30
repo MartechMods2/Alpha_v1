@@ -41,7 +41,7 @@ test("poll votes survive a long lobby and drive automatic turns, scoring and win
     "./groupParticipants.js": participantsUrl,
   });
   const hostUrl = await loadWithMocks("../utils/truthDareHost.js", {
-    "../db/gameData.js": asModule("export async function recordGameResult(row) { globalThis.__alphaTdFlow.results.push(row); }"),
+    "../db/gameData.js": asModule("export async function recordGameResult(row) { const h = globalThis.__alphaTdFlow; if (h.failStats) throw new Error('score unavailable'); if (!h.results.some(item => item.resultId === row.resultId)) h.results.push(row); }"),
     "../db/truthDareData.js": asModule(`
       const h = globalThis.__alphaTdFlow;
       export async function saveTruthDareSessionSnapshot(id, row) { h.snapshots.set(id, structuredClone({...row, groupJid: id})); }
@@ -55,7 +55,7 @@ test("poll votes survive a long lobby and drive automatic turns, scoring and win
     "../queue/messageQueue.js": queue,
     "./pollManager.js": pollUrl,
     "./groupParticipants.js": participantsUrl,
-    "./autoGameHost.js": asModule("export const getAutoGameSession = () => null;"),
+    "./autoGameHost.js": asModule("export const getAutoGameSession = () => null; export const restoreAutoGame = async () => null;"),
   });
   const host = await import(hostUrl);
   const pollManager = await import(pollUrl);
@@ -122,6 +122,31 @@ test("poll votes survive a long lobby and drive automatic turns, scoring and win
   assert.match(h.sent.at(-1).text, /Truth or Dare Complete/);
   assert.match(h.sent.at(-1).text, /Winner/);
   assert.equal(h.snapshots.has(groupJid), false);
+
+  // Finalization keeps an idempotent checkpoint when permanent stats fail.
+  const finalGroup = "td-final-retry@g.us";
+  await host.startTruthDareSession({ sock, groupJid: finalGroup, starterJid, groupMetadata: metadata,
+    rounds: 1, sendMessageWTyping: sock.sendMessage });
+  await host.joinTruthDareLobby({ sock, groupJid: finalGroup, senderJid: playerJid });
+  await host.closeTruthDareLobby({ sock, groupJid: finalGroup, senderJid: starterJid });
+  const finalSession = host.getTruthDareSession(finalGroup);
+  for (let i = 0; i < 2; i++) {
+    const player = finalSession.turnOrder[finalSession.currentIndex];
+    await host.handleTruthDareAction({ sock, groupJid: finalGroup, senderJid: player.jid, body: "truth" });
+    if (i === 1) h.failStats = true;
+    await host.handleTruthDareAction({ sock, groupJid: finalGroup, senderJid: player.jid, body: "My answer" });
+  }
+  assert.equal(host.getTruthDareSession(finalGroup).status, "finishing");
+  assert.equal(h.snapshots.get(finalGroup).status, "finishing", "failed stats retain final totals");
+  assert.equal(h.timers.at(-1).delay, 15000);
+  h.failStats = false;
+  const finalizedHost = await import(`${hostUrl}#finalization-restart`);
+  await finalizedHost.restoreActiveTruthDareSessions({ sock });
+  await h.timers.at(-1).callback();
+  assert.equal(finalizedHost.getTruthDareSession(finalGroup), null);
+  assert.equal(h.snapshots.has(finalGroup), false);
+  assert.equal(h.results.filter(row => row.groupJid === finalGroup).length, 2);
+  assert.match(h.sent.at(-1).text, /Truth or Dare Complete/);
 
   // A welcome-message failure must not strand the poll; reconnect must rearm
   // the saved lobby without waiting for a player to issue $td resume.

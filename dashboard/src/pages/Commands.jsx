@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useEffect, useState, useMemo } from 'react'
 import { getCommands, toggleCommand, getCommandStats } from '../lib/api.js'
 import { useToast } from '../App.jsx'
@@ -89,6 +90,8 @@ export default function Commands() {
           </p>
         </div>
         <div className="page-actions">
+          <Link className="btn" to="/command-guide">Full Command Guide</Link>
+          <Link className="btn" to="/command-lab">Command Lab</Link>
           <input
             className="search-input"
             placeholder="Search commands…"

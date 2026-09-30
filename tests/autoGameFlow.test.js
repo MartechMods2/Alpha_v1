@@ -29,7 +29,7 @@ test("all ten games auto-enrol an admin, count poll votes, play repeated rounds 
     export async function createPollSession(row) { const p = structuredClone({...row, votes: [], status: 'open'}); h.polls.set(row._id, p); return p; }
     export async function getPollSession(id) { return h.polls.get(id); }
     export async function replacePollVote(id, voterJid, option) { const p = h.polls.get(id); p.votes = p.votes.filter(v => v.voterJid !== voterJid); if (option) p.votes.push({voterJid, option, votedAt: new Date()}); return p; }
-    export async function closePollSession(id) { const p = h.polls.get(id); if (p) p.status = 'closed'; return p; }
+    export async function closePollSession(id) { if (h.failClose) throw new Error("lobby read unavailable"); const p = h.polls.get(id); if (p) p.status = 'closed'; return p; }
   `);
   const pollsUrl = await mockedModule("../utils/pollManager.js", {
     "../db/pollSessionData.js": pollDb,
@@ -126,6 +126,26 @@ test("all ten games auto-enrol an admin, count poll votes, play repeated rounds 
   assert.equal(routingSession.round, 2, "passive #answers reach the automatic host");
   await command.default().handler(sock, {}, routingGroup, ["stop"], info);
   assert.equal(host.getAutoGameSession(routingGroup), null);
+
+  // A question-send failure must retain a timed, recoverable answer phase.
+  const sendFailureGroup = "send-failure@g.us";
+  const flakySock = { ...sock, sendMessage: async (jid, content) => {
+    if (h.failQuestion && content.text?.includes("🎯")) throw new Error("question send failed");
+    return sock.sendMessage(jid, content);
+  } };
+  await host.startAutoGame({ sock: flakySock, groupJid: sendFailureGroup, senderJid: starter, metadata, args: ["trivia"] });
+  await host.controlAutoGame({ sock: flakySock, groupJid: sendFailureGroup, senderJid: guest, action: "join" });
+  h.failQuestion = true;
+  await assert.rejects(host.controlAutoGame({ sock: flakySock, groupJid: sendFailureGroup, senderJid: starter, action: "close" }), /question send failed/);
+  assert.ok(host.getAutoGameSession(sendFailureGroup).timer);
+  assert.equal(h.snapshots.get(sendFailureGroup).phase, "delivery");
+  h.failQuestion = false;
+  const waitingQuestion = host.getAutoGameSession(sendFailureGroup).question;
+  await h.timers.at(-1).callback();
+  assert.equal(host.getAutoGameSession(sendFailureGroup).phase, "answer");
+  assert.deepEqual(host.getAutoGameSession(sendFailureGroup).question, waitingQuestion, "retry delivers the same question without forfeiting the turn");
+  assert.equal(host.getAutoGameSession(sendFailureGroup).index, 0);
+  await host.controlAutoGame({ sock: flakySock, groupJid: sendFailureGroup, senderJid: starter, action: "stop" });
 
   const groupJid = "recovery@g.us";
   await host.startAutoGame({ sock, groupJid, senderJid: starter, metadata, args: ["trivia", "rounds=2", "lobby=90s"] });

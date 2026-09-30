@@ -1,7 +1,7 @@
 import { getGroupData, group } from "../../db/groupData.js";
 import { getMemberData, member } from "../../db/members.js";
 import { getBotData, bot } from "../../db/botData.js";
-import { extractPhoneNumber } from "../../utils/lid.js";
+
 
 const updateData = async (collection, id, data, value, sendMessageWTyping, from, msg) => {
 	if (value.match(/^[0-9]+$/)) value = Number(value);
@@ -27,8 +27,10 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			}
 			collection = member;
 			getDataFunc = getMemberData;
-			// Normalize to PN-based JID for DB consistency
-			id = extractPhoneNumber(extendedMessageOriginal.participant);
+			// Match the full JID used by member records.
+			const target = extendedMessageOriginal.participant || extendedMessageOriginal.mentionedJid?.[0];
+			if (!target) return sendMessageWTyping(from, { text: "Reply to or mention a user." }, { quoted: msg });
+			id = target.replace(/:\d+@/, "@");
 			break;
 		case "bot":
 			collection = bot;
@@ -43,7 +45,12 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		const data = await getDataFunc(id);
 		sendMessageWTyping(from, { text: JSON.stringify(data, null, 2, 100) }, { quoted: msg });
 	} else {
-		[data, value] = args[0].split(":");
+		const separator = args[0].indexOf(":");
+		data = args[0].slice(0, separator);
+		value = args.join(" ").slice(separator + 1);
+		if (separator < 1 || !/^[A-Za-z][A-Za-z0-9_]*$/.test(data) || !value) {
+			return sendMessageWTyping(from, { text: "Use field:value, e.g. isBotOn:true. Field names must be plain names." }, { quoted: msg });
+		}
 		await updateData(collection, id, data, value, sendMessageWTyping, from, msg);
 	}
 };

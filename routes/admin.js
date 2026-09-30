@@ -2,7 +2,7 @@ import { Router } from "express";
 import { group } from "../db/groupData.js";
 import { member } from "../db/members.js";
 import { bot, getBotData } from "../db/botData.js";
-import { cmdToText } from "../utils/commandLoader.js";
+import { cmdToText, commandLoadErrors } from "../utils/commandLoader.js";
 import mdClient from "../db/client.js";
 import passport from "passport";
 import { normalizeJID } from "../utils/lid.js";
@@ -35,7 +35,24 @@ import { normalizeLookupNumber } from "../utils/phoneNumber.js";
 import { createAdminWebsocketTicket } from "../utils/adminWebsocket.js";
 import { integrationApiConfigured } from "../utils/integrationApi.js";
 
+import { readFile } from "node:fs/promises";
+import { buildCommandGuide, GAME_GUIDE } from "../utils/commandGuide.js";
+import { runCommandLab, OFFLINE_COMMANDS } from "../utils/commandLab.js";
+
 const router = Router();
+const guideSourceCache = new Map();
+async function getGuide() {
+  const [commands, botData] = await Promise.all([cmdToText(), getBotData()]);
+  const paths = [...new Set(Object.values(commands).flat().map(entry => entry.source).filter(Boolean))];
+  await Promise.all(paths.map(async path => {
+    if (!guideSourceCache.has(path)) guideSourceCache.set(path, await readFile(new URL(`../${path}`, import.meta.url), "utf8").catch(() => ""));
+  }));
+  const prefix = process.env.PREFIX || "$";
+  return { prefix, commands: buildCommandGuide({ commands, prefix, disabled: botData?.disabledGlobally || [], sourceText: Object.fromEntries(guideSourceCache) }),
+    games: GAME_GUIDE.map(line => line.replace(/\b(td|game|answer) (?=[a-z<])/g, `${prefix}$1 `)),
+    offlineCommands: OFFLINE_COMMANDS, loadErrors: commandLoadErrors.map(({ file }) => ({ file })), };
+}
+
 let lastSafeBroadcastAt = 0;
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
@@ -441,6 +458,17 @@ router.post("/api/admin/clear-auth", requireAdmin, async (req, res) => {
 	} catch (err) {
 		res.status(500).json({ error: err.message });
 	}
+});
+
+router.get("/api/admin/command-guide", requireAdmin, async (_req, res) => {
+  try { res.json(await getGuide()); }
+  catch (error) { console.error("[COMMAND_GUIDE]", error.message); res.status(500).json({ error: "Command guide could not load. Try again." }); }
+});
+router.post("/api/admin/command-lab", requireAdmin, async (req, res) => {
+  try {
+    const data = await getGuide();
+    res.json(await runCommandLab({ text: req.body?.text, context: req.body?.context, role: req.body?.role, prefix: data.prefix, guide: data.commands }));
+  } catch (error) { res.status(400).json({ error: error.message }); }
 });
 
 // ── API: Commands ──────────────────────────────────────────────────────────────
