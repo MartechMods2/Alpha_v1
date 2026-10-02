@@ -14,6 +14,7 @@ class MessageQueue {
 		this.cleanupInterval = setInterval(() => {
 			this.cleanupEmptyQueues();
 		}, 300000); // Every 5 minutes
+		this.cleanupInterval.unref?.();
 	}
 
 	/**
@@ -22,7 +23,7 @@ class MessageQueue {
 	cleanupEmptyQueues() {
 		let cleaned = 0;
 		for (const [chatId, queue] of this.queues.entries()) {
-			if (queue.length === 0) {
+			if (queue.length === 0 && !this.processing.get(chatId)) {
 				this.queues.delete(chatId);
 				cleaned++;
 			}

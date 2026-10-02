@@ -23,7 +23,7 @@ const mergeVotes = (stored, live) => {
 		const previous = votes.get(vote.voterJid);
 		if (!previous || new Date(vote.votedAt || 0) >= new Date(previous.votedAt || 0)) votes.set(vote.voterJid, vote);
 	}
-	return { ...stored, votes: [...votes.values()] };
+	return { ...stored, status: live.status === "closed" ? "closed" : stored.status, votes: [...votes.values()] };
 };
 
 const optionHash = (option) => createHash("sha256").update(String(option)).digest();
@@ -88,7 +88,7 @@ export const recordInteractivePollChoice = async (id, voterJid, option) => {
 	const vote = { voterJid, option, votedAt: new Date() };
 	session.votes = [...(session.votes || []).filter(row => row.voterJid !== voterJid), vote];
 	rememberSession(session);
-	await replacePollVote(id, voterJid, option).catch(error => console.warn("Poll choice save failed:", error.message));
+	await replacePollVote(id, voterJid, option, vote.votedAt).catch(error => console.warn("Poll choice save failed:", error.message));
 };
 
 const handleBirthdayChoice = async (sock, session, voterJid, option) => {
@@ -110,7 +110,7 @@ const handleBirthdayChoice = async (sock, session, voterJid, option) => {
 			month: Number(month),
 			updatedAt: new Date(),
 		});
-		await closePollSession(session._id, { result: "saved" });
+		await finishInteractivePoll(session._id, { result: "saved" });
 		await sendQueued(sock, session.groupJid, {
 			text: alphaPanel({
 				icon: "🎂",
@@ -124,7 +124,7 @@ const handleBirthdayChoice = async (sock, session, voterJid, option) => {
 		return;
 	}
 	if (option.startsWith("✏️") || option.startsWith("❌")) {
-		await closePollSession(session._id, { result: "cancelled" });
+		await finishInteractivePoll(session._id, { result: "cancelled" });
 		await sendQueued(sock, session.groupJid, { text: "🎂 Birthday setup cancelled. Send `birthday set DD-MM` with the correct date." });
 	}
 };
@@ -134,11 +134,11 @@ export const handleInteractivePollUpdate = async (sock, eventItem) => {
 	const update = eventItem?.update;
 	if (!key?.id || !Array.isArray(update?.pollUpdates) || !update.pollUpdates.length) return false;
 	const session = livePolls.get(key.id) || await readInteractivePoll(key.id);
-	if (!session || session.status !== "open") return false;
+	if (!session || session.status !== "open" || (key.remoteJid && key.remoteJid !== session.groupJid)) return false;
 	if (livePolls.get(key.id)?.status === "closed") return false;
 	rememberSession(session);
 	if (session.expiresAt && new Date(session.expiresAt).getTime() <= Date.now()) {
-		await closePollSession(session._id, { result: "expired" });
+		await finishInteractivePoll(session._id, { result: "expired" });
 		return false;
 	}
 
@@ -157,7 +157,7 @@ export const handleInteractivePollUpdate = async (sock, eventItem) => {
 		// Reflect a decoded vote immediately; a slow DB write must not erase the
 		// enrollment already received before the lobby deadline.
 		await notifyPollVote(session, vote).catch(error => console.warn("Poll enrollment failed:", error.message));
-		await replacePollVote(session._id, voterJid, option).catch(error => console.warn("Poll vote save failed:", error.message));
+		await replacePollVote(session._id, voterJid, option, vote.votedAt).catch(error => console.warn("Poll vote save failed:", error.message));
 		handled = true;
 		if (session.type === "birthday-confirm" && option) {
 			await handleBirthdayChoice(sock, session, voterJid, option);

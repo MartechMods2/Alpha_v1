@@ -273,7 +273,7 @@ function GroupCard({ grp, onUpdate, onAddBlock, onRemoveBlock }) {
           <button
             className="btn-sm"
             onClick={() => setShowHistory(true)}
-            
+
           >
             📋 Chat History
           </button>

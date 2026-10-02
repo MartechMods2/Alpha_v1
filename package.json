@@ -1,7 +1,7 @@
 {
   "name": "whatsappbot",
   "version": "3.0.0",
-  "description": "Alpha — WhatsApp community assistant created by Martech",
+  "description": "Alpha \u2014 WhatsApp community assistant created by Martech",
   "main": "index.js",
   "type": "module",
   "private": true,
@@ -22,7 +22,9 @@
     "start": "bun index.js",
     "start:dev": "bun --inspect index.js",
     "start:production": "bun --smol index.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "check": "node scripts/check.mjs",
+    "verify": "npm run check && npm test && npm run build --workspace dashboard"
   },
   "keywords": [],
   "author": "Martech",

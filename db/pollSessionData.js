@@ -32,15 +32,21 @@ export const getPollCreationMessage = async (key) => {
 	return decodePollMessage(session.creationMessage);
 };
 
-export const replacePollVote = async (id, voterJid, option = "") => {
-	const filter = { _id: String(id), status: "open" };
-	const now = new Date();
+// Retain empty choices as timestamped retractions: reconnect replay must not
+// restore a previous join. Match timestamps atomically to reject stale writes.
+export const replacePollVote = async (id, voterJid, option = "", votedAt = new Date()) => {
+	const timestamp = new Date(votedAt);
+	if (!Number.isFinite(timestamp.getTime())) throw new Error("Invalid poll vote timestamp");
+	const filter = {
+		_id: String(id), status: "open",
+		votes: { $not: { $elemMatch: { voterJid, votedAt: { $gt: timestamp } } } },
+	};
 	return pollSessions.findOneAndUpdate(filter, [{ $set: {
 		votes: { $concatArrays: [
 			{ $filter: { input: { $ifNull: ["$votes", []] }, as: "vote", cond: { $ne: ["$$vote.voterJid", { $literal: voterJid }] } } },
-			{ $literal: option ? [{ voterJid, option, votedAt: now }] : [] },
+			{ $literal: [{ voterJid, option, votedAt: timestamp }] },
 		] },
-		updatedAt: now,
+		updatedAt: new Date(),
 	} }], { returnDocument: "after" });
 };
 
