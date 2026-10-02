@@ -1,10 +1,12 @@
+import practicalCommand from '../commands/public/practicalTools.js';
+import { PRACTICAL_TOOLS, runPracticalTool } from './practicalTools.js';
 import { parseCommandChain } from './multiCommand.js';
 import { parseTruthDareStart } from './truthDareStartOptions.js';
 import { parseHostedOptions } from './hostedGameOptions.js';
 import calcCommand from '../commands/public/calc.js';
 import textCommand from '../commands/public/textLab.js';
 
-const offline = [calcCommand(), textCommand()];
+const offline = [calcCommand(), textCommand(), practicalCommand()];
 export const OFFLINE_COMMANDS = offline.flatMap(entry => entry.cmd);
 export const runCommandLab = async ({ text, prefix = '$', guide, context = 'group', role = 'member' }) => {
   if (typeof text !== 'string' || !text.trim() || text.length > 4000) throw new Error('Enter 1–4000 characters.');
@@ -23,7 +25,10 @@ export const runCommandLab = async ({ text, prefix = '$', guide, context = 'grou
     if (!permission || entry.disabled) { row.ok = false; row.output.push(entry.disabled ? 'Globally disabled.' : `Permission/context denied: ${entry.access}`); continue; }
     row.ok = true;
     try {
-      if (['td', 'tod', 'truthdare', 'truthordare', 'tord', 'todgame'].includes(segment.command) && segment.args[0] === 'start') {
+      if (PRACTICAL_TOOLS[segment.command]) {
+        row.mode = 'offline execution';
+        row.output.push(runPracticalTool(segment.command, segment.inputText ?? segment.evv ?? segment.args.join(' ')));
+      } else if (['td', 'tod', 'truthdare', 'truthordare', 'tord', 'todgame'].includes(segment.command) && segment.args[0] === 'start') {
         row.options = parseTruthDareStart(segment.args.slice(1));
         row.output.push('Truth or Dare start options parsed. No lobby or poll created.');
       } else if (segment.command === 'game' && ['start', 'host', 'lobby', 'joinpoll', 'random'].includes(segment.args[0])) {

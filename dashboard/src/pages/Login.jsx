@@ -1,3 +1,4 @@
+import AlphaMark from '../components/AlphaMark.jsx'
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { login } from '../lib/api.js'
@@ -21,7 +22,8 @@ export default function Login() {
   }, [location.search])
 
   // Already logged in
-  if (auth === true) { navigate(from, { replace: true }); return null }
+  useEffect(() => { if (auth === true) navigate(from, { replace: true }) }, [auth, from, navigate])
+  if (auth === true) return null
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -41,9 +43,9 @@ export default function Login() {
     <div className="login-wrap">
       <div className="login-card">
         <div className="login-brand">
-          <img src="/alpha-martech.jpg" alt="Alpha by Martech" />
+          <AlphaMark size={64} />
           <h1>Alpha by Martech</h1>
-          <p>Admin Panel — Restricted Access</p>
+          <p>Community & operations console</p>
         </div>
 
         {error && <div className="error-box">{error}</div>}
@@ -53,8 +55,8 @@ export default function Login() {
             <label className="form-label">Password</label>
             <input
               className="form-input"
-              type="password"
-              placeholder="Enter admin password"
+              type="password" autoComplete="current-password"
+              placeholder="Your dashboard password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               autoFocus

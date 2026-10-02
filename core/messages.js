@@ -1,3 +1,5 @@
+import { createSingleFlight } from "../utils/singleFlight.js";
+const metadataFlight = createSingleFlight();
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -221,12 +223,12 @@ const getCommand = async (sock, msg, cache) => {
 			groupMetadata = (await getGroupMeta(from)) || cache.get(from + ":groupMetadata");
 			if (!groupMetadata) {
 				try {
-					groupMetadata = await Promise.race([
+					groupMetadata = await metadataFlight(from, () => Promise.race([
 						sock.groupMetadata(from),
 						new Promise((_, reject) =>
 							setTimeout(() => reject(new Error("Group metadata fetch timeout")), 2000),
 						),
-					]);
+					]));
 					setGroupMeta(from, groupMetadata);
 					cache.set(from + ":groupMetadata", groupMetadata, 10 * 60);
 					await createGroupData(from, groupMetadata);
@@ -715,6 +717,7 @@ const getCommand = async (sock, msg, cache) => {
 			type,
 			content,
 			evv,
+			inputText: parsedCommand?.inputText,
 			command,
 			isGroup,
 			senderJid,

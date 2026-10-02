@@ -1,3 +1,4 @@
+import Select from '../components/Select.jsx'
 import { useEffect, useMemo, useState } from 'react'
 import { getAnalytics, getGroups, getHealth, updateGroup } from '../lib/api.js'
 import { useToast } from '../App.jsx'
@@ -65,9 +66,9 @@ export default function ControlCenter() {
     <div className="card" style={{ marginBottom: 14 }}>
       <div className="card-header">
         <div><div className="card-title">Choose a group</div><div className="card-sub">Control Center changes only the selected group.</div></div>
-        <select className="form-select" style={{ maxWidth: 340 }} value={selected} onChange={e => setSelected(e.target.value)}>
+        <Select aria-label="Choose group" className="form-select" style={{ maxWidth: 340 }} value={selected} onChange={e => setSelected(e.target.value)}>
           {groups.map(g => <option key={g._id} value={g._id}>{g.grpName || g._id}</option>)}
-        </select>
+        </Select>
       </div>
       {current ? <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button className="btn btn-primary" disabled={!!busy} onClick={() => patch({ isBotOn: true, isWelcomeOn: true, isGoodbyeOn: true, isAntiLinkOn: true, isAntiSpamOn: true, isAntiStatusMentionOn: true }, 'Recommended core controls enabled')}>⚡ Enable Recommended Core</button>

@@ -1,3 +1,4 @@
+import Select from '../components/Select.jsx'
 import { useEffect, useMemo, useState } from 'react'
 import { getGroups } from '../lib/api.js'
 import { useToast } from '../App.jsx'
@@ -63,9 +64,9 @@ export default function EngagementCenter() {
 
     <div className="premium-panel" style={{ marginBottom: 16 }}>
       <div className="section-heading"><div><span className="eyebrow">GROUP PROFILE</span><h3>Current engagement setup</h3></div></div>
-      <select value={selected} onChange={(e) => setSelected(e.target.value)} style={{ width: '100%', marginBottom: 14 }}>
+      <Select aria-label="Choose group" value={selected} onChange={(e) => setSelected(e.target.value)} style={{ width: '100%', marginBottom: 14 }}>
         {groups.map((item) => <option key={item._id} value={item._id}>{item.grpName || item._id}</option>)}
-      </select>
+      </Select>
       <div className="premium-metric-grid">
         <div className="premium-metric"><span className="premium-metric-icon">🌚</span><div><strong>{enabled ? 'ON' : 'OFF'}</strong><span>Human Mode</span></div></div>
         <div className="premium-metric"><span className="premium-metric-icon">🎚</span><div><strong>{group?.humanEngagementLevel || 'balanced'}</strong><span>Vibe level</span></div></div>

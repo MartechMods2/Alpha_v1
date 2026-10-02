@@ -1,3 +1,4 @@
+import Select from '../components/Select.jsx'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getCommandGuide } from '../lib/api.js'
@@ -8,6 +9,8 @@ export default function CommandGuide() {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
+  const [category, setCategory] = useState('all')
+  const categories = useMemo(() => [...new Set((data?.commands || []).map(row => row.category))].sort(), [data])
   const [type, setType] = useState('all')
   const [page, setPage] = useState(1)
   async function load() {
@@ -15,9 +18,9 @@ export default function CommandGuide() {
     try { setData(await getCommandGuide()) } catch (err) { setError(err.message) }
   }
   useEffect(() => { load() }, [])
-  useEffect(() => { setPage(1) }, [query, type])
+  useEffect(() => { setPage(1) }, [query, type, category])
   const rows = useMemo(() => (data?.commands || []).filter(row =>
-    (type === 'all' || row.type === type) && `${row.name} ${row.description} ${row.category} ${row.reference} ${row.syntax.join(' ')}`.toLowerCase().includes(query.toLowerCase().trim())), [data, query, type])
+    (type === 'all' || row.type === type) && (category === 'all' || row.category === category) && `${row.name} ${row.description} ${row.category} ${row.reference} ${row.syntax.join(' ')}`.toLowerCase().includes(query.toLowerCase().trim())), [data, query, type, category])
   const maxPage = Math.max(1, Math.ceil(rows.length / 30))
   const currentPage = Math.min(page, maxPage)
   async function copy(text) {
@@ -34,7 +37,8 @@ export default function CommandGuide() {
     {error && <div className="card" role="alert" style={{ padding: 20 }}><p>{error}</p><button className="btn" onClick={load}>Retry</button></div>}
     {!!data?.loadErrors?.length && <p role="alert">{data.loadErrors.length} modules failed to load: {data.loadErrors.map(row => row.file).join(', ')}. Check Bot Logs; their commands are unavailable.</p>}
     <label className="form-label" htmlFor="guide-search">Search every command, purpose and usage</label>
-    <input id="guide-search" className="search-input" style={{ width: '100%', marginBottom: 12 }} value={query} onChange={event => setQuery(event.target.value)} placeholder="Try td, download, ai, schedule, moderation…" />
+    <input id="guide-search" className="search-input" style={{ width: '100%', marginBottom: 12 }} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search tools, games, text, planning or moderation…" />
+    <div style={{ maxWidth: 360, marginBottom: 12 }}><label className="form-label" htmlFor="guide-category">Feature category</label><Select id="guide-category" aria-label="Feature category" value={category} onChange={event => setCategory(event.target.value)}><option value="all">All categories</option>{categories.map(value => <option key={value} value={value}>{value}</option>)}</Select></div>
     <div className="chips">{['all', 'public', 'group', 'admin', 'owner'].map(value => <button key={value} className={`chip ${type === value ? 'active' : ''}`} onClick={() => setType(value)}>{value}</button>)}</div>
     <p className="sub">{rows.length} matching commands · Page {currentPage} of {maxPage}</p>
     {rows.slice((currentPage - 1) * 30, currentPage * 30).map(row => <details className="card" key={row.name} style={{ padding: 18, marginBottom: 10 }}>

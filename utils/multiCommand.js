@@ -26,7 +26,7 @@ export const parseCommandSegment = (raw, prefix = "$") => {
 	if (!content) return null;
 	const tokens = content.split(/\s+/).filter(Boolean);
 	const command = String(tokens.shift() || "").toLowerCase();
-	return command ? { raw: clean, command, args: tokens, evv: tokens.join(" ") } : null;
+	return command ? { raw: clean, command, args: tokens, evv: tokens.join(" "), inputText: content.slice(content.match(/^\S+/)[0].length).trimStart() } : null;
 };
 
 export const parseCommandChain = (body, prefix = "$", maxCommands = 6) => {

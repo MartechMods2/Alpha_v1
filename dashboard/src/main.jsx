@@ -4,6 +4,7 @@ import './index.css'
 import './premium.css'
 import './font-fix.css'
 import './studio.css'
+import './controls.css'
 import App from './App.jsx'
 
 createRoot(document.getElementById('root')).render(

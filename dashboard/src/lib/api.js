@@ -1,3 +1,4 @@
+const pendingGets = new Map()
 const call = async (method, path, body) => {
   const r = await fetch(path, {
     method,
@@ -13,7 +14,12 @@ const call = async (method, path, body) => {
 }
 
 export const api = {
-	get:   (path)        => call('GET',   path),
+	get: (path) => {
+    if (pendingGets.has(path)) return pendingGets.get(path)
+    const request = call('GET', path).finally(() => { if (pendingGets.get(path) === request) pendingGets.delete(path) })
+    pendingGets.set(path, request)
+    return request
+  },
 	post:  (path, body)  => call('POST',  path, body),
 	patch: (path, body)  => call('PATCH', path, body),
 	delete: (path)       => call('DELETE', path),

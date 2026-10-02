@@ -1,27 +1,27 @@
-import { useState, useEffect, createContext, useContext, useCallback, useRef } from 'react'
+import { lazy, Suspense, useState, useEffect, createContext, useContext, useCallback, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from './components/Layout.jsx'
-import Login from './pages/Login.jsx'
-import Dashboard from './pages/Dashboard.jsx'
-import OperationsHub from './pages/OperationsHub.jsx'
-import ManagementSuite from './pages/ManagementSuite.jsx'
-import CustomizationStudio from './pages/CustomizationStudio.jsx'
-import EngagementCenter from './pages/EngagementCenter.jsx'
-import Commands from './pages/Commands.jsx'
-import CommandGuide from './pages/CommandGuide.jsx'
-import CommandLab from './pages/CommandLab.jsx'
-import Groups from './pages/Groups.jsx'
-import Members from './pages/Members.jsx'
-import Analytics from './pages/Analytics.jsx'
-import Broadcast from './pages/Broadcast.jsx'
-import Health from './pages/Health.jsx'
-import Logs from './pages/Logs.jsx'
-import DirectMessage from './pages/DirectMessage.jsx'
-import Settings from './pages/Settings.jsx'
-import MediaStudio from './pages/MediaStudio.jsx'
-import SafePack from './pages/SafePack.jsx'
-import ControlCenter from './pages/ControlCenter.jsx'
-import TemplateLibrary from './pages/TemplateLibrary.jsx'
+const Login = lazy(() => import('./pages/Login.jsx'))
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx'))
+const OperationsHub = lazy(() => import('./pages/OperationsHub.jsx'))
+const ManagementSuite = lazy(() => import('./pages/ManagementSuite.jsx'))
+const CustomizationStudio = lazy(() => import('./pages/CustomizationStudio.jsx'))
+const EngagementCenter = lazy(() => import('./pages/EngagementCenter.jsx'))
+const Commands = lazy(() => import('./pages/Commands.jsx'))
+const CommandGuide = lazy(() => import('./pages/CommandGuide.jsx'))
+const CommandLab = lazy(() => import('./pages/CommandLab.jsx'))
+const Groups = lazy(() => import('./pages/Groups.jsx'))
+const Members = lazy(() => import('./pages/Members.jsx'))
+const Analytics = lazy(() => import('./pages/Analytics.jsx'))
+const Broadcast = lazy(() => import('./pages/Broadcast.jsx'))
+const Health = lazy(() => import('./pages/Health.jsx'))
+const Logs = lazy(() => import('./pages/Logs.jsx'))
+const DirectMessage = lazy(() => import('./pages/DirectMessage.jsx'))
+const Settings = lazy(() => import('./pages/Settings.jsx'))
+const MediaStudio = lazy(() => import('./pages/MediaStudio.jsx'))
+const SafePack = lazy(() => import('./pages/SafePack.jsx'))
+const ControlCenter = lazy(() => import('./pages/ControlCenter.jsx'))
+const TemplateLibrary = lazy(() => import('./pages/TemplateLibrary.jsx'))
 import { loadPersonalization } from './lib/personalization.js'
 
 export const ToastCtx = createContext(null)
@@ -72,7 +72,7 @@ export default function App() {
     <AuthCtx.Provider value={{ auth, setAuth, googleAuthEnabled }}>
       <ToastCtx.Provider value={showToast}>
         <BrowserRouter basename={basename}>
-          <Routes>
+          <Suspense fallback={<div className="route-loading" role="status"><div className="spinner" /><span>Loading workspace…</span></div>}><Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/*" element={<AuthGuard><Layout><Routes>
               <Route index element={<StartupLanding />} />
@@ -97,7 +97,7 @@ export default function App() {
               <Route path="safe-pack" element={<SafePack />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes></Layout></AuthGuard>} />
-          </Routes>
+          </Routes></Suspense>
         </BrowserRouter>
         <Toast toasts={toasts} />
       </ToastCtx.Provider>

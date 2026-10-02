@@ -1,3 +1,4 @@
+import Select from '../components/Select.jsx'
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { getCommandGuide, testCommand } from '../lib/api.js'
@@ -28,14 +29,14 @@ export default function CommandLab() {
   return <div className="command-lab-page">
     <div className="page-header"><div><h2>Command Lab</h2><p className="sub">A sandbox terminal for Alpha commands.</p></div><Link className="btn" to="/command-guide">Full Command Guide</Link></div>
     <div className="card" style={{ padding: 20, marginBottom: 18 }}>
-      <p><strong>Offline tests:</strong> Calculator and Text Lab commands execute their real handlers and display replies here. Game starts validate the real rounds, theme and lobby parsers. Every other command checks registration, global enablement and simulated permissions.</p>
+      <p><strong>Offline tests:</strong> Calculator, Text Lab and all 115 Practical Tools execute their real handlers and display replies here. Game starts validate the real rounds, theme and lobby parsers. Every other command checks registration, global enablement and simulated permissions.</p>
       <p>These tests send no WhatsApp messages and change no saved data. They do not verify live group settings, AI providers, media downloads or game votes. Use a WhatsApp test group for those flows.</p>
       <details><summary>Commands that execute offline</summary><p>{data?.offlineCommands?.join(', ') || 'Loading…'}</p></details>
     </div>
     <form onSubmit={run} className="card command-lab-form">
       <div className="command-lab-controls">
-        <div className="form-field"><label className="form-label" htmlFor="lab-context">Chat context</label><select id="lab-context" className="form-select" value={context} onChange={event => setContext(event.target.value)}><option value="group">Group</option><option value="direct">Direct message</option></select></div>
-        <div className="form-field"><label className="form-label" htmlFor="lab-role">Simulated role</label><select id="lab-role" className="form-select" value={role} onChange={event => setRole(event.target.value)}><option value="member">Member</option><option value="admin">Admin</option><option value="owner">Owner / Alpha account</option></select></div>
+        <div className="form-field"><label className="form-label" htmlFor="lab-context">Chat context</label><Select id="lab-context" className="form-select" value={context} onChange={event => setContext(event.target.value)}><option value="group">Group</option><option value="direct">Direct message</option></Select></div>
+        <div className="form-field"><label className="form-label" htmlFor="lab-role">Simulated role</label><Select id="lab-role" className="form-select" value={role} onChange={event => setRole(event.target.value)}><option value="member">Member</option><option value="admin">Admin</option><option value="owner">Owner / Alpha account</option></Select></div>
       </div>
       <label className="form-label" htmlFor="lab-command">Command input</label>
       <textarea className="form-textarea code-input" id="lab-command" value={text} onChange={event => setText(event.target.value)} maxLength={4000} rows={4} placeholder={`${data?.prefix || '$'}calc 25 * 4 + 10`} aria-describedby="lab-input-help" />

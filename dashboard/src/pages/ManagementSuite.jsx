@@ -1,3 +1,4 @@
+import Select from '../components/Select.jsx'
 import { useEffect, useMemo, useState } from 'react'
 import { getAnalytics, getGroups, getHealth, getSafePack, updateGroup } from '../lib/api.js'
 import { useToast } from '../App.jsx'
@@ -104,7 +105,7 @@ export default function ManagementSuite() {
 
     <section className="premium-panel" style={{marginBottom:14}}>
       <div className="studio-heading"><div><h3>Selected group</h3><p>Every switch below changes only this group. High-impact kick/mute actions are not executed from this page.</p></div><span className="badge badge-on">{enabledControls}/{GROUP_CONTROLS.length} enabled</span></div>
-      <select className="form-select" value={selected} onChange={e => setSelected(e.target.value)} style={{maxWidth:520}}>{groups.map(group => <option key={group._id} value={group._id}>{group.grpName || group._id}</option>)}</select>
+      <Select aria-label="Choose group" className="form-select" value={selected} onChange={e => setSelected(e.target.value)} style={{maxWidth:520}}>{groups.map(group => <option key={group._id} value={group._id}>{group.grpName || group._id}</option>)}</Select>
     </section>
 
     <section className="premium-panel" style={{marginBottom:14}}>

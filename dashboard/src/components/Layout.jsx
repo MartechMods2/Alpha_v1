@@ -69,7 +69,7 @@ export default function Layout({ children }) {
 
   useEffect(() => {
     getStats().then(setStats).catch(() => {})
-    const timer = setInterval(() => getStats().then(setStats).catch(() => {}), Math.max(15, prefs.refreshSeconds || 30) * 1000)
+    const timer = setInterval(() => { if (!document.hidden) getStats().then(setStats).catch(() => {}) }, Math.max(15, prefs.refreshSeconds || 30) * 1000)
     return () => clearInterval(timer)
   }, [prefs.refreshSeconds])
 
