@@ -5,6 +5,7 @@ import messageQueue from "../queue/messageQueue.js";
 import { isSameGroupUser } from "./groupParticipants.js";
 import { alphaPanel, safeDisplayName } from "./alphaStyle.js";
 import { encodePollMessage, rememberPollMessage } from "./pollMessageStore.js";
+import { decryptInteractivePollMessage, rawPollUpdate } from "./pollVoteDecrypt.js";
 import { notifyPollVote } from "./pollVoteEvents.js";
 
 const livePolls = new Map();
@@ -57,6 +58,7 @@ export const registerInteractivePoll = async ({ sentMessage, groupJid, type, own
 		groupJid,
 		type,
 		ownerJid,
+		creationKey: { ...sentMessage.key },
 		options: [...options],
 		payload,
 		creationMessage: sentMessage.message ? encodePollMessage(sentMessage.message) : "",
@@ -64,8 +66,9 @@ export const registerInteractivePoll = async ({ sentMessage, groupJid, type, own
 		votes: [],
 		status: "open",
 	};
-	const saved = await createPollSession(session);
-	return rememberSession(saved || session);
+	rememberSession(session);
+	await createPollSession(session).catch(error => console.warn("[POLL] initial persistence failed:", error.message));
+	return session;
 };
 
 export const readInteractivePoll = async (id) => {
@@ -130,7 +133,7 @@ export const handleInteractivePollUpdate = async (sock, eventItem) => {
 	const key = eventItem?.key;
 	const update = eventItem?.update;
 	if (!key?.id || !Array.isArray(update?.pollUpdates) || !update.pollUpdates.length) return false;
-	const session = await readInteractivePoll(key.id);
+	const session = livePolls.get(key.id) || await readInteractivePoll(key.id);
 	if (!session || session.status !== "open") return false;
 	if (livePolls.get(key.id)?.status === "closed") return false;
 	rememberSession(session);
@@ -145,7 +148,11 @@ export const handleInteractivePollUpdate = async (sock, eventItem) => {
 		if (!voterJid) continue;
 		const option = selectedOptionName(session.options, pollUpdate?.vote?.selectedOptions || []);
 		if (session.status !== "open") break;
-		const vote = { voterJid, option, votedAt: new Date() };
+		const sentAt = Number(pollUpdate.senderTimestampMs?.toNumber?.() ?? pollUpdate.senderTimestampMs);
+        const votedAt = new Date(Number.isFinite(sentAt) && sentAt > 0 ? sentAt : Date.now());
+        const previous = (session.votes || []).find(row => row.voterJid === voterJid);
+        if (previous && new Date(previous.votedAt || 0).getTime() > votedAt.getTime()) continue;
+        const vote = { voterJid, option, votedAt };
 		session.votes = [...(session.votes || []).filter(row => row.voterJid !== voterJid), vote];
 		// Reflect a decoded vote immediately; a slow DB write must not erase the
 		// enrollment already received before the lobby deadline.
@@ -157,4 +164,20 @@ export const handleInteractivePollUpdate = async (sock, eventItem) => {
 		}
 	}
 	return handled;
+};
+
+export const handleInteractivePollMessage = async (sock, message) => {
+  const update = rawPollUpdate(message);
+  if (!update) return false;
+  const id = update.pollCreationMessageKey?.id;
+  if (!id) return true;
+  const session = livePolls.get(id) || await readInteractivePoll(id);
+  if (!session || session.status !== "open" || session.groupJid !== message.key?.remoteJid) return true;
+  try {
+    const decoded = await decryptInteractivePollMessage({ sock, message, session });
+    if (decoded) await handleInteractivePollUpdate(sock, decoded);
+  } catch (error) {
+    console.warn(`[POLL] vote decode failed (${session.type}, ${id}): ${error.message}`);
+  }
+  return true;
 };

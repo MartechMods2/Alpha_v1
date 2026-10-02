@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { createHash, createHmac, createCipheriv } from "node:crypto";
+import { proto } from "baileys";
 import { parseHostedOptions } from "../utils/hostedGameOptions.js";
 const asModule = source => `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
 const mockedModule = async (path, mocks) => {
@@ -66,13 +67,26 @@ test("all ten games auto-enrol an admin, count poll votes, play repeated rounds 
   const outsider = "333@s.whatsapp.net";
   const metadata = { participants: [{ id: starter, lid: "starter@lid" }, { id: guest, lid: "guest@lid" }, { id: outsider }] };
   let pollId = 0;
-  const sock = { groupMetadata: async () => metadata, sendMessage: async (jid, content) => {
+  const sock = { user: { id: "999@s.whatsapp.net", lid: "bot@lid" }, groupMetadata: async () => metadata, sendMessage: async (jid, content) => {
     h.sent.push({ jid, ...content });
     return { key: { remoteJid: jid, id: `auto-poll-${++pollId}` }, message: { pollCreationMessageV3: content.poll, messageContextInfo: { messageSecret: Buffer.alloc(32) } } };
   } };
-  const vote = async (groupJid, id, jid) => polls.handleInteractivePollUpdate(sock, { key: { remoteJid: groupJid, id }, update: { pollUpdates: [{
-    pollUpdateMessageKey: { participant: jid }, vote: { selectedOptions: [createHash("sha256").update("✅ Join game").digest()] },
-  }] } });
+  const vote = async (groupJid, id, jid) => {
+    const secret = Buffer.alloc(32);
+    const key0 = createHmac("sha256", Buffer.alloc(32)).update(secret).digest();
+    const key = createHmac("sha256", key0).update(Buffer.concat([
+      Buffer.from(id), Buffer.from(sock.user.lid), Buffer.from(jid), Buffer.from("Poll Vote"), Buffer.from([1]),
+    ])).digest();
+    const encIv = Buffer.alloc(12, 7);
+    const cipher = createCipheriv("aes-256-gcm", key, encIv);
+    cipher.setAAD(Buffer.from(`${id}\0${jid}`));
+    const payload = proto.Message.PollVoteMessage.encode({ selectedOptions: [createHash("sha256").update("✅ Join game").digest()] }).finish();
+    const encPayload = Buffer.concat([cipher.update(payload), cipher.final(), cipher.getAuthTag()]);
+    await polls.handleInteractivePollMessage(sock, {
+      key: { remoteJid: groupJid, id: `${id}-vote`, participant: jid },
+      message: { pollUpdateMessage: { pollCreationMessageKey: { id, remoteJid: groupJid, fromMe: true }, vote: { encIv, encPayload }, senderTimestampMs: Date.now() } },
+    });
+  };
   for (const game of host.AUTO_GAMES) {
     const groupJid = `${game}@g.us`;
     await host.startAutoGame({ sock, groupJid, senderJid: starter, name: "Admin", metadata, args: [game, "rounds=2", "lobby=2m"] });

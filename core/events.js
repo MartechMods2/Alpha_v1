@@ -3,7 +3,7 @@ import getCommand from "./messages.js";
 import getGroupEvent from "./groupEvent.js";
 import getCallEvent from "./callEvents.js";
 import { handlePassiveCommunityMessage } from "../utils/passiveCommunity.js";
-import { handleInteractivePollUpdate } from "../utils/pollManager.js";
+import { handleInteractivePollUpdate, handleInteractivePollMessage } from "../utils/pollManager.js";
 import { handleOwnerMentionReaction } from "../utils/ownerMentionReaction.js";
 import { handleAfkPresence } from "../utils/afkPresence.js";
 import { restoreActiveTruthDareSessions } from "../utils/truthDareHost.js";
@@ -14,6 +14,13 @@ const events = async (sock, startSock, cache) => {
 		try {
 			if (event["messages.upsert"]) {
 				const { type, messages } = event["messages.upsert"];
+                const pollMessages = new Set();
+                // rc14 leaves native votes encrypted in upsert. Handle notify
+                // and append/reconnect deliveries before chat/AI processing.
+                await Promise.all(messages.map(async msg => {
+                  try { if (await handleInteractivePollMessage(sock, msg)) pollMessages.add(msg); }
+                  catch (error) { console.warn("[POLL] incoming vote failed:", error.message); }
+                }));
 				if (type === "notify") {
 					try {
 						for (const msg of messages) {
@@ -41,7 +48,7 @@ const events = async (sock, startSock, cache) => {
 					}
 
 					const validMessages = messages.filter(
-						(msg) => msg && msg.message && msg.key?.remoteJid && Object.keys(msg.message).length > 0,
+						(msg) => msg && !pollMessages.has(msg) && msg.message && msg.key?.remoteJid && Object.keys(msg.message).length > 0,
 					);
 					await Promise.all(validMessages.map(async (msg) => {
 						try {

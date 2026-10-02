@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { createHash, createHmac, createCipheriv } from "node:crypto";
 import test from "node:test";
+import { proto } from "baileys";
 import { decodePollMessage, readCachedPollMessage } from "../utils/pollMessageStore.js";
 
 const asModule = (source) => `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
@@ -65,7 +66,7 @@ test("poll votes survive a long lobby and drive automatic turns, scoring and win
   const metadata = { participants: [{ id: starterJid }, { id: playerJid }] };
   const secret = Buffer.alloc(32, 7);
   const sock = {
-    user: { id: "999:1@s.whatsapp.net" },
+    user: { id: "999:1@s.whatsapp.net", lid: "bot-lid@lid" },
     groupMetadata: async () => metadata,
     sendMessage: async (jid, content) => {
       h.sent.push(content);
@@ -122,6 +123,57 @@ test("poll votes survive a long lobby and drive automatic turns, scoring and win
   assert.match(h.sent.at(-1).text, /Truth or Dare Complete/);
   assert.match(h.sent.at(-1).text, /Winner/);
   assert.equal(h.snapshots.has(groupJid), false);
+
+  // Reproduce the screenshot: seven native encrypted votes arrive through
+  // upsert, without a messages.update event from Baileys rc14.
+  const rawGroup = "td-native-votes@g.us";
+  await host.startTruthDareSession({ sock, groupJid: rawGroup, starterJid, groupMetadata: metadata,
+    rounds: 1, lobbyMs: 600_000, sendMessageWTyping: sock.sendMessage });
+  const encryptVote = (voterJid, options) => {
+    const pollId = "poll-flow";
+    const creator = "bot-lid@lid";
+    const zeroKey = createHmac("sha256", Buffer.alloc(32)).update(secret).digest();
+    const sign = Buffer.concat([Buffer.from(pollId), Buffer.from(creator), Buffer.from(voterJid), Buffer.from("Poll Vote"), Buffer.from([1])]);
+    const key = createHmac("sha256", zeroKey).update(sign).digest();
+    const iv = Buffer.alloc(12, 4);
+    const cipher = createCipheriv("aes-256-gcm", key, iv);
+    cipher.setAAD(Buffer.from(`${pollId}\0${voterJid}`));
+    const payload = proto.Message.PollVoteMessage.encode({ selectedOptions: options.map(option => createHash("sha256").update(option).digest()) }).finish();
+    const encPayload = Buffer.concat([cipher.update(payload), cipher.final(), cipher.getAuthTag()]);
+    return { key: { id: `native-${voterJid}-${options.length}`, remoteJid: rawGroup, participant: voterJid, participantAlt: "phone-alias@s.whatsapp.net" },
+      message: { pollUpdateMessage: { pollCreationMessageKey: { id: pollId, remoteJid: rawGroup, fromMe: true }, vote: { encPayload, encIv: iv }, senderTimestampMs: Date.now() } } };
+  };
+  const noop = asModule("export default async () => {}; export const handlePassiveCommunityMessage = async () => false; export const handleOwnerMentionReaction = async () => {}; export const handleAfkPresence = async () => {};");
+  const eventsUrl = await loadWithMocks("../core/events.js", {
+    "./connectionUpdate.js": noop, "./messages.js": noop, "./groupEvent.js": noop, "./callEvents.js": noop,
+    "../utils/passiveCommunity.js": noop, "../utils/ownerMentionReaction.js": noop, "../utils/afkPresence.js": noop,
+    "../utils/pollManager.js": pollUrl, "../utils/truthDareHost.js": hostUrl,
+    "../utils/autoGameHost.js": asModule("export const restoreActiveAutoGames = async () => {};"),
+  });
+  let receive;
+  const eventSock = { ...sock, ev: { process: handler => { receive = handler; } } };
+  await (await import(eventsUrl)).default(eventSock, () => {}, { flushAll() {} });
+  const nativeMessages = Array.from({ length: 7 }, (_, index) => encryptVote(`guest-${index + 1}@lid`, ["✅ Join game"]));
+  nativeMessages[0].message = { ephemeralMessage: { message: nativeMessages[0].message } };
+  await receive({ "messages.upsert": { type: "notify", messages: nativeMessages.slice(0, 4) } });
+  await receive({ "messages.upsert": { type: "append", messages: nativeMessages.slice(4) } });
+  const rawSession = host.getTruthDareSession(rawGroup);
+  assert.equal(rawSession.participants.length, 8, "seven encrypted votes plus the automatic starter count immediately");
+  await pollManager.handleInteractivePollMessage(sock, encryptVote("guest-1@lid", []));
+  assert.equal(rawSession.participants.length, 7, "native vote removal removes enrollment");
+  await pollManager.handleInteractivePollMessage(sock, encryptVote("guest-1@lid", ["✅ Join game"]));
+  await host.closeTruthDareLobby({ sock, groupJid: rawGroup, senderJid: starterJid });
+  assert.equal(rawSession.status, "playing");
+  assert.equal(rawSession.participants.length, 8);
+  let nativeTurns = 0;
+  while (host.getTruthDareSession(rawGroup)) {
+    const player = rawSession.turnOrder[rawSession.currentIndex];
+    await host.handleTruthDareAction({ sock, groupJid: rawGroup, senderJid: player.jid, body: "truth" });
+    await host.handleTruthDareAction({ sock, groupJid: rawGroup, senderJid: player.jid, body: "My answer" });
+    assert.ok(++nativeTurns <= 8);
+  }
+  assert.equal(nativeTurns, 8);
+  assert.match(h.sent.at(-1).text, /Truth or Dare Complete/);
 
   // Finalization keeps an idempotent checkpoint when permanent stats fail.
   const finalGroup = "td-final-retry@g.us";

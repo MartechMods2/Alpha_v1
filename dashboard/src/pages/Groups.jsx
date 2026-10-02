@@ -228,7 +228,7 @@ function GroupCard({ grp, onUpdate, onAddBlock, onRemoveBlock }) {
           </span>
         </div>
 
-        {grp.desc && <p className="grp-desc">{grp.desc}</p>}
+        {grp.desc && <details className="grp-description"><summary>Group description / rules</summary><p className="grp-desc">{grp.desc}</p></details>}
 
         <div className="toggle-grid">
           {TOGGLES.map(({ field, label }) => (
@@ -238,6 +238,7 @@ function GroupCard({ grp, onUpdate, onAddBlock, onRemoveBlock }) {
                 <input
                   type="checkbox"
                   checked={!!grp[field]}
+                  aria-label={`${label}: ${grp.grpName || 'Unnamed Group'}`}
                   onChange={e => onUpdate(grp._id, field, e.target.checked)}
                 />
                 <span className="slider" />
@@ -265,18 +266,20 @@ function GroupCard({ grp, onUpdate, onAddBlock, onRemoveBlock }) {
           </div>
         </div>
 
-        <div className="grp-meta">
+        <div className="grp-meta"><div className="grp-counts">
           <span>💬 {grp.totalMsgCount || 0} messages</span>
-          <span>👥 {(grp.members || []).length} members</span>
+          <span>👥 {(grp.members || []).length} members</span></div>
+          <div className="grp-actions">
           <button
             className="btn-sm"
             onClick={() => setShowHistory(true)}
-            style={{ marginLeft: 'auto' }}
+            
           >
             📋 Chat History
           </button>
           <button className="btn-sm" onClick={downloadConfig}>⬇ Export</button>
           <button className="btn-sm" onClick={() => importRef.current?.click()}>⬆ Import</button>
+          </div>
           <input ref={importRef} type="file" accept="application/json" onChange={uploadConfig} style={{ display: 'none' }} />
         </div>
       </div>
