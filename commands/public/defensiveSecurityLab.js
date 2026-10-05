@@ -13,7 +13,7 @@ const handler = async (_sock, msg, from, args, info) => {
 	if (String(process.env.SECURITY_TOOLS_ENABLED || "true").toLowerCase() === "false") return reply("🔒 Defensive Security Lab is disabled by the owner.");
 	const quota = claimSecurityQuota(senderJid);
 	if (!quota.allowed) return reply(`⏳ Security-tool limit reached. Try again in about ${Math.ceil(quota.retryAfterSeconds / 60)} minute(s).`);
-	const input = args.join(" ");
+	const input = info.inputText ?? info.evv ?? args.join(" ");
 	if (!input && !["sechmacguide"].includes(command)) return reply(`❌ Usage: ${prefix}${command} <value or pasted text>`);
 	try { return reply(`🛡️ *${command}*\n\n${runDefensiveCheck(command, input)}`); }
 	catch (error) { return reply(`❌ Defensive check failed: ${error.message || "invalid input"}`); }

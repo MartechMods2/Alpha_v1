@@ -1,3 +1,4 @@
+import { TECHNICAL_TOOLS, runTechnicalTool } from './technicalSecurity.js';
 import practicalCommand from '../commands/public/practicalTools.js';
 import { PRACTICAL_TOOLS, runPracticalTool } from './practicalTools.js';
 import { parseCommandChain } from './multiCommand.js';
@@ -7,7 +8,7 @@ import calcCommand from '../commands/public/calc.js';
 import textCommand from '../commands/public/textLab.js';
 
 const offline = [calcCommand(), textCommand(), practicalCommand()];
-export const OFFLINE_COMMANDS = offline.flatMap(entry => entry.cmd);
+export const OFFLINE_COMMANDS = [...offline.flatMap(entry => entry.cmd), ...Object.keys(TECHNICAL_TOOLS)];
 export const runCommandLab = async ({ text, prefix = '$', guide, context = 'group', role = 'member' }) => {
   if (typeof text !== 'string' || !text.trim() || text.length > 4000) throw new Error('Enter 1–4000 characters.');
   if (!['group', 'direct'].includes(context) || !['member', 'admin', 'owner'].includes(role)) throw new Error('Invalid test context or role.');
@@ -25,7 +26,10 @@ export const runCommandLab = async ({ text, prefix = '$', guide, context = 'grou
     if (!permission || entry.disabled) { row.ok = false; row.output.push(entry.disabled ? 'Globally disabled.' : `Permission/context denied: ${entry.access}`); continue; }
     row.ok = true;
     try {
-      if (PRACTICAL_TOOLS[segment.command]) {
+      if (TECHNICAL_TOOLS[segment.command]) {
+        row.mode = 'offline execution';
+        row.output.push(runTechnicalTool(segment.command, segment.inputText ?? segment.evv));
+      } else if (PRACTICAL_TOOLS[segment.command]) {
         row.mode = 'offline execution';
         row.output.push(runPracticalTool(segment.command, segment.inputText ?? segment.evv ?? segment.args.join(' ')));
       } else if (['td', 'tod', 'truthdare', 'truthordare', 'tord', 'todgame'].includes(segment.command) && segment.args[0] === 'start') {

@@ -1,3 +1,4 @@
+import { TECHNICAL_TOOLS } from './technicalSecurity.js';
 import { PRACTICAL_TOOLS } from './practicalTools.js';
 import { getAiFeature } from './alphaFeatureCatalog.js';
 import { TEXT_LAB_COMMANDS } from './ultimateFeatureCatalog.js';
@@ -44,6 +45,7 @@ export const buildCommandGuide = ({ commands, prefix = '$', disabled = [], sourc
     for (const entry of commands[key] || []) for (const name of entry.cmd) {
       const feature = getAiFeature(name);
       const practical = PRACTICAL_TOOLS[name];
+      const technical = TECHNICAL_TOOLS[name];
       const source = sourceText[entry.source] || '';
       const usageParts = String(entry.usage || '').split(/\s+\|\s+/);
       const matching = usageParts.filter(part => new RegExp(`^${escapeRegex(name)}(?:\\s|$)`, 'i').test(part));
@@ -55,6 +57,7 @@ export const buildCommandGuide = ({ commands, prefix = '$', disabled = [], sourc
         .filter(value => !value.includes('${') && value.length < 180);
       let syntax = [...new Set([...matching, ...hints])].slice(0, 12);
       let examples = explicit[name];
+      if (technical) { syntax = [`${name} <input>`]; examples = [`${name} ${technical.example}`]; }
       if (practical) { syntax = [`${name} <input>`]; examples = [`${name} ${practical.example}`]; }
       if (feature) { syntax = [`${name} <text or topic>`]; examples = [`${name} Explain a topic or process I am learning`]; }
       if (TEXT_LAB_COMMANDS.includes(name) && !['uuid', 'timestamp', 'password'].includes(name) && !explicit[name]) {
@@ -70,8 +73,8 @@ export const buildCommandGuide = ({ commands, prefix = '$', disabled = [], sourc
       if (!syntax.length) syntax = [name];
       if (!examples?.length) examples = syntax.slice(0, 3).map(concrete);
       const requiresReply = /reply|mention|tag|image|video|audio|sticker/i.test(`${entry.usage || ''} ${entry.desc || ''}`);
-      rows.push({ name, type, access: ACCESS[type], description: practical?.description || feature?.instruction || entry.desc || `Run ${name}.`,
-        category: practical?.category || feature?.category || type, related: practical ? ['toolshelp'] : entry.cmd.filter(alias => alias !== name), source: entry.source,
+      rows.push({ name, type, access: ACCESS[type], description: technical?.description || practical?.description || feature?.instruction || entry.desc || `Run ${name}.`,
+        category: technical ? 'Technical security' : practical?.category || feature?.category || type, related: practical ? ['toolshelp'] : entry.cmd.filter(alias => alias !== name), source: entry.source,
         syntax: syntax.map(value => prefix + value.replace(/^\$/, '')), examples: examples.map(value => prefix + value),
         reference: entry.usage || name, disabled: disabled.includes(name),
         notes: [
