@@ -1,3 +1,4 @@
+import { isInternalDiagnosticReply } from '../utils/alphaErrorReporter.js';
 import { createSingleFlight } from "../utils/singleFlight.js";
 const metadataFlight = createSingleFlight();
 import dotenv from "dotenv";
@@ -107,6 +108,10 @@ const getCommand = async (sock, msg, cache) => {
 		const sendMessageWTyping = async (to, msgObj, messageOptions) => {
 			try {
 				if (!to || !msgObj) return;
+                if (to.endsWith("@g.us") && isInternalDiagnosticReply(msgObj.text)) {
+                  notifyAlphaOwnerFailure({sock,scope:"command-reply",error:new Error(msgObj.text)});
+                  msgObj = {...msgObj,text:"❌ Alpha hit a temporary service problem. Please try again shortly."};
+                }
 				if (!sock?.user || !msg?.message || !msg?.key?.remoteJid) return;
 
 				const mediaTypes = ["sticker", "image", "audio", "video", "document"];
@@ -894,6 +899,7 @@ const getCommand = async (sock, msg, cache) => {
 		}
 	} catch (error) {
 		console.error("❌ Error processing message:", error.message);
+		notifyAlphaOwnerFailure({ sock, scope: "message-handler", error });
 		console.error("📍 Error stack:", error.stack);
 		console.error(
 			"📝 Message details:",

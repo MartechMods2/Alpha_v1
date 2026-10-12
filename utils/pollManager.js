@@ -1,3 +1,4 @@
+import { notifyAlphaOwnerFailure } from "./alphaErrorReporter.js";
 import { createHash } from "node:crypto";
 import { closePollSession, createPollSession, getPollSession, replacePollVote } from "../db/pollSessionData.js";
 import { setGroupBirthday } from "../db/groupTools.js";
@@ -178,6 +179,7 @@ export const handleInteractivePollMessage = async (sock, message) => {
     if (decoded) await handleInteractivePollUpdate(sock, decoded);
   } catch (error) {
     console.warn(`[POLL] vote decode failed (${session.type}, ${id}): ${error.message}`);
+    notifyAlphaOwnerFailure({sock,scope:"poll-vote",error,detail:`Poll type: ${session.type}`});
   }
   return true;
 };

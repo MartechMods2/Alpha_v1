@@ -5,6 +5,8 @@ const ALERT_COOLDOWN_MS = 2 * 60_000;
 const MAX_ALERT_KEYS = 250;
 
 const redactSecrets = (value) => String(value || "")
+  .replace(/(mongodb(?:\+srv)?:\/\/)[^@\s]+@/gi, "$1[REDACTED]@")
+  .replace(/((?:password|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*)[^\s,;]+/gi, "$1[REDACTED]")
   .replace(/([?&](?:key|api_key|token)=)[^&\s]+/gi, "$1[REDACTED]")
   .replace(/(authorization\s*[:=]\s*bearer\s+)[^\s"']+/gi, "$1[REDACTED]")
   .replace(/\b(?:sk|gsk|AIza|nvapi)-?[A-Za-z0-9_\-]{16,}\b/g, "[REDACTED_KEY]")
@@ -54,7 +56,7 @@ export const notifyAlphaOwnerFailure = ({
   alertCooldowns.set(signature, now + ALERT_COOLDOWN_MS);
 
   const lines = [
-    "🚨 *Alpha AI Error*",
+    "🚨 *Alpha Private Error Alert*",
     `Scope: *${String(scope || "alpha").slice(0, 80)}*`,
     `Code: *${code}*`,
   ];
@@ -72,3 +74,5 @@ export const notifyAlphaOwnerFailure = ({
 };
 
 export const alphaErrorAlertStats = () => ({ dedupeKeys: alertCooldowns.size, cooldownMs: ALERT_COOLDOWN_MS });
+
+export const isInternalDiagnosticReply=text=>/^\s*(?:❌|⚠️|error\b)/i.test(String(text||'')) && /GoogleGenerativeAI|AxiosError|Mongo(?:Server|Network|Parse)Error|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|mongodb(?:\+srv)?:\/\/|authorization\s*:\s*bearer/i.test(String(text));

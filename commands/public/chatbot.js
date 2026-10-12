@@ -1,3 +1,5 @@
+import { moderatorModeInstruction } from '../../utils/moderatorModes.js';
+import { moderatorProfileJid } from '../../utils/moderatorProfile.js';
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -269,6 +271,9 @@ async function chat(
 				? groupAssistantSystemPrompt
 				: alphaSystemPrompt;
 		const preferences = await getMemberPreferences(senderJid);
+		const moderatorProfile = moderatorProfileJid(msgInfoObj);
+		const supportPreferences = moderatorProfile && moderatorProfile !== senderJid ? await getMemberPreferences(moderatorProfile) : preferences;
+		const moderatorStyle = moderatorModeInstruction(supportPreferences.moderatorSupportMode, Boolean(moderatorProfile));
 		const preferencePrompt = [
 			`The current member selected reply tone: ${preferences.tone}.`,
 			`Pronouns: ${preferences.pronouns}. Reply length: ${preferences.replyLength}. Reply format: ${preferences.replyFormat}.`,
@@ -284,6 +289,7 @@ async function chat(
 			alphaRuntimeInstruction(),
 			ALPHA_TRUST_BOUNDARY,
 			adaptiveInstruction,
+			moderatorStyle,
 			directive.instruction,
 			mediaConfig.alphaSystemPrompt || "",
 		].filter(Boolean).join("\n").trim();

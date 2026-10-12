@@ -1,3 +1,4 @@
+import { MODERATOR_MODES } from '../utils/moderatorModes.js';
 import mdClient from "./client.js";
 import { normalizeTextStyle, normalizeVoiceProfile } from "../utils/alphaPresentation.js";
 
@@ -64,6 +65,7 @@ const getMemberPreferences = async (jid) => {
 	const pref = data?.alphaPreferences || {};
 	return {
 		tone: ALPHA_TONES.has(pref.tone) ? pref.tone : "auto",
+		moderatorSupportMode: MODERATOR_MODES[data?.moderatorSupportMode] ? data.moderatorSupportMode : "normal",
 		pronouns: ALPHA_PRONOUNS.has(pref.pronouns) ? pref.pronouns : "neutral",
 		voiceProfile: normalizeVoiceProfile(pref.voiceProfile),
 		textStyle: normalizeTextStyle(pref.textStyle),

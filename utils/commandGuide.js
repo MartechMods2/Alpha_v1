@@ -11,6 +11,9 @@ const ACCESS = {
   owner: 'Bot owner, Alpha’s own account and configured moderators.',
 };
 const explicit = {
+  privateguide: ['privateguide all', 'privateguide security'],
+  privatemode: ['privatemode list', 'privatemode savage', 'privatemode angry', 'privatemode emotional', 'privatemode supportive', 'privatemode status', 'privatemode off'],
+  privatehealth: ['privatehealth'],
   club: ['club start caption', 'club start pitch', 'club start tagline', 'club submit My phone waited for game night to reach 1%', 'club status', 'club vote', 'club finish', 'club stop', 'club help'],
   calc: ['calc 25 * 4 + 10'], calculate: ['calculate 25 * 4 + 10'],
   game: ['game start trivia tech rounds=10 lobby=2m', 'game join', 'game status', 'game close', 'game answer my answer', 'game liveboard', 'game resume', 'game stop'],

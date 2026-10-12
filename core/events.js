@@ -1,3 +1,4 @@
+import { notifyAlphaOwnerFailure } from "../utils/alphaErrorReporter.js";
 import { registerRuntimeCache } from "../utils/runtimeMaintenance.js";
 import getConnectionUpdate from "./connectionUpdate.js";
 import getCommand from "./messages.js";
@@ -98,6 +99,7 @@ const events = async (sock, startSock, cache) => {
 
 		} catch (err) {
 			console.error("Error processing event:", err);
+            notifyAlphaOwnerFailure({sock,scope:"event-handler",error:err});
 			console.error("Event type:", Object.keys(event));
 		}
 	});

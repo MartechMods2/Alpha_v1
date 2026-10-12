@@ -24,9 +24,9 @@ const notifyOwner = (sock, mess, msg) => {
 	if (!activeSock?.user || !ownerJid) return;
 
 	const waText = htmlToWa(mess);
-	const sendOpts = msg ? { quoted: msg } : {};
+	const sendOpts = msg?.key?.remoteJid === ownerJid ? { quoted: msg } : {};
 
-	activeSock.sendMessage(ownerJid, { text: waText }, sendOpts).catch(() => {});
+	return activeSock.sendMessage(ownerJid, { text: waText }, sendOpts).catch(() => {});
 };
 
 export default notifyOwner;
