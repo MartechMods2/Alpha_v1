@@ -1,3 +1,4 @@
+import { preventOverlap } from "./runtimeMaintenance.js";
 import { getDueReminders, markReminded, scheduleNextRepeat } from "../db/reminders.js";
 import { getSock } from "../core/socketRef.js";
 import messageQueue from "../queue/messageQueue.js";
@@ -53,11 +54,13 @@ const checkReminders = async () => {
 	}
 };
 
+const guardedCheck = preventOverlap(checkReminders);
 let _interval = null;
 
 export const startReminderScheduler = () => {
 	if (_interval) return;
-	_interval = setInterval(checkReminders, 60_000); // poll every minute
-	checkReminders(); // immediate check catches any missed during downtime
+	_interval = setInterval(() => guardedCheck().catch(error => console.warn("[REMINDER]", error.message)), 60_000); // poll every minute
+	_interval.unref?.();
+	guardedCheck().catch(error => console.warn("[REMINDER]", error.message)); // immediate check catches any missed during downtime
 	console.log("[REMINDER] Scheduler started");
 };

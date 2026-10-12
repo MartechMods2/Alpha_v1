@@ -1,3 +1,4 @@
+import { registerRuntimeCache } from "../utils/runtimeMaintenance.js";
 import getConnectionUpdate from "./connectionUpdate.js";
 import getCommand from "./messages.js";
 import getGroupEvent from "./groupEvent.js";
@@ -10,6 +11,8 @@ import { restoreActiveTruthDareSessions } from "../utils/truthDareHost.js";
 import { restoreActiveAutoGames } from "../utils/autoGameHost.js";
 
 const events = async (sock, startSock, cache) => {
+  const releaseCache = registerRuntimeCache(cache);
+  sock.ws?.on?.("close", releaseCache);
 	sock.ev.process(async (event) => {
 		try {
 			if (event["messages.upsert"]) {
@@ -93,12 +96,6 @@ const events = async (sock, startSock, cache) => {
 			if (event["group-participants.update"]) await getGroupEvent(sock, event["group-participants.update"], cache);
 			if (event["call"]) await getCallEvent(sock, event["call"]);
 
-			if (global.gc) {
-				global.gc();
-			} else if (process.memoryUsage().heapUsed > 100 * 1024 * 1024) {
-				if (cache) cache.flushAll();
-				console.log("🧹 [ALPHA ENGINE] High Memory Warning. Flushed message cache.");
-			}
 		} catch (err) {
 			console.error("Error processing event:", err);
 			console.error("Event type:", Object.keys(event));

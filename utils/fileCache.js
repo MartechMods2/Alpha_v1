@@ -3,7 +3,7 @@
  * Useful for stickers, images that are sent multiple times
  */
 
-class FileCache {
+export class FileCache {
 	constructor(maxSize = 30 * 1024 * 1024) {
 		// Reduced to 30MB max cache size for better memory efficiency
 		this.cache = new Map();
@@ -20,6 +20,7 @@ class FileCache {
 		this.cleanupInterval = setInterval(() => {
 			this.evictStaleEntries();
 		}, 300000); // Every 5 minutes
+		this.cleanupInterval.unref?.();
 	}
 
 	/**
@@ -47,6 +48,11 @@ class FileCache {
 	get(filePath) {
 		if (this.cache.has(filePath)) {
 			const entry = this.cache.get(filePath);
+			if (Date.now() - entry.lastAccess > this.maxAge) {
+				this.delete(filePath);
+				this.stats.misses++;
+				return null;
+			}
 			// Update access time
 			entry.lastAccess = Date.now();
 			entry.accessCount++;
@@ -64,9 +70,12 @@ class FileCache {
 		const size = buffer.length;
 
 		// Don't cache files larger than 10MB
-		if (size > 10 * 1024 * 1024) {
+		if (size > 10 * 1024 * 1024 || size > this.maxSize) {
 			return false;
 		}
+
+		// Replacement must not double-count the old buffer.
+		this.delete(filePath);
 
 		// Evict old entries if needed
 		while (this.currentSize + size > this.maxSize && this.cache.size > 0) {
@@ -98,7 +107,7 @@ class FileCache {
 			}
 		}
 
-		if (oldestKey) {
+		if (oldestKey !== null) {
 			const entry = this.cache.get(oldestKey);
 			this.currentSize -= entry.size;
 			this.cache.delete(oldestKey);
