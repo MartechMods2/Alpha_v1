@@ -9,8 +9,19 @@ export function premiumReply(text) {
   )
     return value;
   const lines = value.split("\n");
-  if (lines[0].length > 100 || /^https?:|^[{[]/.test(lines[0])) return value;
-  return `╭─ ✦ *ALPHA*\n│ ${lines[0]}\n╰────────────\n${lines.slice(1).join("\n").replace(/^\n+/, "")}`.trimEnd();
+  // AI providers may already prepend a decorative brand-only line.
+  // Remove only leading labels; preserve mentions of Alpha in real sentences.
+  while (
+    lines.length > 1 &&
+    /^[^\p{L}\p{N}]*alpha[^\p{L}\p{N}]*$/iu.test(lines[0].trim())
+  ) {
+    lines.shift();
+    while (lines[0]?.trim() === "") lines.shift();
+  }
+  const body = lines.join("\n").trim();
+  if (!body || lines[0]?.length > 100 || /^https?:|^[{[]/.test(lines[0]))
+    return body || value;
+  return `╭─ ✦ *ALPHA* ✦\n│\n${body}\n│\n╰────────────────`;
 }
 export const normalizeWords = (value) =>
   String(value || "")

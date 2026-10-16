@@ -2,6 +2,10 @@
 
 Use your configured prefix; examples below use `$`. Group administrators control moderation and announcements. Commands added here also appear in Alpha's generated command catalogue and dashboard Command Center.
 
+## Bot menu and command catalogue
+
+`$menu` shows a public bot overview, creator credit, features, available command categories, examples and permission notes. `$menu all` opens a paged catalogue with usage; request the next page with `$menu all 2`. Categories also support pages, for example `$menu public 2`. Use `$help <command>` for aliases and usage or `$help search <task>` to search. Admin and owner categories are shown only to authorized users. The menu omits credentials, owner contact details, internal diagnostics and source paths. Replies use one brand heading; redundant provider labels such as `⚡Alpha⚡` are removed.
+
 ## Quick start
 
 1. Make Alpha a group administrator if you want message deletion.
