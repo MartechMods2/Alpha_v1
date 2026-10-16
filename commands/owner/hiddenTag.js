@@ -55,8 +55,8 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 };
 
 export default () => ({
-	cmd: ["hidetag"],
+	cmd: ["ownerhidetag"],
 	desc: "Hide Tag Message",
-	usage: "hidetag <message>",
+	usage: "ownerhidetag <message>",
 	handler,
 });

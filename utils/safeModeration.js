@@ -1,3 +1,5 @@
+import {isSameGroupUser} from "./groupParticipants.js";
+import {containsBannedPhrase} from "./premiumReplies.js";
 import { getSafeSettings, updateSafeSettings, recordSafeAudit, createSafeItem, listSafeItems } from "../db/safePackData.js";
 import { isProtectedGroupMember } from "./moderation.js";
 import { claimDeletionBudget, moderationCircuitStatus } from "./moderationCircuit.js";
@@ -38,6 +40,16 @@ export const handleSafeModerationMessage = async ({ sock, msg, groupJid, senderJ
 		return { handled: deleted };
 	};
 
+	if ((settings.blockedBotJids||[]).some(jid=>isSameGroupUser(groupMetadata,jid,senderJid))) return violation('confirmed-bot','This account is blocked by the group administrators.');
+    // Message IDs alone are never evidence. A native bot marker only prompts review.
+    if(settings.antiBotEnabled && msg?.message?.botInvokeMessage){
+      const key=`${groupJid}:${senderJid}:bot-review`;
+      if((noticeCooldowns.get(key)||0)<Date.now()){
+        noticeCooldowns.set(key,Date.now()+3600000);
+        await recordSafeAudit({groupJid,action:'bot-review',targetJid:senderJid,reason:'Native bot invocation observed; manual review required'});
+        await sendMessageWTyping(groupJid,{text:'🛡️ An automation-related message was observed. Admin review is needed; nobody was removed.'}).catch(()=>{});
+      }
+    }
 	if (settings.slowModeSeconds > 0) {
 		const key = `${groupJid}:${senderJid}`;
 		const ready = (lastMessages.get(key) || 0) + settings.slowModeSeconds * 1_000;
@@ -46,8 +58,8 @@ export const handleSafeModerationMessage = async ({ sock, msg, groupJid, senderJ
 	}
 
 	if (settings.wordFilterEnabled && body) {
-		const lower = body.toLowerCase();
-		const phrase = (settings.blockedPhrases || []).find((item) => lower.includes(String(item).toLowerCase()));
+		const lower = body;
+		const phrase = (settings.blockedPhrases || []).find((item) => containsBannedPhrase(lower,item));
 		if (phrase) return violation("word-filter", "That message contains a blocked phrase.");
 	}
 	if (settings.mentionLimit > 0 && mentionCount(msg) > settings.mentionLimit) return violation("mention-limit", `Maximum ${settings.mentionLimit} mentions per message.`);

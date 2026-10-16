@@ -148,6 +148,7 @@ test("poll votes survive a long lobby and drive automatic turns, scoring and win
     "./connectionUpdate.js": noop, "./messages.js": noop, "./groupEvent.js": noop, "./callEvents.js": noop,
     "../utils/passiveCommunity.js": noop, "../utils/ownerMentionReaction.js": noop, "../utils/afkPresence.js": noop,
     "../utils/pollManager.js": pollUrl, "../utils/truthDareHost.js": hostUrl,
+    "../utils/integrationWatches.js": asModule("export const startIntegrationWatches = () => {};"),
     "../utils/autoGameHost.js": asModule("export const restoreActiveAutoGames = async () => {};"),
   });
   let receive;

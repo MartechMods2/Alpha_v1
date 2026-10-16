@@ -1,4 +1,7 @@
-import { isInternalDiagnosticReply } from '../utils/alphaErrorReporter.js';
+import { maybeContextSticker } from "../utils/contextualStickers.js";
+import { premiumReply } from "../utils/premiumReplies.js";
+import { getSafeSettings as getPresentationSettings } from "../db/safePackData.js";
+import { isInternalDiagnosticReply } from "../utils/alphaErrorReporter.js";
 import { createSingleFlight } from "../utils/singleFlight.js";
 const metadataFlight = createSingleFlight();
 import dotenv from "dotenv";
@@ -129,6 +132,14 @@ const getCommand = async (sock, msg, cache) => {
 					}
 				}
 
+				if (typeof msgObj.text === "string") {
+					const presentation = to.endsWith("@g.us")
+						? await getPresentationSettings(to).catch(() => null)
+						: null;
+					if (presentation?.replyDesign !== "plain") {
+						msgObj = { ...msgObj, text: premiumReply(msgObj.text) };
+					}
+				}
 				const doSend = async () => {
 					try {
 						const sendOptions = {
@@ -328,6 +339,9 @@ const getCommand = async (sock, msg, cache) => {
 			}
 		}
 
+		if (isGroup && groupData?.isBotOn !== false && !msg.key.fromMe) {
+			void maybeContextSticker({ groupJid: from, body, sendMessageWTyping, isCommand: isCmd }).catch(() => {});
+		}
 		// Unknown service messages have now passed moderation and need no command processing.
 		if (!types.includes(type)) return;
 		if (!isCmd && type === "stickerMessage") return;

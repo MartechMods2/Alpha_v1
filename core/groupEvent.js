@@ -1,3 +1,4 @@
+import { memberEventPayload } from "../utils/memberEventCard.js";
 import { escapeHtml } from "../notify/telegram.js";
 import notifyOwner from "../notify/owner.js";
 import { fake_quoted } from "../utils/fakeQuoted.js";
@@ -32,11 +33,13 @@ const getGroupEvent = async (sock, events, cache) => {
 	const settings = getGroupSafetySettings(groupDataDB);
 	const participantJids = events.participants.map(getParticipantJid).filter(Boolean);
 	const userTags = participantJids.map((participant) => `@${getPhone(participant)}`).join(", ");
+	let liveMetadata;
+	try { liveMetadata = await sock.groupMetadata(jid); } catch {}
 	const templateValues = {
 		user: userTags,
 		users: userTags,
 		group: groupDataDB.grpName,
-		count: groupDataDB.members?.length || "",
+		count: liveMetadata?.participants?.length ?? "Unavailable",
 	};
 
 	if (events.action === "add") {
@@ -47,12 +50,18 @@ const getGroupEvent = async (sock, events, cache) => {
 			}), 0).catch(() => {});
 		}
 		if (settings.isWelcomeOn && participantJids.length > 0) {
-			const welcomeText = renderCommunityTemplate(groupDataDB.welcome, "welcome", templateValues);
-			await messageQueue.enqueue(jid, () => sock.sendMessage(
-				jid,
-				{ text: welcomeText, mentions: participantJids },
-				{ quoted: fake_quoted(events, "Welcome to " + groupDataDB.grpName) },
-			), 1);
+			for (const participant of participantJids.slice(0, 5)) {
+				const text = renderCommunityTemplate(groupDataDB.welcome, "welcome", {
+					...templateValues, user: "@" + getPhone(participant), users: "@" + getPhone(participant),
+				});
+				const payload = await memberEventPayload(sock, jid, participant, "add", liveMetadata, groupDataDB, text);
+				await messageQueue.enqueue(jid, () => sock.sendMessage(jid, payload), 1);
+			}
+			if (participantJids.length > 5) {
+				await messageQueue.enqueue(jid, () => sock.sendMessage(jid, {
+					text: `Welcome ${participantJids.length - 5} more members to ${groupDataDB.grpName}.`, mentions: participantJids.slice(5),
+				}), 1);
+			}
 		}
 		if (groupDataDB.is91Only === true) {
 			const filteredParticipants = events.participants.filter((p) => {
@@ -72,8 +81,18 @@ const getGroupEvent = async (sock, events, cache) => {
 		notifyOwner(null, `➕ <b>Group Update</b>\n━━━━━━━━━━━━━━\n🏠 <b>Group:</b> ${escapeHtml(groupDataDB?.grpName)}\n👤 <b>Joined:</b> ${addedNumbers}`);
 	} else {
 		if (events.action === "remove" && settings.isGoodbyeOn && participantJids.length > 0) {
-			const goodbyeText = renderCommunityTemplate(groupDataDB.goodbye, "goodbye", templateValues);
-			await messageQueue.enqueue(jid, () => sock.sendMessage(jid, { text: goodbyeText, mentions: participantJids }), 1);
+			for (const participant of participantJids.slice(0, 5)) {
+				const text = renderCommunityTemplate(groupDataDB.goodbye, "goodbye", {
+					...templateValues, user: "@" + getPhone(participant), users: "@" + getPhone(participant),
+				});
+				const payload = await memberEventPayload(sock, jid, participant, "remove", liveMetadata, groupDataDB, text);
+				await messageQueue.enqueue(jid, () => sock.sendMessage(jid, payload), 1);
+			}
+			if (participantJids.length > 5) {
+				await messageQueue.enqueue(jid, () => sock.sendMessage(jid, {
+					text: `Farewell to ${participantJids.length - 5} more members. Current members: ${templateValues.count}.`, mentions: participantJids.slice(5),
+				}), 1);
+			}
 		}
 		const actionEmoji = events.action === "remove" ? "➖" : events.action === "promote" ? "⬆️" : events.action === "demote" ? "⬇️" : "🔄";
 		const actionLabel = events.action === "remove" ? "Left / Removed" : events.action === "promote" ? "Promoted to Admin" : events.action === "demote" ? "Demoted from Admin" : escapeHtml(events.action);

@@ -57,7 +57,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 };
 
 export default () => ({
-	cmd: ["remove", "kick", "ban"],
+	cmd: ["remove", "kick"],
 	desc: "Remove a member from group.",
 	usage: "remove @mention | reply",
 	handler,

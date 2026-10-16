@@ -1,71 +1,32 @@
-import { config } from "dotenv";
-config();
+import { mentionIds } from "../../../utils/premiumReplies.js";
 import { extractPhoneNumber } from "../../../utils/lid.js";
-
-const handler = async (sock, msg, from, args, msgInfoObj) => {
-	const { prefix, sendMessageWTyping, groupMetadata, type, content, extendedMessageOriginal } = msgInfoObj;
-	if (extendedMessageOriginal?.quotedMessage) {
-		let temp =
-			extendedMessageOriginal?.quotedMessage?.extendedTextMessage?.text ||
-			extendedMessageOriginal?.quotedMessage?.conversation ||
-			msg.message?.conversation;
-		msg["message"] = extendedMessageOriginal.quotedMessage;
-		msg["message"]["conversation"] = temp;
-	}
-
-	const isMedia = type === "imageMessage" || type === "videoMessage";
-	const isTaggedImage = type === "extendedTextMessage" && content.includes("imageMessage");
-	const isTaggedVideo = type === "extendedTextMessage" && content.includes("videoMessage");
-
-	try {
-		if (isMedia || isTaggedImage || isTaggedVideo) {
-			delete msg["message"]["conversation"];
-			let tempMess = Object.assign({}, msg.message);
-			const tempCaption = tempMess[Object.keys(tempMess)[0]]["caption"] ?? "";
-			tempMess[Object.keys(tempMess)[0]]["caption"] = tempCaption.includes(prefix + "tagall")
-				? tempCaption.split(prefix + "tagall")[1].trim()
-				: tempCaption;
-			// Use extractPhoneNumber for LID/PN compatibility
-			const tags = groupMetadata.participants.map((i) => "👉🏻 @" + extractPhoneNumber(i.id)).join("\n");
-			await sendMessageWTyping(from, {
-				forward: {
-					key: {
-						remoteJid: msg.key.remoteJid,
-						fromMe: msg.key.fromMe,
-						id: msg.key.id,
-						participant: msg.key.participant ? msg.key.participant : null,
-					},
-					messageTimestamp: msg.messageTimestamp,
-					pushName: msg.pushName,
-					broadcast: msg.broadcast,
-					message: tempMess,
-				},
-				contextInfo: { forwardingScore: 0, isForwarded: false },
-			});
-			await sendMessageWTyping(from, {
-				text: `👥 *Total Members:* ${groupMetadata.participants.length}\n\n${tags}`,
-				mentions: [...groupMetadata.participants.map((e) => e.id)],
-			});
-		} else {
-			let message = msg.message.conversation ?? "";
-			message = message.includes(prefix + "tagall") ? message.split(prefix + "tagall")[1].trim() : message;
-			message = message ? message + "\n\n" : `👥 *Total Members:* ${groupMetadata.participants.length}\n\n`;
-			// Use extractPhoneNumber for LID/PN compatibility
-			message += groupMetadata.participants.map((i) => "👉🏻 @" + extractPhoneNumber(i.id)).join("\n");
-			sendMessageWTyping(from, {
-				text: message,
-				mentions: [...groupMetadata.participants.map((e) => e.id)],
-			});
-		}
-	} catch (err) {
-		console.log(err);
-		sendMessageWTyping(from, { text: err.toString() }, { quoted: msg });
-	}
+const handler = async (sock, msg, from, args, info) => {
+  const metadata = await sock.groupMetadata(from);
+  const mentions = mentionIds(metadata);
+  const list = args[0] === "list";
+  const text =
+    args
+      .slice(list ? 1 : 0)
+      .join(" ")
+      .trim() || "A message for everyone";
+  if (!mentions.length)
+    return info.sendMessageWTyping(
+      from,
+      { text: "No mentionable group members were returned." },
+      { quoted: msg },
+    );
+  return info.sendMessageWTyping(
+    from,
+    {
+      text: `📣 *GROUP NOTICE*\n\n${text}\n\n${list ? mentions.map((j) => "@" + extractPhoneNumber(j)).join("\n") : `_${mentions.length} members mentioned_`}`,
+      mentions,
+    },
+    { quoted: msg },
+  );
 };
-
 export default () => ({
-	cmd: ["tagall"],
-	desc: "Tag all members in group",
-	usage: "tagall | tagall <message> | reply with tagall",
-	handler,
+  cmd: ["tagall"],
+  desc: "Mention every member compactly; use list for visible mentions",
+  usage: "tagall <message> | tagall list <message>",
+  handler,
 });

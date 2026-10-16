@@ -1,3 +1,4 @@
+import { startIntegrationWatches } from "../utils/integrationWatches.js";
 import { notifyAlphaOwnerFailure } from "../utils/alphaErrorReporter.js";
 import { registerRuntimeCache } from "../utils/runtimeMaintenance.js";
 import getConnectionUpdate from "./connectionUpdate.js";
@@ -12,6 +13,7 @@ import { restoreActiveTruthDareSessions } from "../utils/truthDareHost.js";
 import { restoreActiveAutoGames } from "../utils/autoGameHost.js";
 
 const events = async (sock, startSock, cache) => {
+	startIntegrationWatches(sock);
   const releaseCache = registerRuntimeCache(cache);
   sock.ws?.on?.("close", releaseCache);
 	sock.ev.process(async (event) => {
