@@ -1,4 +1,5 @@
 import NodeCache from "node-cache";
+import { createDeploymentNotifier } from "./utils/deploymentNotice.js";
 import socket from "./core/socket.js";
 import events from "./core/events.js";
 import { setSock } from "./core/socketRef.js";
@@ -10,13 +11,24 @@ const cache = new NodeCache({
   maxKeys: 300,
   deleteOnExpire: true,
 });
+const notifyDeployment = createDeploymentNotifier();
 let onSocket = null;
 export const onNewSock = (fn) => {
   onSocket = fn;
 };
 const manager = createConnectionManager({
   create: socket,
-  attach: (sock, start) => events(sock, start, cache),
+  attach: (sock, start) =>
+    events(
+      sock,
+      async (reason) => {
+        const result = await start(reason);
+        if (reason === "connection-open" && result === sock)
+          void notifyDeployment(sock);
+        return result;
+      },
+      cache,
+    ),
   onSocket: (sock) => {
     setSock(sock);
     onSocket?.(sock);
