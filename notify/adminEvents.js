@@ -1,3 +1,4 @@
+import { safeLogParts } from "../utils/safeLog.js";
 // Shared ring buffers and event bus for admin dashboard features.
 // Imported by index.js (WS broadcast), routes/admin.js (API routes),
 // and core/messages.js (command tracking).
@@ -15,10 +16,10 @@ export const cmdUsage       = new Map()
 // Pub/sub for real-time WS broadcasting (subscribed in index.js)
 const subscribers = new Set()
 export function subscribe(fn)   { subscribers.add(fn); return () => subscribers.delete(fn) }
-function emit(event)            { subscribers.forEach(fn => fn(event)) }
+function emit(event)            { subscribers.forEach(fn => { try { fn(event) } catch {} }) }
 
 export function pushLog(level, ...parts) {
-  const msg   = parts.map(p => (typeof p === 'object' ? JSON.stringify(p) : String(p))).join(' ')
+  const msg   = safeLogParts(parts).join(' ')
   const entry = { id: ++logId, ts: Date.now(), level, msg }
   if (logBuffer.length >= MAX_LOGS) logBuffer.shift()
   logBuffer.push(entry)

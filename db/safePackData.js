@@ -44,6 +44,7 @@ export const getSafeSettings = async (groupJid) => {
 	const cached = settingsCache.get(groupJid);
 	if (cached?.expires > Date.now()) return cached.value;
 	const value = { ...DEFAULT_SAFE_SETTINGS, ...((await safePackSettings.findOne({ _id: groupJid })) || {}) };
+	while (settingsCache.size >= 1000) settingsCache.delete(settingsCache.keys().next().value);
 	settingsCache.set(groupJid, { value, expires: Date.now() + 30_000 });
 	return value;
 };

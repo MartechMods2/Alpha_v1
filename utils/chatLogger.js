@@ -32,8 +32,9 @@ export const getChatMessages = async (groupJid, hours = 24) => {
 		const since = new Date(Date.now() - hours * 60 * 60 * 1000);
 		return await chatLogs
 			.find({ groupJid, timestamp: { $gte: since } })
-			.sort({ timestamp: 1 })
-			.toArray();
+			.sort({ timestamp: -1 })
+            .limit(1000)
+			.toArray().then(rows => rows.reverse());
 	} catch (e) {
 		console.error("[chatLogger] fetch error:", e.message);
 		return [];

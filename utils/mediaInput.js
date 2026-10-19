@@ -1,3 +1,5 @@
+import { assertImageBudget } from "./imageBudget.js";
+import { boundedDownload, assertMediaSource } from "./boundedMedia.js";
 import { downloadMediaMessage } from "baileys";
 import { fileTypeFromBuffer } from "file-type";
 
@@ -49,13 +51,17 @@ export const downloadResolvedMedia = async (sock, msg, {
 	if (!resolved || !allowedKinds.includes(resolved.kind)) {
 		throw new Error(`Send or reply to ${allowedKinds.join(", ")} media`);
 	}
+	assertMediaSource(resolved.node);
 	const ctx = sock?.updateMediaMessage && sock?.logger
 		? { reuploadRequest: sock.updateMediaMessage, logger: sock.logger }
 		: undefined;
-	const buffer = await downloadMediaMessage(resolved.envelope, "buffer", {}, ctx);
+	const buffer = await boundedDownload(() => downloadMediaMessage(resolved.envelope, "stream", {}, ctx), resolved.node, { maxBytes });
 	if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw new Error("WhatsApp returned an empty media file");
 	if (buffer.length > maxBytes) throw new Error(`Media is larger than ${Math.ceil(maxBytes / 1024 / 1024)}MB`);
-	const detected = await fileTypeFromBuffer(buffer).catch(() => null);
+	const detected = await fileTypeFromBuffer(buffer);
+    if (["image", "sticker"].includes(resolved.kind) && (!detected || !detected.mime.startsWith("image/") || (resolved.kind === "sticker" && detected.ext !== "webp"))) throw new Error("Media signature does not match the requested image type");
+    if (["image", "sticker"].includes(resolved.kind)) assertImageBudget(buffer, detected.ext);
+    if (["audio", "video"].includes(resolved.kind) && (!detected || !/^(audio|video|application\/ogg)/.test(detected.mime))) throw new Error("Media signature does not match audio/video content");
 	return {
 		...resolved,
 		buffer,

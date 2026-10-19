@@ -1,3 +1,5 @@
+import { defenseConfig } from "./ingestionDefense.js";
+import { boundedResponseText } from "./boundedResponse.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getSafeSettings } from "../db/safePackData.js";
 import { redactPii } from "./safePack.js";
@@ -320,7 +322,7 @@ const markSuccess = (name, latencyMs) => {
 const circuitOpen = (name) => circuitFor(name).openUntil > Date.now();
 
 const parseProviderBody = async (response) => {
-  const raw = await response.text();
+  const raw = await boundedResponseText(response);
   if (!raw) return {};
   try { return JSON.parse(raw); }
   catch { return { raw: raw.slice(0, 500) }; }
@@ -434,7 +436,7 @@ const askGemini = async (systemPrompt, messages, { maxTokens = maxOutputTokens()
     .map((item) => `${item.role === "assistant" ? "Assistant" : "User"}: ${item.content}`)
     .join("\n\n");
   return withTimeout("gemini", async (signal) => {
-    const resultPromise = model.generateContent(prompt);
+    const resultPromise = model.generateContent(prompt, { signal });
     const abortPromise = new Promise((_, reject) => {
       signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
     });
@@ -488,7 +490,7 @@ const runProvider = async (
       status: 503,
     });
   }
-  const maxAttempts = 1 + retries;
+  const maxAttempts = 1 + clamp(retries, 0, 2, 0);
   let lastError = null;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const started = Date.now();
@@ -538,14 +540,14 @@ const runProvider = async (
         metrics.retries += 1;
         metrics.byProvider[name].retries += 1;
       }
-      await sleep(350 * (attempt + 1));
+      await sleep(Math.min(4000, 350 * 2 ** attempt) + Math.floor(Math.random() * 200));
     }
   }
   throw lastError || new AiProviderError(name, "AI_PROVIDER_ERROR", "Provider failed.", { status: 502 });
 };
 export const hasConfiguredAiProvider = () => providerOrder().some(providerConfigured);
 
-export const askSafeAi = async ({ groupJid = "direct", systemPrompt, messages, maxTokens }) => {
+const askSafeAiInternal = async ({ groupJid = "direct", systemPrompt, messages, maxTokens }) => {
   const settings = groupJid.endsWith("@g.us") ? await getSafeSettings(groupJid) : { aiPiiRedaction: true };
   const safeMessages = messages.map((item) => ({
     ...item,
@@ -696,4 +698,12 @@ export const getAiRuntimeStatus = () => {
     retriesPerformed: metrics.retries,
     probes: metrics.probes,
   };
+};
+
+let activeRequests = 0;
+export const askSafeAi = async options => {
+ if(activeRequests >= defenseConfig().aiConcurrency) throw new AiProviderError("alpha", "AI_BUSY", "AI is busy. Retry later.", {status:503});
+ if(!Array.isArray(options?.messages)||options.messages.length>64||options.messages.reduce((size,item)=>size+String(item?.content||"").length,0)>128000)throw new AiProviderError("alpha","AI_INPUT_LIMIT","AI context exceeds its limit.",{status:400});
+ activeRequests++;
+ try{return await askSafeAiInternal(options);}finally{activeRequests--;}
 };

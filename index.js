@@ -1,4 +1,7 @@
-import startSock, { onNewSock } from "./connection.js";
+import { createControlledShutdown } from "./utils/controlledShutdown.js";
+import { defenseHealth, beginDraining, startDefenseMonitoring } from "./utils/defenseHealth.js";
+import { safeLogParts } from "./utils/safeLog.js";
+import startSock, { onNewSock, stopConnections } from "./connection.js";
 import { startReminderScheduler } from "./utils/reminderScheduler.js";
 import { startGroupAutomationScheduler } from "./utils/groupAutomationScheduler.js";
 import getDate from "./utils/date.js";
@@ -31,14 +34,14 @@ function _suppressStartupNoise(msg) {
 console.log   = (...a) => {
 	const s = String(a[0]);
 	if (_suppressStartupNoise(s)) return;
-	_log(...a); pushLog('info', ...a);
+	const safe = safeLogParts(a); _log(...safe); pushLog('info', ...safe);
 };
 console.info  = (...a) => {
 	if (_SESSION_SPAM.some(s => String(a[0]).startsWith(s))) return;
-	_info(...a); pushLog('info', ...a);
+	const safe = safeLogParts(a); _info(...safe); pushLog('info', ...safe);
 };
-console.warn  = (...a) => { _warn(...a);  pushLog('warn',  ...a) };
-console.error = (...a) => { _error(...a); pushLog('error', ...a) };
+console.warn  = (...a) => { const safe=safeLogParts(a); _warn(...safe); pushLog('warn', ...safe); };
+console.error = (...a) => { const safe=safeLogParts(a); _error(...safe); pushLog('error', ...safe); };
 
 import cors from "cors";
 import express from "express";
@@ -155,8 +158,8 @@ app.on("error", (error) => {
 
 const wss = new WebSocketServer({
 	noServer: true,
-	maxPayload: 10 * 1024 * 1024,
-	perMessageDeflate: true,
+	maxPayload: 64 * 1024,
+	perMessageDeflate: false,
 });
 
 server.on("upgrade", (request, socket, head) => {
@@ -180,7 +183,8 @@ let lastQRTimer  = null;   // Timer to clear lastQR after it expires (~60 s)
 function broadcast(payload) {
 	const msg = JSON.stringify(payload);
 	wss.clients.forEach((client) => {
-		if (client.readyState === WebSocket.OPEN) client.send(msg);
+		if (client.bufferedAmount > 1048576) { client.terminate(); return; }
+        if (client.readyState === WebSocket.OPEN) client.send(msg);
 	});
 }
 
@@ -188,9 +192,11 @@ function broadcast(payload) {
 // This is the fix for the stale-sock bug: we always attach our listener to
 // whichever sock is currently live, and always keep app.locals.sock current.
 function handleNewSock(sock) {
+	sock.alphaConnected = false;
 	app.locals.sock = sock; // always up-to-date reference for admin routes
 
 	sock.ev.on("connection.update", (update) => {
+		if (app.locals.sock !== sock) return;
 		const { qr, isOnline, connection } = update;
 
 		if (qr) {
@@ -210,6 +216,7 @@ function handleNewSock(sock) {
 
 		if (isOnline || connection === "open") {
 			botConnected = true;
+            sock.alphaConnected = true;
 			lastQR = null;
 			clearTimeout(lastQRTimer);
 			broadcast({ type: "status", status: "connected" });
@@ -217,6 +224,7 @@ function handleNewSock(sock) {
 
 		if (connection === "close") {
 			botConnected = false;
+            sock.alphaConnected = false;
 			broadcast({ type: "status", status: "disconnected" });
 		}
 	});
@@ -233,9 +241,11 @@ app.locals.reconnect = () => startSock("manual-reconnect");
 
 // ── WebSocket server ──────────────────────────────────────────────────────────
 wss.on("connection", (ws) => {
+    if (wss.clients.size > 16) { ws.close(1013); return; }
+    let alive = true;
 	// Tell newly connected browser clients the current state immediately.
 	// Also check sock.user as a live fallback in case botConnected is stale.
-	const isConnected = botConnected || app.locals.sock?.user != null;
+	const isConnected = botConnected || app.locals.sock?.alphaConnected === true;
 	if (isConnected) {
 		botConnected = true; // sync flag
 		ws.send(JSON.stringify({ type: "status", status: "connected" }));
@@ -249,10 +259,12 @@ wss.on("connection", (ws) => {
 	ws.send(JSON.stringify({ type: 'activity_snapshot', activity: getActivity() }));
 
 	const heartbeat = setInterval(() => {
+		if (!alive) { ws.terminate(); return; }
+        alive = false;
 		if (ws.readyState === WebSocket.OPEN) ws.ping();
 	}, 30_000);
 
-	ws.on("pong", () => {});
+	ws.on("pong", () => { alive = true; });
 
 	// Dashboard sockets are read-only. Mutations use authenticated HTTP routes.
 	ws.on("message", () => ws.send(JSON.stringify({ type: "error", error: "Dashboard WebSocket is read-only." })));
@@ -321,36 +333,16 @@ async function startServer() {
 	});
 }
 
-process.on("unhandledRejection", (reason, p) => {
-	console.error("Unhandled Rejection at: ", p, "reason:", reason);
+const stopMonitoring = startDefenseMonitoring();
+const shutdown = createControlledShutdown({
+ begin: () => { console.warn("[PROCESS] Controlled shutdown started."); beginDraining(); stopMonitoring(); messageQueue.stop(); },
+ flush: () => app.locals.sock?.flushAuth?.(),
+ closeSockets: () => { stopConnections(); for(const client of wss.clients) client.terminate(); wss.close(); },
+ closeServer: () => new Promise(resolve => { server.close(resolve); server.closeIdleConnections?.(); }),
 });
-
-process.on("uncaughtException", function (err) {
-	console.error("Uncaught Exception:", err);
-	gracefulShutdown("UNCAUGHT_EXCEPTION");
-});
-
-function gracefulShutdown(signal) {
-	console.log(`\n🔄 Received ${signal}. Starting graceful shutdown...`);
-	// End WA socket first so its ws "close" handler flushes pending session
-	// keys to Mongo — skip this and a crash mid-write leaves a stale session,
-	// which shows up next boot as Bad MAC until the ratchet resyncs.
-	try {
-		app.locals.sock?.end(undefined);
-	} catch (err) {
-		console.error("Error ending WA socket during shutdown:", err.message);
-	}
-	server.close(() => {
-		console.log("✅ HTTP server closed");
-		wss.clients.forEach((client) => client.close());
-		console.log("✅ Graceful shutdown completed");
-		process.exit(0);
-	});
-	setTimeout(() => {
-		console.error("❌ Forced shutdown due to timeout");
-		process.exit(1);
-	}, 10_000);
-}
-
+function gracefulShutdown(_signal, exitCode=0) { return shutdown(exitCode); }
+process.on("alpha:fatal", () => gracefulShutdown("DEFENSE_FATAL", 1));
+process.on("unhandledRejection", () => gracefulShutdown("UNHANDLED_REJECTION", 1));
+process.on("uncaughtException", () => gracefulShutdown("UNCAUGHT_EXCEPTION", 1));
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT",  () => gracefulShutdown("SIGINT"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));

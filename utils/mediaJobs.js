@@ -1,3 +1,4 @@
+import { defenseConfig } from "./ingestionDefense.js";
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import fs from "node:fs";
@@ -43,7 +44,8 @@ const trimMaps = () => {
 		for (const key of usage.keys()) if (!key.startsWith(today)) usage.delete(key);
 	}
 	while (recentJobs.length > 100) recentJobs.shift();
-	if (retryTasks.size > 10) retryTasks.delete(retryTasks.keys().next().value);
+	for (const [id, entry] of retryTasks) if (entry.expiresAt <= Date.now()) retryTasks.delete(id);
+    while (retryTasks.size > defenseConfig().mediaRetries) retryTasks.delete(retryTasks.keys().next().value);
 };
 
 export const sanitizeMediaConfig = (value = {}) => ({
@@ -99,7 +101,7 @@ const runNext = async () => {
 			.catch((error) => {
 				item.job.status = "failed";
 				item.job.error = String(error?.message || error).slice(0, 300);
-				if (item.retry) retryTasks.set(item.job.id, item.retry);
+				if (item.retry) retryTasks.set(item.job.id, { ...item.retry, expiresAt: Date.now() + 300000 });
 				item.reject(error);
 			})
 			.finally(() => {
@@ -114,6 +116,7 @@ const runNext = async () => {
 
 export const runMediaJob = ({ feature, groupJid, senderJid, task, retryable = true }) => {
 	if (typeof task !== "function") throw new TypeError("Media job task must be a function");
+	if (queue.length >= defenseConfig().mediaQueue) throw new Error("Media queue is full; retry later");
 	assertQuota({ feature, groupJid, senderJid });
 	const job = {
 		id: randomUUID(),
@@ -132,7 +135,7 @@ export const runMediaJob = ({ feature, groupJid, senderJid, task, retryable = tr
 
 export const retryMediaJob = (jobId) => {
 	const previous = retryTasks.get(jobId);
-	if (!previous) throw new Error("This job can no longer be retried");
+	if (!previous || previous.expiresAt <= Date.now()) throw new Error("This job can no longer be retried");
 	return runMediaJob(previous);
 };
 
@@ -195,3 +198,6 @@ export const getMediaRuntimeStatus = () => ({
 		requests: [...usage.entries()].filter(([key]) => key.startsWith(`${dateKey()}:user:`)).reduce((sum, [, count]) => sum + count, 0),
 	},
 });
+
+const mediaMaintenance = setInterval(trimMaps, 60000);
+mediaMaintenance.unref?.();

@@ -99,7 +99,7 @@ const getGroupEvent = async (sock, events, cache) => {
 		const numbers = events.participants.map((p) => `<code>${escapeHtml(getPhone(p))}</code>`).join(", ");
 		notifyOwner(null, `${actionEmoji} <b>Group Update</b>\n━━━━━━━━━━━━━━\n🏠 <b>Group:</b> ${escapeHtml(groupDataDB?.grpName)}\n👤 <b>Member:</b> ${numbers}\n📋 <b>Action:</b> ${actionLabel}`);
 	}
-	console.log(events);
+	console.log("[GROUP] Membership event processed.");
 };
 
 export default getGroupEvent;

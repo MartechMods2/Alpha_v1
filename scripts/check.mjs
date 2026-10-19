@@ -11,8 +11,8 @@ async function walk(dir) {
     else if (/\.(js|mjs)$/.test(entry.name)) files.push(name);
   }
 }
-for (const dir of ['commands', 'core', 'db', 'queue', 'routes', 'utils', 'scripts']) await walk(dir);
-files.push('index.js');
+for (const dir of ['commands', 'core', 'db', 'queue', 'routes', 'utils', 'scripts', 'functions', 'notify']) await walk(dir);
+files.push('index.js', 'connection.js');
 let failed = 0;
 for (const file of files.sort()) {
   const result = spawnSync(process.execPath, ['--check', file], { cwd: root, encoding: 'utf8' });

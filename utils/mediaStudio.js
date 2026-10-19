@@ -138,7 +138,7 @@ export const imageBufferToSticker = async (
 	await writeFile(inputPath, imageBuffer);
 	try {
 		await new Promise((resolve, reject) => {
-			ffmpeg(inputPath)
+			ffmpeg(inputPath, { timeout: 45 })
 				.addOutputOptions([
 					"-vcodec",
 					"libwebp",
@@ -346,7 +346,7 @@ const runFfmpeg = ({ inputBuffer, inputExtension, outputExtension, configure }) 
 	const outputPath = memoryManager.generateTempFileName(`.${String(outputExtension || "bin").replace(/[^a-z0-9]/gi, "")}`);
 	return writeFile(inputPath, inputBuffer)
 		.then(() => new Promise((resolve, reject) => {
-			const command = ffmpeg(inputPath);
+			const command = ffmpeg(inputPath, { timeout: 45 });
 			configure(command);
 			command.on("end", resolve).on("error", reject).save(outputPath);
 		}))

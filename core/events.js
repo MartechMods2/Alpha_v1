@@ -1,110 +1,174 @@
+import { messageQuarantine } from "../utils/ingestionQuarantine.js";
 import { startIntegrationWatches } from "../utils/integrationWatches.js";
-import { notifyAlphaOwnerFailure } from "../utils/alphaErrorReporter.js";
+import { ingestionDefense, defenseConfig } from "../utils/ingestionDefense.js";
 import { registerRuntimeCache } from "../utils/runtimeMaintenance.js";
 import getConnectionUpdate from "./connectionUpdate.js";
 import getCommand from "./messages.js";
 import getGroupEvent from "./groupEvent.js";
 import getCallEvent from "./callEvents.js";
 import { handlePassiveCommunityMessage } from "../utils/passiveCommunity.js";
-import { handleInteractivePollUpdate, handleInteractivePollMessage } from "../utils/pollManager.js";
+import {
+  handleInteractivePollUpdate,
+  handleInteractivePollMessage,
+} from "../utils/pollManager.js";
 import { handleOwnerMentionReaction } from "../utils/ownerMentionReaction.js";
 import { handleAfkPresence } from "../utils/afkPresence.js";
 import { restoreActiveTruthDareSessions } from "../utils/truthDareHost.js";
 import { restoreActiveAutoGames } from "../utils/autoGameHost.js";
-
+let serviceId = 0;
+const syncedGroups = new Map();
+async function syncGroup(sock, msg) {
+  const jid = msg.key.remoteJid;
+  const model = global.db?.models?.Group || sock.store?.Group;
+  if (
+    !jid.endsWith("@g.us") ||
+    !model ||
+    (syncedGroups.get(jid) || 0) > Date.now()
+  )
+    return;
+  try {
+    if (!(await model.findOne({ id: jid }))) {
+      let name = "New WhatsApp Group";
+      try {
+        name = String((await sock.groupMetadata(jid))?.subject || name).slice(
+          0,
+          256,
+        );
+      } catch {}
+      await model.create({
+        id: jid,
+        name,
+        isBotOn: false,
+        createdAt: new Date(),
+      });
+    }
+    while (syncedGroups.size >= 1000)
+      syncedGroups.delete(syncedGroups.keys().next().value);
+    syncedGroups.set(jid, Date.now() + 600000);
+  } catch {
+    console.warn("[DEFENSE] Group discovery failed; payload suppressed.");
+  }
+}
 const events = async (sock, startSock, cache) => {
-	startIntegrationWatches(sock);
+  await messageQuarantine.load();
+  startIntegrationWatches(sock);
   const releaseCache = registerRuntimeCache(cache);
-  sock.ws?.on?.("close", releaseCache);
-	sock.ev.process(async (event) => {
-		try {
-			if (event["messages.upsert"]) {
-				const { type, messages } = event["messages.upsert"];
-                const pollMessages = new Set();
-                // rc14 leaves native votes encrypted in upsert. Handle notify
-                // and append/reconnect deliveries before chat/AI processing.
-                await Promise.all(messages.map(async msg => {
-                  try { if (await handleInteractivePollMessage(sock, msg)) pollMessages.add(msg); }
-                  catch (error) { console.warn("[POLL] incoming vote failed:", error.message); }
-                }));
-				if (type === "notify") {
-					try {
-						for (const msg of messages) {
-							if (msg?.key?.remoteJid?.endsWith("@g.us")) {
-								const groupJid = msg.key.remoteJid;
-								const GroupModel = global.db?.models?.Group || sock.store?.Group;
-								if (GroupModel) {
-									const existingGroup = await GroupModel.findOne({ id: groupJid });
-									if (!existingGroup) {
-										let groupName = "New WhatsApp Group";
-										try {
-											const metadata = await sock.groupMetadata(groupJid);
-											if (metadata?.subject) groupName = metadata.subject;
-										} catch (_) {
-											if (msg.pushName) groupName = `Group (${msg.pushName})`;
-										}
-										console.log(`📥 [ALPHA ENGINE] Uncovered Hidden Group! Saving to DB: ${groupName}`);
-										await GroupModel.create({ id: groupJid, name: groupName, isBotOn: false, createdAt: new Date() });
-									}
-								}
-							}
-						}
-					} catch (dbErr) {
-						console.error("Alpha Engine Group Sync Error:", dbErr.message);
-					}
-
-					const validMessages = messages.filter(
-						(msg) => msg && !pollMessages.has(msg) && msg.message && msg.key?.remoteJid && Object.keys(msg.message).length > 0,
-					);
-					await Promise.all(validMessages.map(async (msg) => {
-						try {
-							await handleOwnerMentionReaction(sock, msg);
-						} catch (error) {
-							console.error("Owner mention reaction handler failed:", error.message);
-						}
-						try {
-							await handleAfkPresence(sock, msg);
-						} catch (error) {
-							console.error("AFK presence handler failed:", error.message);
-						}
-						try {
-							const passiveHandled = await handlePassiveCommunityMessage(sock, msg);
-							if (passiveHandled) return;
-						} catch (error) {
-							console.error("Passive community handler failed:", error.message);
-						}
-						return getCommand(sock, msg, cache).catch((err) => {
-							console.error("Error processing message:", err);
-							console.error("Message key:", msg.key);
-						});
-					}));
-				}
-			}
-
-			if (event["messages.update"]) {
-				await Promise.all(event["messages.update"].map((item) =>
-					handleInteractivePollUpdate(sock, item).catch((error) => {
-						console.error("Interactive poll update failed:", error.message);
-					}),
-				));
-			}
-
-			if (event["connection.update"]) await getConnectionUpdate(startSock, event["connection.update"]);
-			if (event["connection.update"]?.connection === "open") {
-				await restoreActiveTruthDareSessions({ sock }).catch((error) => {
-					console.warn("Truth or Dare recovery failed:", error.message);
-				});
-				await restoreActiveAutoGames({ sock }).catch(error => console.warn("Hosted game recovery failed:", error.message));
-			}
-			if (event["group-participants.update"]) await getGroupEvent(sock, event["group-participants.update"], cache);
-			if (event["call"]) await getCallEvent(sock, event["call"]);
-
-		} catch (err) {
-			console.error("Error processing event:", err);
-            notifyAlphaOwnerFailure({sock,scope:"event-handler",error:err});
-			console.error("Event type:", Object.keys(event));
-		}
-	});
+  let closed = false,
+    recovered = false;
+  sock.ws?.on?.("close", () => {
+    closed = true;
+    releaseCache();
+  });
+  sock.ev.process(async (event) => {
+    if (!event || typeof event !== "object") return;
+    try {
+      // Transport lifecycle must never wait behind chat work.
+      const connection = event["connection.update"];
+      if (connection) {
+        await getConnectionUpdate(startSock, connection);
+        if (connection.connection === "open" && !recovered) {
+          recovered = true;
+          void Promise.allSettled([
+            restoreActiveTruthDareSessions({ sock }),
+            restoreActiveAutoGames({ sock }),
+          ]);
+        }
+      }
+      if (closed) return;
+      const tasks = [],
+        batch = defenseConfig().batch;
+      const upsert = event["messages.upsert"];
+      if (
+        upsert &&
+        Array.isArray(upsert.messages) &&
+        ["notify", "append"].includes(upsert.type)
+      ) {
+        for (let i = 0; i < Math.min(upsert.messages.length, batch); i++)
+          tasks.push(
+            ingestionDefense.submit(upsert.messages[i], async (msg) => {
+              if (closed) return;
+              if (await handleInteractivePollMessage(sock, msg)) return;
+              if (upsert.type !== "notify") return;
+              // Exception boundaries record aggregate failures, never payloads or identifiers.
+              await syncGroup(sock, msg);
+              await handleOwnerMentionReaction(sock, msg).catch(() => {});
+              await handleAfkPresence(sock, msg).catch(() => {});
+              if (
+                await handlePassiveCommunityMessage(sock, msg).catch(
+                  () => false,
+                )
+              )
+                return;
+              await getCommand(sock, msg, cache);
+            }),
+          );
+      }
+      const updates = event["messages.update"];
+      if (Array.isArray(updates))
+        for (let i = 0; i < Math.min(updates.length, batch); i++) {
+          const item = updates[i];
+          if (!item?.update?.pollUpdates) continue;
+          tasks.push(
+            ingestionDefense.submit(
+              { key: item.key, message: { pollState: item.update } },
+              (msg) =>
+                closed
+                  ? undefined
+                  : handleInteractivePollUpdate(sock, {
+                      key: msg.key,
+                      update: msg.message.pollState,
+                    }),
+              { kind: "poll-state" },
+            ),
+          );
+        }
+      const groupEvent = event["group-participants.update"];
+      if (
+        groupEvent &&
+        Array.isArray(groupEvent.participants) &&
+        groupEvent.participants.length <= 128
+      ) {
+        tasks.push(
+          ingestionDefense.submit(
+            {
+              key: {
+                remoteJid: groupEvent.id,
+                id: "service-" + ++serviceId,
+                participant: "service@lid",
+              },
+              message: { groupEvent },
+            },
+            (msg) =>
+              closed
+                ? undefined
+                : getGroupEvent(sock, msg.message.groupEvent, cache),
+            { kind: "group-event" },
+          ),
+        );
+      }
+      const calls = event.call;
+      if (Array.isArray(calls))
+        for (const call of calls.slice(0, Math.min(batch, 16)))
+          if (typeof call?.from === "string")
+            tasks.push(
+              ingestionDefense.submit(
+                {
+                  key: {
+                    remoteJid: call.from,
+                    id: call.id,
+                    participant: call.from,
+                  },
+                  message: { call },
+                },
+                (msg) =>
+                  closed ? undefined : getCallEvent(sock, [msg.message.call]),
+                { kind: "call" },
+              ),
+            );
+      await Promise.allSettled(tasks);
+    } catch {
+      console.warn("[DEFENSE] Event boundary rejected an event.");
+    }
+  });
 };
-
 export default events;

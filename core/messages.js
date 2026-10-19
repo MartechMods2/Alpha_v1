@@ -1,3 +1,5 @@
+import { boundedGroupMetadata } from "../utils/groupMetadataDefense.js";
+import { validateMessage } from "../utils/ingestionDefense.js";
 import { maybeContextSticker } from "../utils/contextualStickers.js";
 import { premiumReply } from "../utils/premiumReplies.js";
 import { getSafeSettings as getPresentationSettings } from "../db/safePackData.js";
@@ -84,6 +86,9 @@ const getTagSticker = async () => {
 };
 
 const getCommand = async (sock, msg, cache) => {
+    const validated = validateMessage(msg);
+    if (!validated.ok) return;
+    msg = validated.message;
 	if (!commandsLoaded) await commandsReadyPromise;
 	const startTime = process.hrtime();
 
@@ -168,7 +173,7 @@ const getCommand = async (sock, msg, cache) => {
 		};
 
 		const from = msg.key.remoteJid;
-		const content = JSON.stringify(msg.message);
+		const content = JSON.stringify(msg.message, (_key, value) => typeof value === "bigint" ? String(value) : value);
 		const type = messageKeys.find((k) => _contentTypes.has(k)) ?? messageKeys[0];
 
 		const m = msg.message || {};
@@ -218,6 +223,7 @@ const getCommand = async (sock, msg, cache) => {
 		const parsedCommand = parseCommandSegment(body, prefix);
 		const isCmd = Boolean(parsedCommand);
 		const command = parsedCommand?.command || "";
+        if (command.length > 64) return;
 		const args = parsedCommand?.args || [];
 		const evv = parsedCommand?.evv ?? body.trim();
 		//-------------------------------------------------------------------------------------------------------------//
@@ -254,6 +260,7 @@ const getCommand = async (sock, msg, cache) => {
 				}
 			}
 		}
+        if (isGroup) groupMetadata = boundedGroupMetadata(groupMetadata, from);
 		const senderNumber = senderJid.includes(":") ? senderJid.split(":")[0] : senderJid.split("@")[0];
 		if (senderJid !== updateId) createMembersData(senderJid, msg.pushName);
 		let senderData = null;
@@ -492,7 +499,7 @@ const getCommand = async (sock, msg, cache) => {
 				}
 				const handler = commandsAdmins[intent.command] || commandsMembers[intent.command] || commandsPublic[intent.command] || commandsOwners[intent.command];
 				if (handler) {
-					console.log("[OWNER_INTENT]", intent.command, "[FROM]", resolvedSenderNumber);
+					console.log("[OWNER_INTENT] Authorized intent dispatched.");
 					await handler(sock, msg, from, intent.args, {
 						prefix, type, content, evv: intent.args.join(" "), command: intent.command,
 						isGroup, senderJid, groupMetadata, groupAdmins, isGroupAdmin, isBotAdmin,
@@ -725,7 +732,7 @@ const getCommand = async (sock, msg, cache) => {
 		if (!isOwner) {
 			const allowed = await checkRateLimit(senderJid, command, 3);
 			if (!allowed) {
-				console.log("Rate limit exceeded for", senderJid, "command:", command);
+				console.log("[DEFENSE] Command quota reached.");
 				return;
 			}
 		}
@@ -754,29 +761,7 @@ const getCommand = async (sock, msg, cache) => {
 			startTime,
 			extendedMessageOriginal,
 		};
-		const displayFrom = senderJid.endsWith("@s.whatsapp.net")
-			? extractPhoneNumber(senderJid)
-			: extractPhoneNumber((await Promise.resolve(getPNFromLID(sock, senderJid))) || senderJid);
-		console.log(
-			"[COMMAND]",
-			command,
-			"[FROM]",
-			displayFrom,
-			"[name]",
-			msg.pushName,
-			"[IN]",
-			isGroup ? groupMetadata.subject : "Directs",
-		);
-		notifyOwner(
-			sock,
-			`🤖 <b>Command Used</b>\n` +
-				`━━━━━━━━━━━━━━\n` +
-				`📌 <b>Command:</b> <code>${escapeHtml(command)}</code>\n` +
-				`👤 <b>User:</b> ${escapeHtml(msg.pushName)}\n` +
-				`📱 <b>ID:</b> <code>${escapeHtml(displayFrom)}</code>\n` +
-				`💬 <b>In:</b> ${escapeHtml(isGroup ? groupMetadata.subject : "Direct Message")}`,
-			msg,
-		);
+		console.log("[COMMAND] Accepted authorized command dispatch.");
 		if (command != "") {
 			const botData = await getBotData();
 			const globallyDisabled = botData?.disabledGlobally || [];
@@ -911,35 +896,9 @@ const getCommand = async (sock, msg, cache) => {
 				{ quoted: msg },
 			);
 		}
-	} catch (error) {
-		console.error("❌ Error processing message:", error.message);
-		notifyAlphaOwnerFailure({ sock, scope: "message-handler", error });
-		console.error("📍 Error stack:", error.stack);
-		console.error(
-			"📝 Message details:",
-			JSON.stringify(
-				{
-					from: msg?.key?.remoteJid,
-					id: msg?.key?.id,
-					fromMe: msg?.key?.fromMe,
-					messageType: Object.keys(msg?.message || {})[0],
-				},
-				null,
-				2,
-			),
-		);
-		if (sock?.user && msg?.key?.remoteJid) {
-			setTimeout(() => {
-				sock.sendMessage(
-					msg.key.remoteJid,
-					{
-						text: "❌ Sorry, I encountered an error processing your message. Please try again.",
-					},
-					{ quoted: msg },
-				).catch(() => {});
-			}, 1000);
-		}
+	} catch {
+        // No automatic error reply: malformed bursts must not amplify outbound traffic.
+        console.warn("[DEFENSE] Message handler failed; payload suppressed.");
 	}
 };
-
 export default getCommand;

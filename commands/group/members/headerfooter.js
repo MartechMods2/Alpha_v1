@@ -1,4 +1,4 @@
-import { downloadContentFromMessage } from "baileys";
+import { downloadResolvedMedia } from "../../../utils/mediaInput.js";
 import memeMaker from "@erickwendel/meme-maker";
 import { writeFile } from "fs/promises";
 import fs from "fs";
@@ -18,7 +18,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		);
 	}
 
-	console.log("content", evv);
+	console.log("[MEDIA] Image caption request accepted.");
 	let TopText = "",
 		BottomText = "",
 		FontColor = "Black",
@@ -68,17 +68,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	}
 
 	if ((isMedia && !msg.message.videoMessage) || isTaggedImage) {
-		let downloadFilePath;
-		if (msg.message.imageMessage) {
-			downloadFilePath = msg.message.imageMessage;
-		} else {
-			downloadFilePath = extendedMessageOriginal?.quotedMessage?.imageMessage;
-		}
-		const stream = await downloadContentFromMessage(downloadFilePath, "image");
-		let buffer = Buffer.from([]);
-		for await (const chunk of stream) {
-			buffer = Buffer.concat([buffer, chunk]);
-		}
+		const { buffer } = await downloadResolvedMedia(sock, msg, { allowedKinds: ["image"], maxBytes: 12 * 1048576 });
 		const media = getRandom(".jpeg");
 		await writeFile(media, buffer);
 		const MemePath = getRandom(".png");

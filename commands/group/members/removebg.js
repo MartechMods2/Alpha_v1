@@ -9,7 +9,7 @@ import path from "path";
 const removebgAPI = REMOVE_BG_KEY;
 import { writeFile } from "fs/promises";
 
-import { downloadContentFromMessage } from "baileys";
+import { downloadResolvedMedia } from "../../../utils/mediaInput.js";
 
 const getRandom = (ext) => {
 	return `${Math.floor(Math.random() * 10000)}${ext}`;
@@ -44,17 +44,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const isTaggedImage = type === "extendedTextMessage" && content.includes("imageMessage");
 
 	if (isTaggedImage || msg.message.imageMessage) {
-		let downloadFilePath;
-		if (msg.message.imageMessage) {
-			downloadFilePath = msg.message.imageMessage;
-		} else {
-			downloadFilePath = extendedMessageOriginal?.quotedMessage?.imageMessage;
-		}
-		const stream = await downloadContentFromMessage(downloadFilePath, "image");
-		let buffer = Buffer.from([]);
-		for await (const chunk of stream) {
-			buffer = Buffer.concat([buffer, chunk]);
-		}
+		const { buffer } = await downloadResolvedMedia(sock, msg, { allowedKinds: ["image"], maxBytes: 12 * 1048576 });
 		const media = getRandom(".jpeg");
 		await writeFile(media, buffer);
 		const outputPath = getRandom(".png");

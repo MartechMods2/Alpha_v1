@@ -1,6 +1,7 @@
+import { boundedGroupMetadata } from "../utils/groupMetadataDefense.js";
+import { validateMessage } from "../utils/ingestionDefense.js";
 import NodeCache from "node-cache";
 import makeWASocket, { makeCacheableSignalKeyStore } from "baileys";
-import { fetchLatestBaileysVersion } from "baileys";
 import { useMongoDBAuthState } from "./auth.js";
 import P from "pino";
 import { getPollCreationMessage } from "../db/pollSessionData.js";
@@ -18,12 +19,11 @@ const messageCache = new NodeCache({
 let authStateCleanup = null;
 
 const socket = async () => {
-	const { version, isLatest } = await fetchLatestBaileysVersion();
-	console.log(`using WA v${version.join(".")}, isLatest: ${isLatest}\n`);
+	// Use the protocol defaults shipped with the pinned, reviewed library release.
 
 	// Cleanup previous auth state if exists (prevents memory leak on reconnect)
 	if (authStateCleanup) {
-		authStateCleanup();
+		await authStateCleanup();
 		authStateCleanup = null;
 	}
 
@@ -33,7 +33,7 @@ const socket = async () => {
 
 	console.log("✅ Using MongoDB auth state");
 	if (state.creds?.me) {
-		console.log(`✅ Authenticated as: ${state.creds.me.id}`);
+		console.log("✅ Stored authentication loaded");
 	} else {
 		console.log("⚠️ No existing credentials - QR scan required");
 	}
@@ -41,7 +41,6 @@ const socket = async () => {
 	const socketStartTime = Date.now();
 
 	const sock = makeWASocket({
-		version,
 		logger,
 		auth: {
 			creds: state.creds,
@@ -70,6 +69,8 @@ const socket = async () => {
 		patchMessageBeforeSending: (msg) => msg,
 	});
 
+    const fetchGroupMetadata = sock.groupMetadata.bind(sock);
+    sock.groupMetadata = async jid => boundedGroupMetadata(await fetchGroupMetadata(jid), jid);
 	async function getMessage(key) {
 		try {
 			const pollMessage = readCachedPollMessage(key);
@@ -88,7 +89,10 @@ const socket = async () => {
 	// Cache incoming messages for getMessage function with size limit
 	sock.ev.on("messages.upsert", (m) => {
 		try {
-			for (const msg of m.messages) {
+			for (const raw of (Array.isArray(m?.messages) ? m.messages.slice(0, 128) : [])) {
+                const validated = validateMessage(raw);
+                if (!validated.ok) continue;
+                const msg = validated.message;
 				if (msg.message) {
 					const cacheKey = `${msg.key.remoteJid}:${msg.key.id}`;
 					// Only cache if under limit to prevent memory overflow (must stay < maxKeys or .set() throws ECACHEFULL)
@@ -103,24 +107,29 @@ const socket = async () => {
 	});
 
 	// Enhanced session cleanup on errors
+	let saveChain = Promise.resolve();
 	sock.ev.on("creds.update", async () => {
 		try {
-			await saveCreds();
+			saveChain = saveChain.then(() => saveCreds());
+            await saveChain;
 			console.log("💾 Credentials saved to MongoDB");
 		} catch (error) {
-			console.error("Error updating credentials:", error);
+			console.error("[AUTH] Credential persistence failed.");
+            process.emit("alpha:fatal", "auth-persistence");
 		}
 	});
+
+	sock.flushAuth = async () => { await saveChain; await cleanup(); };
 
 	// Clear interval and cleanup on socket close — only clear the module-level
 	// ref if it's still ours, else a late close event from a stale socket would
 	// wipe out the flush timer/buffer of the socket that already replaced it.
-	sock.ws.on("close", () => {
+	sock.ws.on("close", async () => {
 		if (authStateCleanup === cleanup) {
-			authStateCleanup();
-			authStateCleanup = null;
+			await authStateCleanup().catch(() => process.emit("alpha:fatal", "auth-flush"));
+			if (authStateCleanup === cleanup) authStateCleanup = null;
 		} else {
-			cleanup();
+			await cleanup().catch(() => process.emit("alpha:fatal", "auth-flush"));
 		}
 		messageCache.flushAll();
 		console.log("🧹 Socket cleanup completed");
@@ -130,10 +139,10 @@ const socket = async () => {
 	sock.ev.on("connection.update", (update) => {
 		if (update.lastDisconnect?.error) {
 			const error = update.lastDisconnect.error;
-			console.log("Connection error details:", error.message);
+			console.log("[CONNECTION] Transport error observed.");
 
 			// Clear caches on connection issues
-			if (error.message.includes("session") || error.message.includes("prekey")) {
+			if (String(error.message || "").includes("session") || String(error.message || "").includes("prekey")) {
 				console.log("Clearing message caches due to session issues...");
 				messageCache.flushAll();
 			}
@@ -141,6 +150,7 @@ const socket = async () => {
 	});
 
 	// Add startup time to socket for other functions to use
+	sock.ws?.on?.("error", () => console.warn("[CONNECTION] Socket error observed."));
 	sock.startupTime = socketStartTime;
 
 	return sock;

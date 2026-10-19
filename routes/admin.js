@@ -1,3 +1,4 @@
+import { defenseHealth } from "../utils/defenseHealth.js";
 import { Router } from "express";
 import { group } from "../db/groupData.js";
 import { member } from "../db/members.js";
@@ -66,17 +67,18 @@ function requireAdmin(req, res, next) {
 router.get("/api/status", (req, res) => {
 	const sock = req.app.locals.sock;
 	res.json({
-		connected: !!(sock?.user),
+		connected: !!(sock?.alphaConnected),
 		registered: !!(sock?.authState?.creds?.registered),
 	});
 });
 
 // Minimal probes for hosts and uptime monitors. They never expose credentials.
-router.get("/healthz", (_req, res) => res.json({ status: "ok", uptime: Math.floor(process.uptime()) }));
+router.get("/healthz", (_req, res) => { const health=defenseHealth(); res.status(health.status === "draining" ? 503 : 200).json({ status: health.status }); });
+router.get("/api/admin/defense-health", requireAdmin, (_req, res) => res.json(defenseHealth()));
 router.get("/readyz", async (req, res) => {
 	try {
 		await mdClient.db("admin").command({ ping: 1 });
-		const connected = Boolean(req.app.locals.sock?.user);
+		const connected = Boolean(req.app.locals.sock?.alphaConnected);
 		return res.status(connected ? 200 : 503).json({ status: connected ? "ready" : "degraded", database: "ready", whatsapp: connected ? "connected" : "disconnected" });
 	} catch (_) {
 		return res.status(503).json({ status: "not-ready", database: "unavailable", whatsapp: "unknown" });

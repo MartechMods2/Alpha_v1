@@ -5,6 +5,10 @@ dotenv.config();
 
 const uri = process.env.MONGODB_KEY;
 const mdClient = new MongoClient(uri, {
+    maxPoolSize: 10,
+    waitQueueTimeoutMS: 10000,
+    serverSelectionTimeoutMS: 10000,
+    socketTimeoutMS: 30000,
 	serverApi: {
 		version: ServerApiVersion.v1,
 		strict: true,

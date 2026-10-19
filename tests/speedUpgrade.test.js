@@ -1,3 +1,6 @@
+// Node 22.0 exposes fetch lazily; materialize it before node:test mocks inspect it.
+const nativeFetch = globalThis.fetch;
+Object.defineProperty(globalThis, "fetch", { value: nativeFetch, configurable: true, writable: true });
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';

@@ -19,6 +19,7 @@ const useMongoDBAuthState = async () => {
 	const readData = async (key) => {
 		const doc = await collection.findOne({ _id: key });
 		if (!doc?.value) return null;
+        if (typeof doc.value !== "string" || doc.value.length > 2097152) throw new Error("Stored auth record exceeds its limit");
 		return JSON.parse(doc.value, BufferJSON.reviver);
 	};
 
@@ -30,24 +31,32 @@ const useMongoDBAuthState = async () => {
 
 	// ───────────────── BUFFER (non-critical) ─────────────────
 	const bufferWrite = (key, value) => {
-		buffer.set(key, value);
+        if (buffer.size >= MAX_BUFFER_SIZE && !buffer.has(key)) { process.emit("alpha:fatal", "auth-buffer-capacity"); throw new Error("Auth write buffer reached capacity"); }
+		buffer.set(key, { value });
 
 		if (buffer.size >= MAX_BUFFER_SIZE) {
-			flushBuffer().catch(() => {});
+			flushBuffer().catch(() => process.emit("alpha:fatal", "auth-flush"));
 		}
 	};
 
-	const flushBuffer = async () => {
+	let flushing = null;
+	const flushBuffer = () => {
+        if (flushing) return flushing;
+        flushing = flushSnapshot().finally(() => { flushing = null; });
+        return flushing;
+    };
+    const flushSnapshot = async () => {
 		if (!buffer.size) return;
 
-		const ops = [];
-		for (const [key, value] of buffer) {
+		const snapshot = new Map(buffer);
+        const ops = [];
+		for (const [key, entry] of snapshot) {
 			ops.push({
 				updateOne: {
 					filter: { _id: key },
 					update: {
 						$set: {
-							value: JSON.stringify(value, BufferJSON.replacer),
+							value: JSON.stringify(entry.value, BufferJSON.replacer),
 						},
 					},
 					upsert: true,
@@ -55,13 +64,13 @@ const useMongoDBAuthState = async () => {
 			});
 		}
 
-		buffer.clear();
 		await collection.bulkWrite(ops, { ordered: false });
+        for (const [key, entry] of snapshot) if (buffer.get(key) === entry) buffer.delete(key);
 	};
 
 	// background flush loop
 	flushTimer = setInterval(() => {
-		flushBuffer().catch(() => {});
+		flushBuffer().catch(() => process.emit("alpha:fatal", "auth-flush"));
 	}, FLUSH_INTERVAL_MS);
 
 	// ───────────────── CREDS ─────────────────
@@ -98,7 +107,11 @@ const useMongoDBAuthState = async () => {
 							const value = data[category][id];
 							const key = `${category}-${id}`;
 
-							if (value == null) continue;
+							if (value == null) {
+                                buffer.delete(key);
+                                criticalOps.push({ deleteOne: { filter: { _id: key } } });
+                                continue;
+                            }
 
 							if (isCritical(key)) {
 								criticalOps.push({
@@ -132,14 +145,14 @@ const useMongoDBAuthState = async () => {
 		},
 
 		// Cleanup function to prevent memory leaks on reconnection
-		cleanup: () => {
+		cleanup: async () => {
 			if (flushTimer) {
 				clearInterval(flushTimer);
 				flushTimer = null;
 			}
 			// Flush remaining buffer before clearing
-			flushBuffer().catch(() => {});
-			buffer.clear();
+			await flushBuffer();
+            await flushBuffer();
 			console.log("🧹 Auth state cleanup completed");
 		},
 	};

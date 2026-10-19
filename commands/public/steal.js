@@ -1,5 +1,5 @@
 ﻿import { getMemberData } from "../../db/members.js";
-import { downloadContentFromMessage } from "baileys";
+import { downloadResolvedMedia } from "../../utils/mediaInput.js";
 import { setStickerMetadata } from "../../utils/stickerMetadata.js";
 
 const handler = async (sock, msg, from, args, msgInfoObj) => {
@@ -12,11 +12,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		if (args.includes("pack")) packName = args.join(" ").split("pack ")[1]?.split("author")[0] || packName;
 		if (args.includes("author")) authorName = args.join(" ").split("author ")[1]?.split("pack")[0] || authorName;
 
-		const downloadFilePath = extendedMessageOriginal?.quotedMessage?.stickerMessage;
-		const stream = await downloadContentFromMessage(downloadFilePath, "sticker");
-		const chunks = [];
-		for await (const chunk of stream) chunks.push(chunk);
-		const buffer = Buffer.concat(chunks);
+		const { buffer } = await downloadResolvedMedia(sock, msg, { allowedKinds: ["sticker"], maxBytes: 12 * 1048576 });
 
 		const packOrAuthor = args.includes("pack") || args.includes("author");
 		const finalPack = packOrAuthor ? packName : evv || memberData?.customStealText || "Alpha";

@@ -78,9 +78,12 @@ test("hosted game never penalizes a skip with negative points", async () => {
 
 
 test("queued sends return the WhatsApp message result so hosted games can track prompt ids", async () => {
-  const source = await readFile(new URL("../queue/messageQueue.js", import.meta.url), "utf8");
-  assert.match(source, /const sendResult = await message\.sendFunction\(\)/);
-  assert.match(source, /message\.resolve\?\.\(sendResult\)/);
+  const { MessageQueue } = await import("../queue/messageQueue.js");
+  const queue = new MessageQueue();
+  try {
+    const sent = { key: { id: "poll-prompt-id" } };
+    assert.deepEqual(await queue.enqueue("test@g.us", async () => sent), sent);
+  } finally { queue.stop(); }
 });
 
 test("active Truth or Dare snapshots are stored separately from permanent player stats", async () => {

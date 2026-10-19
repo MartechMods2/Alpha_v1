@@ -14,9 +14,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.14
       - name: Install dependencies
         env:
           # CI tests do not invoke yt-dlp. Avoid its postinstall GitHub API call,
@@ -29,5 +32,7 @@ jobs:
         run: find commands core db functions notify queue routes utils -type f -name '*.js' -print0 | xargs -0 -n1 node --check
       - name: Unit tests
         run: bun run test
+      - name: Bounded synthetic ingestion load
+        run: node --max-old-space-size=128 scripts/security-load.mjs
       - name: Dashboard production build
         run: bun run --cwd dashboard build
