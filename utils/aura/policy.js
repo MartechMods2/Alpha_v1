@@ -127,6 +127,95 @@ export const SHOP = [
       "Use once to set a short tagline on your Aura card. Up to 40 characters; no links or mentions.",
   },
 ];
+// Static, bounded stock: no random paid boxes or power advantages.
+SHOP.push(
+  ...[
+    ["neon-frame", "Neon Circuit", 9000, "#55efc4"],
+    ["solar-frame", "Solar Flare", 10000, "#ffb347"],
+    ["lunar-frame", "Lunar Halo", 10000, "#c3c8ef"],
+    ["rose-frame", "Rose Quartz", 9000, "#f69ec4"],
+    ["ice-frame", "Ice Crystal", 11000, "#a8e9f7"],
+    ["obsidian-frame", "Obsidian Edge", 14000, "#727489"],
+    ["firefly-frame", "Firefly Glow", 12000, "#c8e77b"],
+    ["sapphire-frame", "Sapphire Crown", 18000, "#718cf0"],
+  ].map(([id, name, price, color]) => ({
+    id,
+    name,
+    price,
+    color,
+    kind: "frame",
+  })),
+  ...[
+    ["forest-theme", "Forest Retreat", 7000, "#387a58"],
+    ["sunset-theme", "Lagos Sunset", 8000, "#dc8a6b"],
+    ["cyber-theme", "Cyber Night", 11000, "#8d64c7"],
+    ["lavender-theme", "Lavender Lounge", 7000, "#bda5dc"],
+    ["coffee-theme", "Coffee Corner", 6000, "#99745a"],
+    ["arctic-theme", "Arctic Blue", 8000, "#88c5d4"],
+  ].map(([id, name, price, color]) => ({
+    id,
+    name,
+    price,
+    color,
+    kind: "theme",
+  })),
+  ...[
+    ["quiz-title", "Quiz Captain", 7500, 500],
+    ["creative-title", "Creative Spark", 5000, 0],
+    ["night-title", "Night Owl", 4500, 0],
+    ["sunrise-title", "Early Bird", 4500, 0],
+    ["linux-title", "Linux Voyager", 9000, 1000],
+    ["peace-title", "Peace Keeper", 6000, 500],
+    ["legend-title", "Living Legend", 25000, 5000],
+    ["curator-title", "Digital Curator", 8000, 1000],
+  ].map(([id, name, price, xp]) => ({
+    id,
+    name,
+    price,
+    xp,
+    kind: "title",
+    color: "#d5bd7c",
+  })),
+  ...[
+    ["byte-fox", "Byte Fox", 8000],
+    ["cloud-cat", "Cloud Cat", 8000],
+    ["pixel-owl", "Pixel Owl", 10000],
+    ["cyber-penguin", "Cyber Penguin", 12000],
+    ["circuit-dragon", "Circuit Dragon", 20000],
+    ["comet-bunny", "Comet Bunny", 9000],
+  ].map(([id, name, price]) => ({
+    id,
+    name,
+    price,
+    kind: "pet",
+    color: "#a7d6e8",
+    description:
+      "A cosmetic companion on your Aura profile. Equip with $aurapet equip <id>, then use pet treats to grow its bond. No XP or financial advantage.",
+  })),
+  ...[
+    ["star-emblem", "Starlight", 4000],
+    ["leaf-emblem", "Green Leaf", 3000],
+    ["bolt-emblem", "Lightning Bolt", 4500],
+    ["moon-emblem", "Crescent Moon", 4000],
+    ["shield-emblem", "Guardian Shield", 5000],
+    ["heart-emblem", "Community Heart", 3500],
+  ].map(([id, name, price]) => ({
+    id,
+    name,
+    price,
+    kind: "emblem",
+    color: "#8edacb",
+  })),
+  {
+    id: "pet-treat",
+    name: "Companion treat",
+    price: 300,
+    kind: "tool",
+    max: 10,
+    description:
+      "Consume with $aurause pet-treat after equipping a pet. Adds one bond point, at most three interactions per Lagos day. Cosmetic only.",
+  },
+);
 export const COLLECTIBLES = [
   { id: "byte-bot", name: "Byte Bot" },
   { id: "linux-penguin", name: "Linux Penguin" },

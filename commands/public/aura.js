@@ -1,3 +1,4 @@
+import { inventoryStatus } from "../../utils/aura/inventory.js";
 import { collectionCardPayload } from "../../utils/aura/collectionCard.js";
 import { isAuraEnabled, setAuraEnabled } from "../../utils/aura/activation.js";
 import { auraMemberGuide } from "../../utils/aura/memberGuide.js";
@@ -76,6 +77,7 @@ const handler = async (sock, msg, from, args, info) => {
       "auraitem",
       "aurapreview",
       "auracollection",
+      "aurabag",
       "aurainventory",
       "auraappeal",
       "auraappeals",
@@ -122,6 +124,12 @@ const handler = async (sock, msg, from, args, info) => {
           ...(w.tagline ? [`✧ ${w.tagline}`] : []),
           `Collection: ${w.collection?.length || 0}/${COLLECTIBLES.length}`,
           `Daily streak: ${w.streak || 0}`,
+          `Bag: ${inventoryStatus(w).used}/${inventoryStatus(w).capacity} slots`,
+          ...(w.pet
+            ? [
+                `Companion: ${SHOP.find((x) => x.id === w.pet)?.name || "None"} · Bond ${w.petBonds?.[w.pet] || 0}/100`,
+              ]
+            : []),
         ],
         footer: "Spending Aura never lowers lifetime XP. $aurahelp",
       });
@@ -198,27 +206,97 @@ const handler = async (sock, msg, from, args, info) => {
           : "No Aura transactions yet.",
       });
     }
+    if (cmd === "aurabag") {
+      const bag = inventoryStatus(await aura.profile(actor));
+      if (args[0] !== "expand")
+        return reply(
+          `🎒 Bag: ${bag.used}/${bag.capacity} slots · ${bag.free} free.\n${bag.next ? `Next upgrade: ${bag.next.slots} slots for ${bag.next.price} Aura. Use $aurabag expand --confirm.` : "Maximum capacity reached."}\nEach cosmetic or consumable unit uses one slot. Cards and badges use a separate album. Existing oversized inventories are preserved.`,
+        );
+      if (!(await isAuraEnabled(auraStore)))
+        return reply("Aura is OFF. Bag expansion is paused.");
+      if (!bag.next) throw Error("No further bag upgrade is available.");
+      if (args[1] !== "--confirm")
+        return reply(
+          `Expand to ${bag.next.slots} slots for ${bag.next.price} Aura. Use $aurabag expand --confirm.`,
+        );
+      const r = await aura.expandBag(actor, event);
+      return reply(
+        `Bag expanded to ${r.slots} slots. Spent ${r.spent}; balance ${r.balance}.`,
+      );
+    }
+    if (cmd === "aurasalvage") {
+      const item = SHOP.find((x) => x.id === args[0]);
+      if (!item) throw Error("Choose an owned shop item ID.");
+      if (args[1] !== "--confirm")
+        return reply(
+          `Salvage ONE ${item.name} for ${owner ? 0 : Math.floor(item.price * 0.25)} Aura and free one slot. This removes the item, including its equipped state. Use $aurasalvage ${item.id} --confirm to proceed.`,
+        );
+      const r = await aura.salvage(actor, item.id, event);
+      return reply(
+        `Salvaged ${item.name}. +${r.reward} Aura · Balance ${r.balance} · Free slots ${r.free}.`,
+      );
+    }
+    if (cmd === "aurapet") {
+      const w = await aura.profile(actor);
+      if (args[0] !== "equip")
+        return reply(
+          `Companion: ${SHOP.find((x) => x.id === w.pet)?.name || "None"} · Bond ${w.petBonds?.[w.pet] || 0}/100.\nBuy with $aurashop pets. Equip with $aurapet equip <id>, or none. Use $aurause pet-treat to interact: three treats daily, cosmetic bond only.`,
+        );
+      const item = SHOP.find((x) => x.id === args[1]);
+      await auraStore.transaction(async (tx) => {
+        const row = await tx.get("AuraWallets", actor);
+        if (!row) throw Error("No companion inventory yet.");
+        if (args[1] === "none") delete row.pet;
+        else {
+          if (!item || item.kind !== "pet" || !row.inventory.includes(item.id))
+            throw Error("Choose a companion you own.");
+          row.pet = item.id;
+        }
+        await tx.put("AuraWallets", row);
+      });
+      return reply("Companion updated. View $auraprofile.");
+    }
     if (cmd === "aurashop") {
       const category = args[0] || "all";
-      if (!["all", "frames", "titles", "themes", "tools"].includes(category))
-        return reply("Use $aurashop all | frames | titles | themes | tools.");
+      if (
+        ![
+          "all",
+          "frames",
+          "titles",
+          "themes",
+          "tools",
+          "pets",
+          "emblems",
+        ].includes(category)
+      )
+        return reply(
+          "Use $aurashop all | frames | titles | themes | tools | pets | emblems [page].",
+        );
       const kinds = {
         frames: "frame",
         titles: "title",
         themes: "theme",
         tools: "tool",
+        pets: "pet",
+        emblems: "emblem",
       };
       const rows = SHOP.filter(
         (x) => category === "all" || x.kind === kinds[category],
       );
+      const pages = Math.max(1, Math.ceil(rows.length / 8));
+      const page = Number(args[1] || 1);
+      if (!Number.isSafeInteger(page) || page < 1 || page > pages)
+        return reply(`Choose page 1–${pages}: $aurashop ${category} <page>.`);
       return reply(
-        "✨ *AURA SHOP*\n" +
+        `✨ *AURA SHOP · ${category} · ${page}/${pages}*\n` +
           rows
+            .slice((page - 1) * 8, page * 8)
             .map(
               (x) =>
                 `${x.id} — ${x.price} Aura${x.xp ? " · " + x.xp + " XP required" : ""}\n${x.name}`,
             )
             .join("\n\n") +
+          (page < pages ? `\n\nNext: $aurashop ${category} ${page + 1}` : "") +
           "\n\n$auraitem <id> — details\n$aurapreview <id> — free cosmetic preview\n$aurabuy <id> — buy\n$aurainventory — owned items\n$auraequip <id> or none\n$auracollect — free daily collectible\nPurchases work only when Aura is ON.",
       );
     }
@@ -268,7 +346,9 @@ const handler = async (sock, msg, from, args, info) => {
         event,
       );
       return reply(
-        `Tagline saved: ${r.tagline}\nTickets remaining: ${r.remaining}. View $auraprofile.`,
+        r.message
+          ? `${r.message} Treats left: ${r.remaining}.`
+          : `Tagline saved: ${r.tagline}\nTickets remaining: ${r.remaining}. View $auraprofile.`,
       );
     }
     if (cmd === "aurabuy") {
@@ -286,11 +366,11 @@ const handler = async (sock, msg, from, args, info) => {
         (x) => `${x.name}: ${w.items?.[x.id] || 0}/${x.max}`,
       );
       return reply(
-        "🎒 *YOUR AURA INVENTORY*\nCosmetics: " +
+        `🎒 *YOUR AURA INVENTORY · ${inventoryStatus(w).used}/${inventoryStatus(w).capacity} SLOTS*\nOwned items: ` +
           (cosmetics.join(", ") || "None yet") +
           "\n" +
           tools.join("\n") +
-          `\nCards: ${w.collection?.length || 0}/${COLLECTIBLES.length}\nEquipped: ${SHOP.find((x) => x.id === w.equipped)?.name || "Default"}\n$aurause tagline-ticket Your tagline\nStreak shields work automatically. $auracollection shows cards.`,
+          `\nCards: ${w.collection?.length || 0}/${COLLECTIBLES.length}\nEquipped: ${SHOP.find((x) => x.id === w.equipped)?.name || "Default"}\n$aurause tagline-ticket Your tagline\nStreak shields work automatically. $auracollection shows cards. $aurabag expands space; $aurasalvage <id> previews a 25% return.`,
       );
     }
     if (cmd === "auraequip") {
@@ -300,7 +380,11 @@ const handler = async (sock, msg, from, args, info) => {
         if (args[0] === "none") delete w.equipped;
         else {
           const item = SHOP.find((x) => x.id === args[0]);
-          if (!item || item.kind === "tool" || !w.inventory.includes(item.id))
+          if (
+            !item ||
+            ["tool", "pet"].includes(item.kind) ||
+            !w.inventory.includes(item.id)
+          )
             throw Error("Choose a cosmetic you own; tools cannot be equipped.");
           w.equipped = item.id;
         }
@@ -518,6 +602,9 @@ export default () => ({
     "auratransactions",
     "transactions",
     "aurashop",
+    "aurabag",
+    "aurasalvage",
+    "aurapet",
     "aurabuy",
     "auraitem",
     "aurapreview",

@@ -47,6 +47,8 @@ $aurainventory / $auraequip gold-title
 Gold title: 5,000; Midnight theme: 10,000; Aurora frame: 15,000. More frames and XP-unlocked titles: $aurashop frames or titles. $aurapreview ruby-frame shows a free preview. Cosmetics affect Alpha's profile card, not your WhatsApp account.
 
 $aurashop tools — streak shields (2,000) protect one missed daily day automatically; tagline tickets (1,000) set a short card message with $aurause tagline-ticket Your message. Hold up to three of each.
+Bag starts at 8 slots. Each cosmetic/tool unit uses one slot; cards and badges have their own album. $aurabag shows space; $aurabag expand --confirm buys 16/24/40/64 slots. $aurasalvage <id> previews a 25% return to free space.
+$aurashop pets offers cosmetic companions. $aurapet equip byte-fox activates an owned pet; $aurause pet-treat grows its bond, three times daily. No XP or financial advantage.
 $auracollect — one free collectible card daily while Aura is ON. Complete eight different cards for 2,500 Aura and the Curator badge. $auracollection shows your progress.
 
 $aurasend @member 1000 — preview a transfer. Repeat with --confirm to send. Fee: 5%, rounded up. Maximum 10,000 per transfer and 20,000 sent daily.

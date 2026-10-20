@@ -1,3 +1,8 @@
+import {
+  initialiseInventory,
+  requireInventorySpace,
+  inventoryStatus,
+} from "./inventory.js";
 import { randomBytes } from "node:crypto";
 import {
   amountValue,
@@ -40,6 +45,7 @@ export function createAuraEngine(
       wallet.badges ||= [];
       wallet.items ||= {};
       wallet.collection ||= [];
+      initialiseInventory(wallet);
       const before = wallet.balance;
       const result = await fn(tx, wallet);
       if (
@@ -189,6 +195,7 @@ export function createAuraEngine(
             throw Error(`Inventory limit: ${product.max} of this tool.`);
         } else if (w.inventory.includes(item))
           throw Error("You already own this item.");
+        requireInventorySpace(w);
         spend(w, product.price, actor);
         if (product.kind === "tool") w.items[item] = (w.items[item] || 0) + 1;
         else w.inventory.push(item);
@@ -198,8 +205,76 @@ export function createAuraEngine(
           balance: w.balance,
         };
       }),
+    expandBag: (actor, event) =>
+      mutate(["bag-expand", actor, event], actor, async (_tx, w) => {
+        const next = inventoryStatus(w).next;
+        if (!next)
+          throw Error(
+            "Your bag is at maximum capacity. Existing grandfathered items remain safe.",
+          );
+        spend(w, next.price, actor);
+        w.bagSlots = next.slots;
+        return {
+          slots: next.slots,
+          spent: owned(actor) ? 0 : next.price,
+          balance: w.balance,
+        };
+      }),
+    salvage: (actor, item, event) =>
+      mutate(["salvage", actor, event], actor, async (_tx, w) => {
+        const product = SHOP.find((x) => x.id === item);
+        if (!product)
+          throw Error(
+            "Unknown shop item. Collection cards and badges cannot be salvaged.",
+          );
+        if (product.kind === "tool") {
+          if (!(w.items[item] > 0)) throw Error("You do not own this tool.");
+          w.items[item]--;
+        } else {
+          if (!w.inventory.includes(item))
+            throw Error("You do not own this item.");
+          w.inventory = w.inventory.filter((x) => x !== item);
+          if (w.equipped === item) delete w.equipped;
+          if (w.pet === item) delete w.pet;
+        }
+        const reward = owned(actor) ? 0 : Math.floor(product.price * 0.25);
+        w.balance += reward;
+        return {
+          item,
+          reward,
+          balance: w.balance,
+          free: inventoryStatus(w).free,
+        };
+      }),
     useItem: (actor, item, text, event) =>
       mutate(["use-item", actor, event], actor, async (_tx, w) => {
+        if (item === "pet-treat") {
+          if (!w.pet || !w.inventory.includes(w.pet))
+            throw Error("Equip a companion with $aurapet equip <id> first.");
+          if (!(w.items[item] > 0))
+            throw Error("You do not own a pet treat. See $aurashop tools.");
+          if ((w.petBonds?.[w.pet] || 0) >= 100)
+            throw Error(
+              "This companion already has maximum bond; your treat was not consumed.",
+            );
+          const today = dayKey(now());
+          if (w.petDay !== today) {
+            w.petDay = today;
+            w.petPlays = 0;
+          }
+          if (w.petPlays >= 3)
+            throw Error("Three companion interactions per Lagos day.");
+          w.petPlays++;
+          w.items[item]--;
+          w.petBonds ||= {};
+          w.petBonds[w.pet] = Math.min(100, (w.petBonds[w.pet] || 0) + 1);
+          if (w.petBonds[w.pet] >= 10)
+            w.badges = [...new Set([...w.badges, "Companion Friend"])];
+          return {
+            message: `${SHOP.find((x) => x.id === w.pet)?.name || "Companion"} enjoyed the treat! Bond: ${w.petBonds[w.pet]}/100.`,
+            remaining: w.items[item],
+          };
+        }
         if (item !== "tagline-ticket")
           throw Error(
             "Streak shields work automatically; use $auraitem <id> for details.",

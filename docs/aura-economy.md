@@ -29,7 +29,7 @@ No new API keys or payment integration are required. Existing provider keys/quot
 
 ## Expanded shop and collections
 
-See [the shop guide](aura-shop.md) for the full 12-item catalogue, colour previews, XP unlocks, consumable inventory, automatic one-day streak shields, profile taglines and the free eight-card collection. Use `$aurashop`, `$aurainventory`, `$aurapreview ruby-frame`, `$auracollect` and `$auracollection`. These features follow the same OFF-by-default activation switch.
+See [the shop guide](aura-shop.md) for the full 47-item catalogue, colour previews, XP unlocks, consumable inventory, expandable inventory bags, cosmetic companions, salvage, automatic one-day streak shields, profile taglines and the free eight-card collection. Use `$aurashop`, `$aurainventory`, `$aurapreview ruby-frame`, `$auracollect` and `$auracollection`. These features follow the same OFF-by-default activation switch.
 
 ## Earning and gifting
 

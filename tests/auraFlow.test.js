@@ -59,7 +59,14 @@ test("commands keep gifts creator-only, coupons and transaction histories privat
         throw Error("private");
       },
     };
-    const run = async (actor, cmd, args = [], target = b, id = cmd) =>
+    let eventSequence = 0;
+    const run = async (
+      actor,
+      cmd,
+      args = [],
+      target = b,
+      id = `${cmd}-${++eventSequence}`,
+    ) =>
       command.handler(sock, { key: { id } }, "12345@g.us", args, {
         senderJid: actor,
         isGroup: true,
@@ -100,10 +107,24 @@ test("commands keep gifts creator-only, coupons and transaction histories privat
     await run(b, "auracollect");
     assert.ok(sent.at(-1).image);
     assert.match(sent.at(-1).caption, /Collected/);
+    await run(b, "aurashop", ["all", "2"]);
+    assert.match(sent.at(-1).text, /2\/6/);
+    await run(b, "aurabag", ["expand"]);
+    assert.match(sent.at(-1).text, /--confirm/);
+    assert.equal((await fixture.engine.profile(b)).balance, 19000);
+    await run(b, "aurabag", ["expand", "--confirm"]);
+    assert.equal((await fixture.engine.profile(b)).bagSlots, 16);
+    await run(b, "aurabuy", ["byte-fox"]);
+    await run(b, "aurapet", ["equip", "byte-fox"]);
+    await run(b, "aurabuy", ["pet-treat"]);
+    await run(b, "aurause", ["pet-treat"]);
+    assert.match(sent.at(-1).text, /Bond: 1/);
     await run(owner, "aurasystem", ["off"]);
     await run(b, "aurabuy", ["ruby-frame"]);
     assert.match(sent.at(-1).text, /currently OFF/);
-    assert.equal((await fixture.engine.profile(b)).balance, 19000);
+    assert.equal((await fixture.engine.profile(b)).balance, 5700);
+    await run(b, "aurabag", ["expand", "--confirm"]);
+    assert.match(sent.at(-1).text, /OFF/);
   } finally {
     delete globalThis.__auraFlow;
   }
