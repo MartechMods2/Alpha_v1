@@ -1,3 +1,4 @@
+import { PACKS, packStock } from "../../utils/aura/packs.js";
 import { AuraUserError, publicAuraError } from "../../utils/aura/errors.js";
 import { isUnexpired } from "../../utils/aura/walletSafety.js";
 import {
@@ -59,6 +60,8 @@ const handler = async (sock, msg, from, args, info) => {
         appeal: "auraappeal",
       },
       aurashop: {
+        packs: "aurapack",
+        pack: "aurapack",
         buy: "aurabuy",
         gift: "auraitemgift",
         item: "auraitem",
@@ -141,6 +144,7 @@ const handler = async (sock, msg, from, args, info) => {
       "auratransactions",
       "transactions",
       "aurashop",
+      "aurapack",
       "auraitem",
       "aurapreview",
       "auracollection",
@@ -195,6 +199,7 @@ const handler = async (sock, msg, from, args, info) => {
           `Ranked: ${rpRank(current)} · ${current} RP`,
           `Evo rank: ${EVO[w.evo].name} · Completed quests: ${w.quests}`,
           ...(w.prestigeTitle ? [`Prestige title: ${w.prestigeTitle}`] : []),
+          `Packs: ${(w.packs || []).map((id) => PACKS.find((p) => p.id === id)?.name || id).join(", ") || "None"}`,
           `Conduct: ${w.conduct}/100`,
           `Community: ${w.kudos || 0} thanks · ${w.itemsGiven || 0} items gifted`,
           `Equipped: ${[...SHOP, ...PRESTIGE_FRAMES].find((x) => x.id === w.equipped)?.name || "Default"}`,
@@ -334,6 +339,38 @@ const handler = async (sock, msg, from, args, info) => {
       });
       return reply("Companion updated. View $auraprofile.");
     }
+    if (cmd === "aurapack") {
+      const money = (n) => n.toLocaleString("en-US");
+      if (!args.length)
+        return reply(alphaPanel({
+          icon: "💎", title: "AURA PREMIUM PACKS",
+          lines: PACKS.map((p) => `${p.name} · ${money(p.price)} Aura\nID: ${p.id} · ${packStock(p).length} item types · ${EVO[p.evo].name} · ${money(p.slots)} slots`),
+          footer: "$aura shop pack <id> — preview before purchase",
+        }));
+      const pack = PACKS.find((p) => p.id === args[0]);
+      if (!pack || args.length > 2 || (args[1] && args[1] !== "--confirm"))
+        throw new AuraUserError("Use $aura shop packs, then $aura shop pack <id> [--confirm].");
+      if (args[1] !== "--confirm") {
+        const w = await aura.profile(actor);
+        return reply(alphaPanel({
+          icon: "💎", title: pack.name.toUpperCase(),
+          lines: [
+            `Price: ${money(pack.price)} Aura${owner ? " · creator spends 0" : ""}`,
+            `Includes: ${packStock(pack).map((x) => x.id + (x.kind === "tool" ? " ×" + x.max : "")).join(", ")}`,
+            `Evo entitlement: ${EVO[pack.evo].name}. Storage: at least ${money(pack.slots)} slots.`,
+            "Includes prestige frames/titles through that stage. Pack purchase bypasses individual XP and quest gates; earned XP, RP and quest counts stay the same.",
+            "One claim per pack. Existing cosmetics are skipped; tools top up to their caps. No duplicate discount, recurring refills or free future catalogue additions.",
+            "New bundled items have zero salvage refund, including after gifting. Rank, storage and pack ownership cannot be gifted. No cash value or admin powers.",
+            `Owned: ${w.packs?.includes(pack.id) ? "YES — cannot buy again" : "No"}`,
+          ],
+          footer: `Buy: $aura shop pack ${pack.id} --confirm · Aura must be ON`,
+        }));
+      }
+      if (!(await isAuraEnabled(auraStore)))
+        return reply("Aura is OFF. Pack purchases are paused.");
+      const r = await aura.buyPack(actor, pack.id, event);
+      return reply(`💎 ${r.duplicate ? "Already processed" : "Pack unlocked"}: ${r.pack}\nSpent: ${money(r.spent)} Aura · Balance: ${money(r.balance)}\nAdded: ${r.added} inventory units · ${r.stage} · ${money(r.slots)} slots\nView $aura and $aura inventory. Packs are one-time purchases.`);
+    }
     if (cmd === "aurashop") {
       const category = args[0] || "all";
       if (
@@ -383,7 +420,7 @@ const handler = async (sock, msg, from, args, info) => {
           )
           .join("\n\n") +
         (page < pages ? `\n\nNext: $aurashop ${category} ${page + 1}` : "") +
-        "\n\n✦ $aura shop buy <id>\n✦ $aura shop preview <id>\n✦ $aura shop equip <id>\n✦ $aura inventory · $aura bag\n✦ $aura evo — prestige ranks & rewards\nPurchases work only when Aura is ON.";
+        "\n\n✦ $aura shop packs — one-time bundles\n✦ $aura shop buy <id>\n✦ $aura shop preview <id>\n✦ $aura shop equip <id>\n✦ $aura inventory · $aura bag\n✦ $aura evo — prestige ranks & rewards\nPurchases work only when Aura is ON.";
       return info.sendMessageWTyping(
         from,
         shopCardPayload(

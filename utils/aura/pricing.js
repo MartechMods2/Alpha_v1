@@ -10,7 +10,7 @@ export function applyPrices(rows, section, identify, config = priceConfig) {
   if (!config || typeof config !== "object" || Array.isArray(config))
     throw Error("Aura prices must be a JSON object.");
   for (const key of Object.keys(config))
-    if (!["shop", "bags", "evo", "commands"].includes(key))
+    if (!["shop", "bags", "evo", "commands", "packs"].includes(key))
       throw Error(`Unknown Aura price section: ${key}`);
   const prices = Object.hasOwn(config, section) ? config[section] : {};
   if (!prices || typeof prices !== "object" || Array.isArray(prices))
