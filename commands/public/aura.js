@@ -29,7 +29,12 @@ const handler = async (sock, msg, from, args, info) => {
   try {
     const routes = {
       aura: {
+        shop: "aurashop",
+        evo: "evo",
         daily: "daily",
+        send: "aurasend",
+        thanks: "aurathanks",
+        help: "auraguide",
         quests: "quests",
         answer: "questanswer",
         redeem: "redeem",
@@ -40,9 +45,14 @@ const handler = async (sock, msg, from, args, info) => {
         guide: "auraguide",
         history: "auratransactions",
         ranks: "aurarank",
+        badges: "aurabadges",
+        board: "auraboard",
+        rules: "aurarules",
+        appeal: "auraappeal",
       },
       aurashop: {
         buy: "aurabuy",
+        gift: "auraitemgift",
         item: "auraitem",
         preview: "aurapreview",
         equip: "auraequip",
@@ -55,13 +65,16 @@ const handler = async (sock, msg, from, args, info) => {
         album: "auracollection",
       },
     };
-    const routed = routes[info.command]?.[args[0]];
-    if (routed) {
+    // At most two hops: $aura shop gift -> internal item-gift action.
+    for (let depth = 0; depth < 2; depth++) {
+      const routed = routes[info.command]?.[args[0]];
+      if (!routed) break;
       args = args.slice(1);
       info = { ...info, command: routed };
-    } else if (info.command === "aura" && args.length)
+    }
+    if (info.command === "aura" && args.length)
       return reply(
-        "Use $aura for your profile; $aura daily | quests | inventory | bag | prices | guide. Shop: $aurashop. Progress: $evo.",
+        "Start with $aura. Use $aura shop | send | thanks | daily | quests | inventory | bag | guide | evo.",
       );
     const command = info.command;
     const pages = auraMemberGuide(info.prefix || "$");
@@ -165,6 +178,7 @@ const handler = async (sock, msg, from, args, info) => {
           `Evo rank: ${EVO[w.evo].name} · Completed quests: ${w.quests}`,
           ...(w.prestigeTitle ? [`Prestige title: ${w.prestigeTitle}`] : []),
           `Conduct: ${w.conduct}/100`,
+          `Community: ${w.kudos || 0} thanks · ${w.itemsGiven || 0} items gifted`,
           `Equipped: ${[...SHOP, ...PRESTIGE_FRAMES].find((x) => x.id === w.equipped)?.name || "Default"}`,
           ...(w.tagline ? [`✧ ${w.tagline}`] : []),
           `Collection: ${w.collection?.length || 0}/${COLLECTIBLES.length}`,
@@ -176,7 +190,7 @@ const handler = async (sock, msg, from, args, info) => {
               ]
             : []),
         ],
-        footer: "$aura daily · $aura inventory · $aurashop · $evo",
+        footer: "$aura send · $aura thanks · $aura shop · $aura evo",
       });
       return info.sendMessageWTyping(
         from,
@@ -350,7 +364,7 @@ const handler = async (sock, msg, from, args, info) => {
           )
           .join("\n\n") +
         (page < pages ? `\n\nNext: $aurashop ${category} ${page + 1}` : "") +
-        "\n\n✦ $aurashop buy <id>\n✦ $aurashop preview <id>\n✦ $aurashop equip <id>\n✦ $aura inventory · $aura bag\n✦ $evo — prestige ranks & rewards\nPurchases work only when Aura is ON.";
+        "\n\n✦ $aura shop buy <id>\n✦ $aura shop preview <id>\n✦ $aura shop equip <id>\n✦ $aura inventory · $aura bag\n✦ $aura evo — prestige ranks & rewards\nPurchases work only when Aura is ON.";
       return info.sendMessageWTyping(
         from,
         shopCardPayload(
@@ -418,7 +432,7 @@ const handler = async (sock, msg, from, args, info) => {
       const product = SHOP.find((x) => x.id === args[0]);
       if (product && product.price >= 100000 && args[1] !== "--confirm")
         return reply(
-          `Confirm purchase: ${product.name} for ${product.price.toLocaleString("en-US")} Aura. Use $aurashop buy ${product.id} --confirm. No Aura spent yet.`,
+          `Confirm purchase: ${product.name} for ${product.price.toLocaleString("en-US")} Aura. Use $aura shop buy ${product.id} --confirm. No Aura spent yet.`,
         );
       const r = await aura.buy(actor, args[0], event);
       return reply(
@@ -495,6 +509,54 @@ const handler = async (sock, msg, from, args, info) => {
         { quoted: msg },
       );
     }
+    if (["auraitemgift", "aurathanks"].includes(cmd)) {
+      const targetRaw =
+        info.extendedMessageOriginal?.mentionedJid?.[0] ||
+        info.extendedMessageOriginal?.participant;
+      if (!targetRaw)
+        throw Error("Mention or reply to the member you want to choose.");
+      const target = await auraIdentity(sock, info, targetRaw);
+      if (target === actor) throw Error("Choose another member.");
+      if (cmd === "aurathanks") {
+        const r = await aura.thank(actor, target, event);
+        if (r.duplicate) return reply("This thank-you was already recorded.");
+        return info.sendMessageWTyping(
+          from,
+          {
+            text: `✦ COMMUNITY SPOTLIGHT ✦\n@${actor.split("@")[0]} thanked @${target.split("@")[0]} for making the community better.\n${r.kudos} thanks received · No Aura or XP awarded.`,
+            mentions: [actor, target],
+          },
+          { quoted: msg },
+        );
+      }
+      const item = SHOP.find((x) => args.includes(x.id));
+      if (!item)
+        throw Error(
+          "Choose an owned shop item ID. Example: $aura shop gift @member byte-fox",
+        );
+      if (args.at(-1) !== "--confirm")
+        return info.sendMessageWTyping(
+          from,
+          {
+            text: `Gift ONE ${item.name} to @${target.split("@")[0]}? It leaves your inventory and is unequipped if active. This gift has no Aura fee and cannot be recalled. Recipient needs space and must meet XP/Evo gates.\nRepeat: $aura shop gift @member ${item.id} --confirm`,
+            mentions: [target],
+          },
+          { quoted: msg },
+        );
+      const r = await aura.giftItem(actor, target, item.id, event);
+      if (r.duplicate)
+        return reply(
+          "This item gift was already completed. Check $aura history.",
+        );
+      return info.sendMessageWTyping(
+        from,
+        {
+          text: `🎁 *AURA GIFT DELIVERED*\n@${actor.split("@")[0]} gave ${item.name} to @${target.split("@")[0]}.\n$aura inventory — see your items\nNo Aura charged. Friendship bond stays with its earner.`,
+          mentions: [actor, target],
+        },
+        { quoted: msg },
+      );
+    }
     if (cmd === "aurasend" || cmd === "auragift" || cmd === "aurapenalty") {
       const targetRaw =
         info.extendedMessageOriginal?.mentionedJid?.[0] ||
@@ -519,26 +581,29 @@ const handler = async (sock, msg, from, args, info) => {
       }
       if (cmd === "aurasend" && args.at(-1) !== "--confirm") {
         const principal = Number(amount),
-          fee = Math.ceil(principal * 0.05);
+          fee = owner ? 0 : Math.ceil(principal * 0.05);
         if (
           !Number.isSafeInteger(principal) ||
           principal < 1 ||
-          principal > 10000
+          principal > (owner ? 500000 : 10000)
         )
-          throw Error("Transfer amount must be 1–10,000 Aura.");
+          throw Error(
+            "Transfer amount must be 1–10,000 Aura (creator gifts: up to 500,000).",
+          );
         return reply(
-          `Recipient gets ${principal} Aura; fee ${fee}; total debit ${principal + fee}. Repeat the transfer with --confirm to proceed. Daily principal limit: 20,000.`,
+          `Recipient gets ${principal} Aura; fee ${fee}; total debit ${principal + fee}. Repeat the transfer with --confirm to proceed. ${owner ? "Creator gift/coupon budget: 500,000 daily." : "Daily principal limit: 20,000."}`,
         );
       }
       const r =
-        cmd === "auragift"
+        cmd === "auragift" || owner
           ? await aura.gift(actor, target, amount, event)
           : await aura.transfer(actor, target, amount, event);
-      await info
-        .sendMessageWTyping(target, {
-          text: `✨ You received ${amount} Aura. Check $auratransactions privately.`,
-        })
-        .catch(() => {});
+      if (!r.duplicate)
+        await info
+          .sendMessageWTyping(target, {
+            text: `✨ You received ${amount} Aura. Check $auratransactions privately.`,
+          })
+          .catch(() => {});
       return reply(
         `${r.duplicate ? "Already processed. " : ""}${cmd === "auragift" ? "Gift" : "Transfer"} recorded. ${r.fee ? `Fee: ${r.fee}.` : ""}`,
       );
@@ -673,12 +738,14 @@ const handler = async (sock, msg, from, args, info) => {
 };
 export default () => ({
   cmd: [
+    "aura",
+    "aurashop",
+    "evo",
     "aurasystem",
     "auraguide",
     "auraannounce",
     "aurabadges",
     "auraboard",
-    "aura",
     "balance",
     "auraprofile",
     "aurarank",
@@ -688,7 +755,6 @@ export default () => ({
     "prices",
     "auratransactions",
     "transactions",
-    "aurashop",
     "aurabag",
     "aurasalvage",
     "aurapet",
@@ -710,12 +776,11 @@ export default () => ({
     "auradrops",
     "quests",
     "questanswer",
-    "evo",
     "aurarules",
     "aurahelp",
   ],
-  desc: "Three shortcuts: $aura for your wallet, $aurashop for items, $evo for prestige progression",
+  desc: "One entry point: $aura for wallet, sharing, shop, inventory and Evo progression",
   usage:
-    "aura | daily | redeem CODE | prices | quests 1 | questanswer 1 2 | aurashop | evo | aurahelp",
+    "aura [shop | send @member AMOUNT --confirm | thanks @member | daily | inventory | bag | guide | evo]",
   handler,
 });

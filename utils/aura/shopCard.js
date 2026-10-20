@@ -67,7 +67,7 @@ export function shopCardPayload(rows, category, page, pages, caption) {
     });
     ctx.fillStyle = "#d9bc7d";
     ctx.font = "bold 23px sans-serif";
-    ctx.fillText("$aurashop buy <item-id>", 60, 1330);
+    ctx.fillText("$aura shop buy <item-id>", 60, 1330);
     ctx.fillStyle = "#b5bfd2";
     ctx.font = "18px sans-serif";
     ctx.fillText(

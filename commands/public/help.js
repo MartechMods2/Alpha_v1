@@ -61,7 +61,7 @@ const handler = async (sock, msg, from, args, info) => {
   }
   return reply(
     `*${prefix}${found.cmd[0]}*\n\n${found.desc}\n\n*Usage:* ${prefix}${found.usage || found.cmd[0]}${
-      found.cmd.length > 1
+      found.cmd.length > 1 && !found.cmd.includes("aura")
         ? "\n*Aliases:* " +
           found.cmd
             .slice(1)

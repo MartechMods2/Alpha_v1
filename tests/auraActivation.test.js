@@ -85,7 +85,7 @@ test("member guide covers the economy in bounded complete pages and respects pre
     "!aura prices",
     "--confirm",
     "5%",
-    "!evo",
+    "!aura evo",
     "!auraappeal",
     "conduct",
     "OFF",

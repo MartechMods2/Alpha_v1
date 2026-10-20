@@ -340,3 +340,96 @@ test("grouped Aura commands preserve activation gates, high-price confirmation a
     delete globalThis.__auraFlow;
   }
 });
+test("one entry point supports confirmed sharing, item gifts and thanks without activation bypass", async () => {
+  const fixture = setup();
+  globalThis.__auraFlow = fixture;
+  try {
+    const command = await load("../commands/public/aura.js"),
+      sent = [];
+    assert.deepEqual(command.cmd.slice(0, 3), ["aura", "aurashop", "evo"]);
+    let sequence = 0;
+    const run = (actor, cmd, args = [], id = "social-" + ++sequence) =>
+      command.handler({}, { key: { id } }, "12345@g.us", args, {
+        command: cmd,
+        senderJid: actor,
+        isGroup: true,
+        isOwner: true,
+        isModerator: true,
+        extendedMessageOriginal: { mentionedJid: [b] },
+        sendMessageWTyping: async (to, p) => sent.push({ to, ...p }),
+      });
+    await run(a, "aura", ["shop", "gift", "@member", "byte-fox", "--confirm"]);
+    assert.match(sent.at(-1).text, /OFF/);
+    await run(a, "aura", ["thanks", "@member"]);
+    assert.match(sent.at(-1).text, /OFF/);
+    await fixture.store.put("AuraSettings", { _id: "economy", enabled: true });
+    await fixture.store.put("AuraWallets", {
+      ...(await fixture.engine.profile(a)),
+      balance: 20000,
+      inventory: ["byte-fox"],
+      purchaseCosts: { "byte-fox": 8000 },
+    });
+    await run(a, "aura", ["send", "@member", "1000"]);
+    assert.match(sent.at(-1).text, /fee 50/);
+    assert.equal((await fixture.engine.profile(a)).balance, 20000);
+    await run(a, "aura", ["send", "@member", "1000", "--confirm"], "send-once");
+    assert.equal((await fixture.engine.profile(a)).balance, 18950);
+    assert.equal((await fixture.engine.profile(b)).balance, 1000);
+    const privateCount = sent.filter((x) => x.to === b).length;
+    await run(a, "aura", ["send", "@member", "1000", "--confirm"], "send-once");
+    assert.equal(sent.filter((x) => x.to === b).length, privateCount);
+    await run(a, "aura", ["shop", "gift", "@member", "byte-fox"]);
+    assert.match(sent.at(-1).text, /Gift ONE/);
+    assert.deepEqual((await fixture.engine.profile(a)).inventory, ["byte-fox"]);
+    await run(a, "aura", ["shop", "gift", "@member", "byte-fox", "--confirm"]);
+    assert.match(sent.at(-1).text, /GIFT DELIVERED/);
+    assert.deepEqual((await fixture.engine.profile(b)).inventory, ["byte-fox"]);
+    await run(a, "aura", ["thanks", "@member"]);
+    assert.match(sent.at(-1).text, /SPOTLIGHT/);
+    assert.equal((await fixture.engine.profile(b)).kudos, 1);
+    await run(owner, "aura", ["send", "@member", "25000"]);
+    assert.match(sent.at(-1).text, /fee 0/);
+    await run(owner, "aura", ["send", "@member", "25000", "--confirm"]);
+    assert.equal((await fixture.engine.profile(b)).balance, 26000);
+  } finally {
+    delete globalThis.__auraFlow;
+  }
+});
+test("Aura help advertises a single entry point without exposing the long compatibility alias list", async () => {
+  const fixture = setup();
+  globalThis.__auraFlow = fixture;
+  try {
+    const auraCommand = await load("../commands/public/aura.js");
+    const url = new URL("../commands/public/help.js", import.meta.url);
+    let source = await readFile(url, "utf8");
+    const catalogue = {
+      publicCommands: [
+        {
+          cmd: auraCommand.cmd,
+          desc: auraCommand.desc,
+          usage: auraCommand.usage,
+        },
+      ],
+      groupCommands: [],
+    };
+    source = source.replace(/from "([^"]+)"/g, (whole, path) => {
+      if (path.endsWith("utils/commandLoader.js"))
+        return `from "data:text/javascript;base64,${Buffer.from("export const cmdToText=async()=>(" + JSON.stringify(catalogue) + ");").toString("base64")}"`;
+      return path.startsWith(".") ? `from "${new URL(path, url).href}"` : whole;
+    });
+    const command = (
+        await import(
+          `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+        )
+      ).default(),
+      sent = [];
+    await command.handler({}, { key: { id: "help" } }, "group", ["aura"], {
+      sendMessageWTyping: async (to, p) => sent.push(p),
+    });
+    assert.match(sent.at(-1).text, /One entry point/);
+    assert.ok(!sent.at(-1).text.includes("Aliases:"));
+    assert.ok(!sent.at(-1).text.includes("$aurapenalty"));
+  } finally {
+    delete globalThis.__auraFlow;
+  }
+});

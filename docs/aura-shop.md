@@ -6,7 +6,7 @@ The existing Aura activation switch still applies: everything starts OFF unless 
 
 | Command          | Example                                   | Purpose                                                        |
 | ---------------- | ----------------------------------------- | -------------------------------------------------------------- |
-| `aurashop`       | `$aurashop frames`                        | Browse all / frames / titles / themes / tools / pets / emblems                  |
+| `aurashop`       | `$aura shop frames`                        | Browse all / frames / titles / themes / tools / pets / emblems                  |
 | `auraitem`       | `$auraitem streak-shield`                 | See price, effect and unlock requirement                       |
 | `aurapreview`    | `$aurapreview ruby-frame`                 | Free photo-card preview; does not buy or equip                 |
 | `aurabuy`        | `$aurabuy ruby-frame`                     | Buy a known item ID at its displayed price                     |
@@ -92,7 +92,7 @@ Illustrated card messages use a local bounded canvas and fall back to text if re
 
 Existing inventory arrays are retained. Consumable quantities and card collections are initialized lazily when a wallet mutates; no destructive migration is needed. All purchases, consumption, collection rewards and daily shield consumption use the existing MongoDB transaction and idempotency ledger. Concurrent purchases cannot overdraw a balance or exceed tool limits.
 
-Deploy the commit using the normal Render workflow. Verify `$aurashop`, a free preview, one permitted purchase and inventory. No environment variables or dependencies are added. Use `$aurasystem off` to pause economic changes. For rollback, turn Aura off, restore a tested compatible commit and restart; preserve all Aura collections for reconciliation. Previous code will retain unknown cosmetic IDs in saved inventories, although its old shop will not display their details.
+Deploy the commit using the normal Render workflow. Verify `$aura shop`, a free preview, one permitted purchase and inventory. No environment variables or dependencies are added. Use `$aurasystem off` to pause economic changes. For rollback, turn Aura off, restore a tested compatible commit and restart; preserve all Aura collections for reconciliation. Previous code will retain unknown cosmetic IDs in saved inventories, although its old shop will not display their details.
 
 ## Inventory slots and expansion
 
@@ -104,11 +104,11 @@ Full bags reject purchases before charging. Consume a tool or use `$aurasalvage 
 
 ## Companions
 
-Browse `$aurashop pets`; buy a pet, then `$aurapet equip byte-fox` (or another owned pet ID). `$aurapet equip none` removes it from the profile without losing ownership. Companions are cosmetic names/bond displays, not autonomous AI, animated stickers or money generators.
+Browse `$aura shop pets`; buy a pet, then `$aurapet equip byte-fox` (or another owned pet ID). `$aurapet equip none` removes it from the profile without losing ownership. Companions are cosmetic names/bond displays, not autonomous AI, animated stickers or money generators.
 
 Buy a pet-treat for 300 Aura, then `$aurause pet-treat`. It consumes one treat, frees a slot and adds one bond point to the active pet, capped at 100. At most three interactions per member per Lagos day across all pets. Bond is tracked separately for each pet. At ten bond points, unlock the permanent Companion Friend badge. Maximum-bond pets do not consume more treats. Pet treats stack to ten units; existing shields and tagline tickets still stack to three each.
 
-The shop is paginated in eight-item pages: `$aurashop all 2`, or categories frames/titles/themes/tools/pets/emblems/evo/legendary. Prices and XP requirements appear before purchase. Shop previews do not grant ownership.
+The shop is paginated in eight-item pages: `$aura shop all 2`, or categories frames/titles/themes/tools/pets/emblems/evo/legendary. Prices and XP requirements appear before purchase. Shop previews do not grant ownership.
 
 ## Owner: edit prices without changing JavaScript
 
@@ -119,7 +119,7 @@ Edit **config/aura-prices.json** in GitHub. This is the live pricing configurati
 3. Keep IDs, quotation marks, braces and commas intact. JSON does not allow comments or trailing commas. Every editable price must be a whole number between 1 and 10,000,000,000 (command-group prices remain limited to 10,000). The starter bag and Spark stage remain free. Removing an entry restores its built-in default; it does not remove the product.
 4. Validate locally with `node --input-type=module -e "await import('./utils/aura/policy.js'); await import('./utils/aura/inventory.js'); console.log('Aura prices valid')"` and `npm test` if you have the project on your computer. A misspelled ID, invalid amount or invalid JSON stops startup rather than silently charging a different amount.
 5. Commit the edit to main and redeploy/restart Alpha using your normal hosting workflow. Prices are read once when the process starts; editing the file does not update an already-running instance. Restart every instance with the same commit.
-6. Check `$aurashop pets`, `$auraitem byte-fox`, `$aurabag`, `$auraprices` and `$evo` as appropriate. The current in-bot price is authoritative; the stock table earlier in this guide lists initial defaults.
+6. Check `$aura shop pets`, `$auraitem byte-fox`, `$aurabag`, `$auraprices` and `$aura evo` as appropriate. The current in-bot price is authoritative; the stock table earlier in this guide lists initial defaults.
 
 `shop` uses product IDs. `bags` uses the target capacity, not extra slots: `24` upgrades a qualifying bag to 24 total slots. Each upgrade has its own full price. `evo` uses stage names and leaves quest requirements unchanged. `commands` uses the first command in each existing alias group; changing it applies to every alias in that group. It cannot make an arbitrary new command chargeable.
 
@@ -128,7 +128,7 @@ Previously completed purchases and ledger receipts are not rewritten; there are 
 ## Complete member walkthrough
 
 1. **Check your wallet:** `$balance`. Ask the owner to enable Aura if purchases say OFF. Earn through the existing `$daily`, `$quests` and redeem systems; see `$auraguide` for the economy rules.
-2. **Browse:** `$aurashop` shows the first eight items. Use `$aurashop all 2` for the next page. Categories are `frames`, `titles`, `themes`, `tools`, `pets`, `emblems`, `evo` and `legendary`, for example `$aurashop themes`.
+2. **Browse:** `$aura shop` shows the first eight items. Use `$aura shop all 2` for the next page. Categories are `frames`, `titles`, `themes`, `tools`, `pets`, `emblems`, `evo` and `legendary`, for example `$aura shop themes`.
 3. **Inspect first:** `$auraitem ruby-frame` shows price and requirements. `$aurapreview ruby-frame` produces a free preview, without buying it.
 4. **Buy:** `$aurabuy ruby-frame`. Items below 100,000 Aura charge immediately. For 100,000 or more, repeat with `--confirm` after reading the price. You need enough Aura, any required lifetime XP, one free inventory slot, and room below the item's quantity limit. A permanent item cannot be bought twice while owned.
 5. **Equip:** `$auraequip ruby-frame`, then `$auraprofile`. There is one cosmetic slot: choosing a title, emblem or theme replaces the currently equipped cosmetic, but retains ownership. `$auraequip none` restores the default. This changes Alpha's generated card, not your WhatsApp app appearance.
@@ -147,12 +147,12 @@ Previously completed purchases and ledger receipts are not rewritten; there are 
 - **Does changing prices delete anything?** No. Ownership, equipped items, bag capacity, bond and badges remain.
 - **Can pets earn money or attack members?** No; they are cosmetic companions.
 - **What is private?** `$transactions` sends your Aura transaction history to your personal chat. Shop browsing and card displays reply in the chat where you used the command; avoid putting private details in a tagline.
-- **Which inventory should I use?** These features use `$aurashop` and `$aurainventory`. The older `$shop` and `$inventory` belong to Alpha's separate legacy coin system.
+- **Which inventory should I use?** These features use `$aura shop` and `$aurainventory`. The older `$shop` and `$inventory` belong to Alpha's separate legacy coin system.
 - **Who has unlimited Aura?** Only the configured primary creator. The creator still follows bag and tool quantity limits. Admin status alone grants no unlimited balance.
 
-## Three commands to remember
+## One starting command
 
-All old commands still work. Start with `$aura`, `$aurashop` and `$evo`.
+All old commands still work. Members only need `$aura`: use `$aura shop` and `$aura evo` to reach shopping and progression.
 
 | Command | Example | Action |
 | --- | --- | --- |
@@ -166,17 +166,17 @@ All old commands still work. Start with `$aura`, `$aurashop` and `$evo`.
 | `$aura prices` | `$aura prices` | Current command fees |
 | `$aura guide` | `$aura guide 2` | Full member guide |
 | `$aura history` | `$aura history` | Private history |
-| `$aurashop` | `$aurashop legendary` | Illustrated catalogue |
-| `$aurashop buy` | `$aurashop buy ruby-frame --confirm` | Buy one item |
-| `$aurashop item` | `$aurashop item ruby-frame` | Price and requirements |
-| `$aurashop preview` | `$aurashop preview ruby-frame` | Free preview |
-| `$aurashop equip` | `$aurashop equip ruby-frame` | Equip an owned cosmetic |
-| `$aurashop use` | `$aurashop use pet-treat` | Consume a tool |
-| `$aurashop pet` | `$aurashop pet equip byte-fox` | Equip an owned pet |
-| `$aurashop salvage` | `$aurashop salvage ruby-frame --confirm` | Remove one item for the quoted refund |
-| `$aurashop collect` | `$aurashop collect` | Free daily card |
-| `$aurashop album` | `$aurashop album` | Album progress |
-| `$evo` | `$evo upgrade --confirm` | Show ranks or buy the next stage |
+| `$aura shop` | `$aura shop legendary` | Illustrated catalogue |
+| `$aura shop buy` | `$aura shop buy ruby-frame --confirm` | Buy one item |
+| `$aura shop item` | `$aura shop item ruby-frame` | Price and requirements |
+| `$aura shop preview` | `$aura shop preview ruby-frame` | Free preview |
+| `$aura shop equip` | `$aura shop equip ruby-frame` | Equip an owned cosmetic |
+| `$aura shop use` | `$aura shop use pet-treat` | Consume a tool |
+| `$aura shop pet` | `$aura shop pet equip byte-fox` | Equip an owned pet |
+| `$aura shop salvage` | `$aura shop salvage ruby-frame --confirm` | Remove one item for the quoted refund |
+| `$aura shop collect` | `$aura shop collect` | Free daily card |
+| `$aura shop album` | `$aura shop album` | Album progress |
+| `$aura evo` | `$aura evo upgrade --confirm` | Show ranks or buy the next stage |
 
 ## Evo and Evo-Legendary+ prestige
 
@@ -194,7 +194,7 @@ Evo is a permanent purchased rank track, separate from XP ranks and seasonal RP.
 
 At Evo, receive the purple **Evo Sovereign Frame** and permanent **Evo Sovereign** title. At Evo-Legendary+, receive the gold **Legendary+ Infinity Frame** and permanent **Evo-Legendary+ Sovereign** title. The frame is automatically equipped and appears in the upgrade announcement and profile. The title stays visible if another cosmetic is equipped. No tier grants moderation, owner authority, extra income or command-fee bypasses.
 
-Awarded frames occupy no bag slots and cannot be salvaged. Re-equip an earned reward with `$aurashop equip evo-sovereign-frame` or `$aurashop equip legendary-infinity-frame`. XP ranks remain unchanged.
+Awarded frames occupy no bag slots and cannot be salvaged. Re-equip an earned reward with `$aura shop equip evo-sovereign-frame` or `$aura shop equip legendary-infinity-frame`. XP ranks remain unchanged.
 
 Evo unlocks optional Nebula theme, Phoenix pet and Crest emblem purchases. Evo-Legendary+ unlocks Cosmos theme, Celestial Dragon pet and Sovereign Crown emblem purchases. These six optional items cost 50–800 million Aura and use bag slots. A rank purchase does not automatically purchase optional items or storage.
 
@@ -208,4 +208,24 @@ Purchases costing 100,000+ Aura, storage expansions and evolution need explicit 
 
 All prices remain provisional and editable in `config/aura-prices.json`. Creator gifts/custom coupons still share the 500,000 daily limit. Billion-Aura tiers are intentionally long-term goals; earning rates are unchanged.
 
-Validate with `npm run check` and `npm test`. Deploy all instances at one commit, then check `$aurashop`, `$aura bag`, `$aura guide 2` and `$evo`. The saved Aura activation setting is unchanged. Pause with `$aurasystem off` if needed. For rollback, use code that understands seven Evo stages, or reconcile stage-5/6 wallets before returning to older code: older versions directly index a five-stage array and cannot safely display new stages. Preserve all wallets and ledger records.
+Validate with `npm run check` and `npm test`. Deploy all instances at one commit, then check `$aura shop`, `$aura bag`, `$aura guide 2` and `$aura evo`. The saved Aura activation setting is unchanged. Pause with `$aurasystem off` if needed. For rollback, use code that understands seven Evo stages, or reconcile stage-5/6 wallets before returning to older code: older versions directly index a five-stage array and cannot safely display new stages. Preserve all wallets and ledger records.
+
+## Member sharing and social play
+
+Only `$aura` needs to be memorized. Use `$aura shop`, `$aura send`, `$aura thanks` and `$aura evo`. Help hides the full compatibility alias list; old commands remain functional.
+
+| Action | Preview / use | Confirm |
+| --- | --- | --- |
+| Send Aura | `$aura send @member 1000` | `$aura send @member 1000 --confirm` |
+| Gift one item | `$aura shop gift @member byte-fox` | `$aura shop gift @member byte-fox --confirm` |
+| Thank a member | `$aura thanks @member` | No financial charge or confirmation |
+
+Mention the recipient, or reply to their message. Aura transfers retain the 5% rounded-up fee, 10,000 per-transfer maximum and 20,000 daily outgoing principal limit. The primary creator can use the same `$aura send` interface for fee-free owner gifts under the existing combined 500,000 daily gift/coupon budget. Every send needs confirmation through this grouped interface. Failed private notifications do not roll back successful transfers; both users can read `$aura history` privately. Duplicate transfer events do not notify the recipient again.
+
+Item gifts transfer **one already-owned item** at no Aura fee, capped at ten per sender per Lagos day. The recipient must meet XP/Evo requirements, have a free slot, not already own a permanent item, and have room below tool quantity limits. A full bag, invalid recipient, locked item or repeated event cannot consume the sender's item. Equipped gifts are unequipped automatically. Gifts are final; there is no trade escrow, sale marketplace, borrowing or automatic recall.
+
+Pet friendship stays with each member rather than moving with the pet. Gifts do not equip themselves on the recipient. Original purchase costs follow the item, so gifting cannot reset its salvage value. Creator-origin items carry zero refundable cost. Prestige frames, awarded titles, ranks, XP, badges, storage upgrades and album cards cannot be transferred. Item gifts and received thanks have private ledger entries; public gift acknowledgements mention the two selected members without displaying balances or financial history.
+
+Use `$aura thanks @member` to spotlight a helpful member. Each sender can thank three different members per Lagos day, once per recipient daily. Ten received thanks grants **Community Favourite**. Sending five item gifts grants **Community Giver**. Both are cosmetic social badges: they pay no Aura or XP and grant no permissions. They are not proof of trustworthiness or moderation status. All sharing and thanks pause when Aura is OFF.
+
+The shop continues to use a local, bounded PNG renderer and a readable caption. These social actions do not introduce an image-generation provider, external payment service or new dependency.

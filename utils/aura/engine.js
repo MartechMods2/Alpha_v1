@@ -146,6 +146,11 @@ export function createAuraEngine(
         const recipient =
           (await tx.get("AuraWallets", target)) || fresh(target);
         recipient.balance += n;
+        if (
+          !Number.isSafeInteger(recipient.balance) ||
+          recipient.balance > 1e12
+        )
+          throw Error("Recipient Aura balance limit reached.");
         await tx.put("AuraWallets", recipient);
         await tx.put("AuraLedger", {
           _id: key("gift-receipt", actor, event),
@@ -177,6 +182,8 @@ export function createAuraEngine(
         w.transferred = (w.transferred || 0) + n;
         const targetW = (await tx.get("AuraWallets", target)) || fresh(target);
         targetW.balance += n;
+        if (!Number.isSafeInteger(targetW.balance) || targetW.balance > 1e12)
+          throw Error("Recipient Aura balance limit reached.");
         await tx.put("AuraWallets", targetW);
         await tx.put("AuraLedger", {
           _id: key("transfer-receipt", actor, event),
@@ -187,6 +194,118 @@ export function createAuraEngine(
           result: { reward: n, balance: targetW.balance },
         });
         return { spent: n + fee, fee, balance: w.balance };
+      }),
+    giftItem: (actor, target, item, event) =>
+      mutate(["item-gift", actor, event], actor, async (tx, w) => {
+        requireUser(target);
+        if (actor === target)
+          throw Error("Choose another member to receive your gift.");
+        const product = SHOP.find((x) => x.id === item);
+        if (!product)
+          throw Error(
+            "Only owned shop items can be gifted; prestige rewards, cards and badges stay with their earner.",
+          );
+        const recipient =
+          (await tx.get("AuraWallets", target)) || fresh(target);
+        recipient.items ||= {};
+        recipient.inventory ||= [];
+        recipient.badges ||= [];
+        initialiseInventory(recipient);
+        if (product.evo && (recipient.evo || 0) < product.evo)
+          throw Error(`Recipient must unlock ${EVO[product.evo].name} first.`);
+        if (product.xp && recipient.xp < product.xp && !owned(target))
+          throw Error(
+            `Recipient needs ${product.xp} lifetime XP for this item.`,
+          );
+        if (product.kind === "tool") {
+          if (!(w.items[item] > 0)) throw Error("You do not own this tool.");
+          if ((recipient.items[item] || 0) >= product.max)
+            throw Error("Recipient has reached this tool's quantity limit.");
+        } else {
+          if (!w.inventory.includes(item))
+            throw Error("You do not own this item.");
+          if (recipient.inventory.includes(item))
+            throw Error("Recipient already owns this item.");
+        }
+        requireInventorySpace(recipient);
+        const today = dayKey(now());
+        if (w.itemGiftDay !== today) {
+          w.itemGiftDay = today;
+          w.itemGiftsToday = 0;
+        }
+        if ((w.itemGiftsToday || 0) >= 10)
+          throw Error("Item gifts are limited to ten per Lagos day.");
+        w.itemGiftsToday = (w.itemGiftsToday || 0) + 1;
+        w.purchaseCosts ||= {};
+        recipient.purchaseCosts ||= {};
+        if (product.kind === "tool") {
+          const saved = w.purchaseCosts[item]?.shift?.();
+          const paid = owned(actor) ? 0 : (saved ?? product.basePrice);
+          w.items[item]--;
+          recipient.purchaseCosts[item] ||= Array(
+            recipient.items[item] || 0,
+          ).fill(product.basePrice);
+          recipient.purchaseCosts[item].push(paid);
+          recipient.items[item] = (recipient.items[item] || 0) + 1;
+        } else {
+          w.inventory = w.inventory.filter((id) => id !== item);
+          recipient.inventory.push(item);
+          recipient.purchaseCosts[item] = owned(actor)
+            ? 0
+            : (w.purchaseCosts[item] ?? product.basePrice);
+          delete w.purchaseCosts[item];
+          if (w.equipped === item) delete w.equipped;
+          if (w.pet === item) delete w.pet;
+          // Friendship belongs to the member, not the transferred pet.
+        }
+        w.itemsGiven = (w.itemsGiven || 0) + 1;
+        recipient.itemsReceived = (recipient.itemsReceived || 0) + 1;
+        if (w.itemsGiven >= 5)
+          w.badges = [...new Set([...w.badges, "Community Giver"])];
+        await tx.put("AuraWallets", recipient);
+        await tx.put("AuraLedger", {
+          _id: key("item-gift-received", actor, event),
+          actor: target,
+          kind: "item-gift-received",
+          delta: 0,
+          at: now(),
+          result: { item },
+        });
+        return { item, target, given: w.itemsGiven };
+      }),
+    thank: (actor, target, event) =>
+      mutate(["thanks", actor, event], actor, async (tx, w) => {
+        requireUser(target);
+        if (actor === target) throw Error("Thank another member.");
+        const today = dayKey(now());
+        if (w.thanksDay !== today) {
+          w.thanksDay = today;
+          w.thankedToday = [];
+        }
+        w.thankedToday ||= [];
+        if (w.thankedToday.includes(target))
+          throw Error("You already thanked this member today.");
+        if (w.thankedToday.length >= 3)
+          throw Error("Three thank-you messages per Lagos day.");
+        const recipient =
+          (await tx.get("AuraWallets", target)) || fresh(target);
+        w.thankedToday.push(target);
+        recipient.kudos = (recipient.kudos || 0) + 1;
+        recipient.badges ||= [];
+        if (recipient.kudos >= 10)
+          recipient.badges = [
+            ...new Set([...recipient.badges, "Community Favourite"]),
+          ];
+        await tx.put("AuraWallets", recipient);
+        await tx.put("AuraLedger", {
+          _id: key("thanks-received", actor, event),
+          actor: target,
+          kind: "thanks-received",
+          delta: 0,
+          at: now(),
+          result: { kudos: recipient.kudos },
+        });
+        return { target, kudos: recipient.kudos };
       }),
     buy: (actor, item, event) =>
       mutate(["buy", actor, event], actor, async (_tx, w) => {

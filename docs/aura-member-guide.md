@@ -19,31 +19,36 @@ $auraguide 2 — spending, shop and Evo
 
 ╭─ ✨ *AURA · SHOP & EVOLUTION*
 
-*REMEMBER THREE COMMANDS*
+*ONE COMMAND TO REMEMBER*
 $aura — profile, wallet and shortcuts
-$aurashop — illustrated catalogue, highest price first
-$evo — ranks, prices and permanent rewards
+$aura shop — illustrated catalogue, highest price first
+$aura evo — ranks, prices and permanent rewards
+
+*SHARE & CONNECT*
+$aura send @member 1000 — preview; add --confirm to send. Member fee: 5%; max 10,000 per transfer / 20,000 daily. Creator gifts use the existing 500,000 daily budget, without a fee.
+$aura shop gift @member byte-fox — preview; add --confirm to gift ONE owned item. No fee. Ten item gifts daily. Recipient needs space and XP/Evo requirements. Prestige rewards, ranks, badges and cards cannot be given away. Pet bond stays with its earner.
+$aura thanks @member — thank three different members daily. Ten received thanks grants Community Favourite. Five item gifts grants Community Giver. These badges grant no Aura or XP.
 
 *SHOP SHORTCUTS*
-$aurashop frames / titles / pets / evo / legendary
-$aurashop all 2 — next page
-$aurashop item ruby-frame — details
-$aurashop preview ruby-frame — free preview
-$aurashop buy ruby-frame --confirm
+$aura shop frames / titles / pets / evo / legendary
+$aura shop all 2 — next page
+$aura shop item ruby-frame — details
+$aura shop preview ruby-frame — free preview
+$aura shop buy ruby-frame --confirm
 Purchases of 100,000+ need --confirm. Lower-priced purchases charge immediately. XP and Evo gates still apply.
-$aurashop equip ruby-frame — one cosmetic slot
+$aura shop equip ruby-frame — one cosmetic slot
 $aura inventory — owned items
 $aura bag — capacity and next upgrade
 $aura bag expand --confirm — buy next capacity
 
 Starter bag: 20 slots. Each item/tool unit uses one slot; cards, badges and awarded prestige frames/titles use no slots. Unequipping does not free space. Normal capacities: 24 / 40 / 64 / 128. Evo storage: 10,000; ultimate storage: 9,999,999. These are total capacities, bought separately after rank unlock.
-$aurashop salvage <id> — preview; add --confirm to remove ONE item. Refund: 25% of the lower of current price and recorded purchase price; legacy items use conservative original prices. No profit from price changes.
+$aura shop salvage <id> — preview; add --confirm to remove ONE item. Refund: 25% of the lower of current price and recorded purchase price; legacy items use conservative original prices. No profit from price changes.
 
 *TOOLS, PETS & COLLECTIONS*
-$aurashop use tagline-ticket Hello community — up to 40 plain characters. Streak shields protect one missed daily day automatically.
-$aurashop pet equip byte-fox — owned companion
-$aurashop use pet-treat — +1 bond, three daily, maximum 100. Badge at ten. No financial/XP advantage.
-$aurashop collect — free daily card; eight cards award 2,500 Aura and Curator once. $aurashop album shows progress.
+$aura shop use tagline-ticket Hello community — up to 40 plain characters. Streak shields protect one missed daily day automatically.
+$aura shop pet equip byte-fox — owned companion
+$aura shop use pet-treat — +1 bond, three daily, maximum 100. Badge at ten. No financial/XP advantage.
+$aura shop collect — free daily card; eight cards award 2,500 Aura and Curator once. $aura shop album shows progress.
 
 *EVO RANKS*
 Spark: 0 Aura / 0 quests
@@ -53,7 +58,7 @@ Nova: 350,000 Aura / 50 quests
 Apex: 750,000 Aura / 100 quests
 Evo: 100,000,000 Aura / 200 quests
 Evo-Legendary+: 1,000,000,000 Aura / 500 quests
-$evo upgrade --confirm buys the next stage. Evo and Evo-Legendary+ award an exclusive frame and permanent title, automatically equipped. No moderation privileges or competitive power.
+$aura evo upgrade --confirm buys the next stage. Evo and Evo-Legendary+ award an exclusive frame and permanent title, automatically equipped. No moderation privileges or competitive power.
 
 *COMMAND FEES*
 $aura prices lists current fees and aliases. A priced request reserves Aura; failed work refunds it. Fees of 1,000+ need --confirm. Unlisted commands remain free. Provider quotas still apply.
