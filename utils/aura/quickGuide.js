@@ -3,7 +3,9 @@ export const auraQuickGuide = (p = "$") => `✨ *AURA — SIMPLE MEMBER GUIDE*
 Aura is Alpha's virtual currency. It is not real money and cannot be cashed out. Only the verified owner has unlimited Aura.
 
 *CHECK & EARN*
-• ${p}aura — your wallet and profile.
+• ${p}aura — your wallet and named profile. Every member can earn, spend, buy packs and share Aura while the system is ON.
+• ${p}aura name Your Name — set a free display nickname; use reset to restore your WhatsApp name. Names never grant privileges.
+• ${p}aura goals — daily progress, affordable cosmetics and free activities.
 • ${p}aura daily — 500 Aura once daily. Every 7th streak claim adds 2,000.
 • ${p}aura quests 1 — answer a quiz; use ${p}aura answer 1 2 for option 2. Two quizzes daily; each correct answer earns 750 Aura.
 • ${p}aura redeem CODE — claim a shared code. Drops: 8am, 2pm and 8pm Nigerian time, when Alpha is online. First valid claim wins 20,000; one scheduled win per person daily.
@@ -16,6 +18,9 @@ Aura is Alpha's virtual currency. It is not real money and cannot be cashed out.
 • ${p}aura inventory — your items. Bags start with 20 slots; ${p}aura bag shows upgrades. Cards and earned prestige rewards use no slots.
 • ${p}aura send @member 1000 — preview a transfer; add --confirm to send. Fee: 5%, rounded up. Maximum: 10,000 per transfer and 20,000 sent daily.
 • ${p}aura shop gift @member byte-fox — preview gifting ONE owned item; add --confirm to send. No fee; ten item gifts daily. Recipient needs space and required XP/Evo rank. Gifts are final.
+• ${p}aura gift @member 1000 — same wallet transfer as send; preview first, then add --confirm. Members spend their own Aura with the existing 5% fee and limits.
+• Creator only: ${p}aura gift @all 50000 — fresh group preview, then --confirm. Total must fit the shared 500,000 daily gift/coupon budget; use ${p}aura gift budget. Nobody is paid if any recipient fails validation.
+• ${p}aura collect / ${p}aura album — free daily collectible and your album.
 • ${p}aura thanks @member — thank three different people daily. Gift to five different members for Community Giver; receive thanks from ten different members for Community Favourite. Badges give no Aura or XP.
 
 *RANKS & RULES*

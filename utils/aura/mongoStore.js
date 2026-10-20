@@ -53,6 +53,22 @@ export function createAuraMongoStore(client, database = "MyBotDataDB") {
                 db.collection(name).findOne({ _id: id }, { session }),
               findOne: (name, query) =>
                 db.collection(name).findOne(query, { session }),
+              getMany: (name, ids) =>
+                db.collection(name).find({ _id: { $in: ids } }, { session, maxTimeMS: 5000 }).toArray(),
+              reservedTotals: async (actors) => {
+                const rows = await db.collection("AuraCharges").aggregate([
+                  { $match: { actor: { $in: actors }, status: "reserved" } },
+                  { $group: { _id: "$actor", total: { $sum: "$amount" } } },
+                ], { session, maxTimeMS: 5000 }).toArray();
+                return new Map(rows.map((row) => [row._id, row.total]));
+              },
+              putMany: (name, rows) => {
+                for (const row of rows) assertWallet(name, row);
+                if (!rows.length) return;
+                return db.collection(name).bulkWrite(rows.map((row) => ({
+                  replaceOne: { filter: { _id: row._id }, replacement: row, upsert: true },
+                })), { session, ordered: true });
+              },
               reservedTotal: async (actor) => {
                 const row = await db
                   .collection("AuraCharges")

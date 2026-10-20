@@ -1,3 +1,5 @@
+import { auraDisplayName, cleanAuraName } from "../../utils/aura/displayName.js";
+import { auraGiftRoster } from "../../utils/aura/groupGiftRoster.js";
 import { PACKS, packStock } from "../../utils/aura/packs.js";
 import { AuraUserError, publicAuraError } from "../../utils/aura/errors.js";
 import { isUnexpired } from "../../utils/aura/walletSafety.js";
@@ -33,8 +35,21 @@ import { participantJids } from "../../utils/groupParticipants.js";
 const help =
   "Aura has no cash value. Earn with $daily, $quests, ranked wins and scheduled $redeem codes. Spend with $aurashop or priced commands. Only the primary creator has unlimited Aura. Wallets are global; old virtual coins remain separate. Use $auraprices, $auratransactions, $auraprofile, $aurarank, $evo, $aurarules.";
 const handler = async (sock, msg, from, args, info) => {
+  let displayName = auraDisplayName({}, info, msg);
+  const send = info.sendMessageWTyping;
+  info = { ...info, sendMessageWTyping: (to, payload, ...options) => {
+    // Preserve private delivery; identify public results below images as well.
+    if (to === from && payload && typeof payload === "object") {
+      const field = typeof payload.caption === "string" ? "caption" :
+        typeof payload.text === "string" ? "text" : null;
+      if (field && !payload[field].startsWith(`👤 ${displayName}\n`) &&
+          !payload[field].includes(`Member: ${displayName}\n`))
+        payload = { ...payload, [field]: `👤 ${displayName}\n\n${payload[field]}` };
+    }
+    return send(to, payload, ...options);
+  } };
   const reply = (text) =>
-    info.sendMessageWTyping(from, { text }, { quoted: msg });
+    info.sendMessageWTyping(from, { text: `👤 ${displayName}\n\n${text}` }, { quoted: msg });
   try {
     const routes = {
       aura: {
@@ -42,6 +57,11 @@ const handler = async (sock, msg, from, args, info) => {
         evo: "evo",
         daily: "daily",
         send: "aurasend",
+        gift: "auragive",
+        name: "auraname",
+        goals: "auragoals",
+        collect: "auracollect",
+        album: "auracollection",
         thanks: "aurathanks",
         help: "auraquickhelp",
         quests: "quests",
@@ -87,6 +107,9 @@ const handler = async (sock, msg, from, args, info) => {
       args = args.slice(1);
       info = { ...info, command: routed };
     }
+    // Member gifts debit their own wallet through the existing transfer rules.
+    if (info.command === "auragive" && !["@all", "budget"].includes(args[0]))
+      info = { ...info, command: "aurasend" };
     if (info.command === "aura" && args.length)
       return reply(
         "Start with $aura. Use $aura shop | send | thanks | daily | quests | inventory | bag | guide | evo.",
@@ -131,6 +154,8 @@ const handler = async (sock, msg, from, args, info) => {
     }
     const readOnly = [
       "aura",
+      "auragive",
+      "auragoals",
       "balance",
       "auraprofile",
       "aurarank",
@@ -164,6 +189,63 @@ const handler = async (sock, msg, from, args, info) => {
       cmd = info.command;
     const event = key(from, msg.key?.id, cmd);
     if (!msg.key?.id) throw new AuraUserError("Missing message identity.");
+    if (cmd === "auragive") {
+      if (!owner)
+        throw new AuraUserError("Only the configured creator can gift @all or view the creator budget. Members can use $aura gift @member 1000.");
+      if (args[0] === "budget") {
+        if (args.length !== 1) throw new AuraUserError("Use $aura gift budget.");
+        const budget = await aura.giftBudget(actor);
+        return reply(`🎁 Creator gift/coupon budget · ${budget.day} (Lagos)\n${budget.remaining.toLocaleString("en-US")} / ${budget.limit.toLocaleString("en-US")} Aura remaining.\n$aura gift @all 50000 — group preview. No Aura sent without confirmation.`);
+      }
+      if (!info.isGroup)
+        throw new AuraUserError("Gift @all is available only inside a group.");
+      if (args.length < 2 || args.length > 3 || !/^\d{1,9}$/.test(args[1]) ||
+          (args[2] && args[2] !== "--confirm"))
+        throw new AuraUserError("Use $aura gift @all 50000 to preview, then add --confirm.");
+      if (!(await isAuraEnabled(auraStore)))
+        return reply("Aura is OFF. Group gifts are paused.");
+      const roster = await auraGiftRoster(sock, from, aura.owned);
+      if (roster.unverified)
+        throw new AuraUserError(`${roster.unverified} member identities could not be verified. No Aura sent. Refresh the group after Alpha reconnects; @all requires every eligible member to be identifiable.`);
+      if (args[2] !== "--confirm") {
+        const r = await aura.previewGroupGift(actor, from, roster.targets, args[1]);
+        return reply(alphaPanel({
+          icon: "🎁", title: "GROUP AURA GIFT · PREVIEW",
+          lines: [
+            `${r.count} members × ${r.amount.toLocaleString("en-US")} Aura = ${r.total.toLocaleString("en-US")} Aura`,
+            `Excluded: Alpha and creator (${roster.excluded} roster records). Daily budget remaining: ${r.remaining.toLocaleString("en-US")}.`,
+            "No Aura sent yet. All recipients are credited together, or nobody is. Preview expires in 5 minutes; roster changes require a new preview.",
+            "No mass mentions or private-message flood. Each member gets a private history receipt.",
+          ],
+          footer: `$aura gift @all ${r.amount} --confirm`,
+        }));
+      }
+      const r = await aura.giftGroup(actor, from, roster.targets, args[1], event);
+      return reply(`🎁 ${r.duplicate ? "Already processed — no extra Aura sent" : "Group gift complete"}\n${r.count} members received ${r.reward.toLocaleString("en-US")} Aura each. Total: ${r.total.toLocaleString("en-US")}.\nBudget remaining at receipt: ${r.remaining.toLocaleString("en-US")} Aura.\nReceipt: ${r.receipt}\nMembers: $aura to see your balance; $aura history for your private receipt.`);
+    }
+    if (cmd === "auraname") {
+      if (!args.length)
+        return reply("Set your Aura display name: $aura name Your Name\nUse $aura name reset to restore your WhatsApp display name. Names grant no permissions.");
+      const r = await aura.setNickname(actor, args.join(" "), event);
+      displayName = r.nickname || auraDisplayName({}, info, msg);
+      return reply(`Aura name updated: ${displayName}. View $aura. No Aura charged.`);
+    }
+    if (cmd === "auragoals") {
+      const w = await aura.profile(actor);
+      displayName = auraDisplayName(w, info, msg);
+      const affordable = SHOP.filter((x) => !w.inventory?.includes(x.id) &&
+        x.kind !== "tool" && (!x.evo || w.evo >= x.evo) &&
+        (!x.xp || w.xp >= x.xp) && x.price <= w.balance).slice(-3);
+      return reply(alphaPanel({ icon: "🎯", title: "YOUR NEXT AURA MOVES",
+        lines: [
+          `Balance: ${owner ? "∞ · CREATOR" : w.balance.toLocaleString("en-US")} Aura · ${inventoryStatus(w).free} free bag slots`,
+          w.dailyDay === dayKey() ? "Daily claimed. Try $aura quests 1 or 2." : "Daily available: $aura daily",
+          `Next Evo: ${EVO[w.evo + 1] ? EVO[w.evo + 1].name + " · " + Math.max(0, EVO[w.evo + 1].quests - w.quests) + " more completed quests (or see packs)" : "Top Evo unlocked"}`,
+          affordable.length ? "Affordable cosmetics: " + affordable.map((x) => x.id).join(", ") + ". Preview before buying; space is still required." : "Save for your next item: $aura shop",
+          "Free fun: $aura collect · $aura album · $aura thanks @member",
+        ], footer: "$aura help · $aura gift @member 1000 — share from your wallet",
+      }));
+    }
     if (["aurarules", "aurahelp"].includes(cmd))
       return reply(
         help +
@@ -183,6 +265,7 @@ const handler = async (sock, msg, from, args, info) => {
       );
     if (["aura", "balance", "auraprofile", "aurarank"].includes(cmd)) {
       const w = await aura.profile(actor);
+      displayName = auraDisplayName(w, info, msg);
       const current =
         w.season === new Date(Date.now() + 3600000).toISOString().slice(0, 7)
           ? w.rp || 0
@@ -191,6 +274,7 @@ const handler = async (sock, msg, from, args, info) => {
         icon: "✨",
         title: "YOUR AURA PROFILE",
         lines: [
+          `Member: ${displayName}`,
           `Aura: ${owner ? "∞ · CREATOR" : w.balance}`,
           ...(w.heldAura > 0
             ? [`Reserved fees: ${w.heldAura} Aura (not spendable)`]
@@ -217,7 +301,7 @@ const handler = async (sock, msg, from, args, info) => {
       });
       return info.sendMessageWTyping(
         from,
-        await auraProfilePayload(sock, info.senderJid, caption, w.equipped),
+        await auraProfilePayload(sock, info.senderJid, caption, w.equipped, displayName),
         { quoted: msg },
       );
     }
@@ -239,7 +323,7 @@ const handler = async (sock, msg, from, args, info) => {
               rows
                 .map(
                   (w, i) =>
-                    `${i + 1}. Member …${w._id.split("@")[0].slice(-4)} · ${xpRank(w.xp)[1]} · ${w.xp} XP`,
+                    `${i + 1}. ${cleanAuraName(w.nickname) || "Alpha member"} · ${xpRank(w.xp)[1]} · ${w.xp} XP`,
                 )
                 .join("\n") +
               "\nCurrent group members only; creator excluded. XP board, not a wallet-rich list."
