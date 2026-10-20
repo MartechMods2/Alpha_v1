@@ -595,3 +595,42 @@ test("unexpected store errors are redacted from Aura group replies", async () =>
     delete globalThis.__auraFlow;
   }
 });
+
+test("pack routes preview without spending, require activation and confirmation, and buy exactly once", async () => {
+  const fixture = setup();
+  await fixture.store.put("AuraWallets", {
+    ...(await fixture.engine.profile(a)), balance: 20000000,
+  });
+  globalThis.__auraFlow = fixture;
+  try {
+    const command = await load("../commands/public/aura.js");
+    const sent = [];
+    let sequence = 0;
+    const run = async (args, id = "pack-" + ++sequence) =>
+      command.handler({}, { key: { id } }, "12345@g.us", args, {
+        senderJid: a, command: "aura", isGroup: true, isOwner: true,
+        sendMessageWTyping: async (_, payload) => sent.push(payload),
+      });
+    await run(["shop", "packs"]);
+    assert.match(sent.at(-1).text, /Infinity Pack/);
+    await run(["shop", "pack", "infinity"]);
+    assert.match(sent.at(-1).text, /--confirm/);
+    assert.equal((await fixture.engine.profile(a)).balance, 20000000);
+    await run(["shop", "pack", "infinity", "--confirm"]);
+    assert.match(sent.at(-1).text, /OFF/);
+    assert.equal((await fixture.engine.profile(a)).balance, 20000000);
+    await fixture.store.put("AuraSettings", { _id: "economy", enabled: true });
+    await run(["shop", "pack", "infinity"]);
+    assert.equal((await fixture.engine.profile(a)).balance, 20000000);
+    await run(["shop", "pack", "infinity", "--confirm"], "same-pack-event");
+    assert.match(sent.at(-1).text, /Pack unlocked/);
+    assert.equal((await fixture.engine.profile(a)).balance, 10000001);
+    await run(["shop", "pack", "infinity", "--confirm"], "same-pack-event");
+    assert.match(sent.at(-1).text, /Already processed/);
+    await run(["shop", "pack", "infinity", "--confirm"]);
+    assert.match(sent.at(-1).text, /already owned/);
+    assert.equal((await fixture.engine.profile(a)).balance, 10000001);
+  } finally {
+    delete globalThis.__auraFlow;
+  }
+});
