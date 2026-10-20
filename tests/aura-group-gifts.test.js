@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import sharp from "sharp";
+import { auraProfilePayload } from "../utils/aura/profile.js";
 import { setup } from "./helpers/auraStore.js";
 import { cleanAuraName, auraDisplayName, escapeAuraSvg } from "../utils/aura/displayName.js";
 import { auraGiftRoster } from "../utils/aura/groupGiftRoster.js";
@@ -137,4 +139,57 @@ test("activation changes and budget races are checked again on confirmation", as
   ]);
   assert.equal(r.filter((x) => x.status === "fulfilled").length, 1);
   assert.equal((await engine.giftBudget(owner)).remaining, 200000);
+});
+
+test("LID-only rosters use known mappings with bounded lookup concurrency", async () => {
+  let active = 0, peak = 0;
+  const participants = Array.from({ length: 12 }, (_, i) => ({ id: (10000000 + i) + "@lid" }));
+  const sock = { groupMetadata: async () => ({ participants }),
+    signalRepository: { lidMapping: { getPNForLID: async (jid) => {
+      active++; peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      active--;
+      return "2348" + jid.split("@")[0] + "@s.whatsapp.net";
+    } } } };
+  const result = await auraGiftRoster(sock, group, () => false);
+  assert.equal(result.targets.length, 12);
+  assert.equal(result.unverified, 0);
+  assert.ok(peak <= 4);
+});
+test("named profile art adds a readable label strip and preserves the accessible caption", async () => {
+  const sock = { profilePictureUrl: async () => { throw Error("private photo"); } };
+  const base = await auraProfilePayload(sock, a, "Member: Ana & Co");
+  const named = await auraProfilePayload(sock, a, "Member: Ana & Co", undefined, "Ana & Co");
+  const first = await sharp(base.image).metadata();
+  const second = await sharp(named.image).metadata();
+  assert.equal(second.height, first.height + 68);
+  assert.equal(named.caption, "Member: Ana & Co");
+});
+test("database failure after batch wallet writes rolls back balances, budget and preview consumption", async () => {
+  const { engine, store } = await enabled();
+  await engine.previewGroupGift(owner, group, [a,b], 1);
+  const original = store.transaction.bind(store);
+  store.transaction = (fn) => original((tx) => fn({
+    ...tx,
+    getMany: async (name, ids) => {
+      const rows = [];
+      for (const id of ids) {
+        const row = await tx.get(name, id);
+        if (row) rows.push(row);
+      }
+      return rows;
+    },
+    reservedTotals: async () => new Map(),
+    putMany: async (name, rows) => {
+      if (name === "AuraLedger") throw Error("simulated batch failure");
+      for (const row of rows) await tx.put(name, row);
+    },
+  }));
+  await assert.rejects(engine.giftGroup(owner, group, [a,b], 1, "failed"), /simulated/);
+  assert.equal((await engine.profile(a)).balance, 0);
+  assert.equal((await engine.profile(b)).balance, 0);
+  assert.equal((await engine.giftBudget(owner)).remaining, 500000);
+  store.transaction = original;
+  await engine.giftGroup(owner, group, [a,b], 1, "retry");
+  assert.equal((await engine.profile(a)).balance, 1);
 });
