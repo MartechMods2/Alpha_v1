@@ -1,3 +1,4 @@
+import { isAuraEnabled } from "./activation.js";
 import { aura, auraStore } from "../../db/auraData.js";
 import { getSock } from "../../core/socketRef.js";
 import messageQueue from "../../queue/messageQueue.js";
@@ -20,6 +21,7 @@ export async function checkAuraSchedules(deps = {}) {
       50,
     );
     for (const row of stale) await engine.settle(row.actor, row._id, false);
+    if (!(await isAuraEnabled(store))) return;
     const pending = await store.find("AuraDuels", { state: "result" }, {}, 20);
     for (const row of pending)
       await engine

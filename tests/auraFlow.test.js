@@ -49,6 +49,7 @@ test("learning quests are stable on replay and daily slots use different questio
 test("commands keep gifts creator-only, coupons and transaction histories private", async () => {
   const fixture = setup();
   fixture.setTime(new Date());
+  await fixture.store.put("AuraSettings", { _id: "economy", enabled: true });
   globalThis.__auraFlow = fixture;
   try {
     const command = await load("../commands/public/aura.js"),
@@ -96,6 +97,7 @@ test("commands keep gifts creator-only, coupons and transaction histories privat
 test("ranked invitation requires opponent consent; one verified result credits once", async () => {
   const fixture = setup();
   fixture.setTime(new Date());
+  await fixture.store.put("AuraSettings", { _id: "economy", enabled: true });
   globalThis.__auraFlow = fixture;
   try {
     const command = await load("../commands/group/members/auraArena.js");
@@ -158,6 +160,7 @@ test("season rollover preserves Aura, XP and previous best while first loss is p
 });
 
 test("drop scheduler posts one shared code once per group and recovers stale reservations", async () => {
+  let enabled = true;
   const instant = new Date("2026-10-20T07:01:00Z"),
     sent = [],
     recovered = [];
@@ -172,10 +175,12 @@ test("drop scheduler posts one shared code once per group and recovers stale res
   const store = {
     find: async (name) =>
       name === "AuraCharges" ? [{ actor: a, _id: "stale" }] : [],
-    get: async (name) =>
-      name === "AuraSettings"
-        ? { groups: ["12345@g.us", "malformed"] }
-        : coupon,
+    get: async (name, id) =>
+      id === "economy"
+        ? { enabled }
+        : name === "AuraSettings"
+          ? { groups: ["12345@g.us", "malformed"] }
+          : coupon,
     transaction: async (fn) =>
       fn({ get: async () => coupon, put: async () => {} }),
   };
@@ -215,6 +220,14 @@ test("drop scheduler posts one shared code once per group and recovers stale res
     assert.equal(sent[0].to, "12345@g.us");
     assert.match(sent[0].text, /0123456789ABCDEF/);
     assert.equal(recovered.length, 2);
+    enabled = false;
+    await checkAuraSchedules(deps);
+    assert.equal(sent.length, 1, "disabled economy never broadcasts new drops");
+    assert.equal(
+      recovered.length,
+      3,
+      "stale reservations still recover while disabled",
+    );
   } finally {
     delete globalThis.__auraFlow;
   }

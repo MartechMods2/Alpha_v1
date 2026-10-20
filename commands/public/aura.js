@@ -1,3 +1,5 @@
+import { isAuraEnabled, setAuraEnabled } from "../../utils/aura/activation.js";
+import { auraMemberGuide } from "../../utils/aura/memberGuide.js";
 import { auraProfilePayload } from "../../utils/aura/profile.js";
 import { aura, auraStore } from "../../db/auraData.js";
 import { auraIdentity } from "../../utils/aura/identity.js";
@@ -19,6 +21,65 @@ const handler = async (sock, msg, from, args, info) => {
   const reply = (text) =>
     info.sendMessageWTyping(from, { text }, { quoted: msg });
   try {
+    const command = info.command;
+    const pages = auraMemberGuide(info.prefix || "$");
+    if (command === "auraguide") {
+      const page = String(args[0] || "1");
+      if (!/^[1-3]$/.test(page))
+        return reply("Use $auraguide 1, 2 or 3 for the complete member guide.");
+      return reply(pages[Number(page) - 1]);
+    }
+    if (command === "aurasystem") {
+      const mode = String(args[0] || "status").toLowerCase();
+      if (mode === "status")
+        return reply(
+          `Aura is ${(await isAuraEnabled(auraStore)) ? "ON" : "OFF"}. Only the creator can change it. Use $auraguide for the member guide.`,
+        );
+      if (!["on", "off"].includes(mode))
+        return reply("Usage: $aurasystem on | off | status");
+      const creator = await auraIdentity(sock, info);
+      await setAuraEnabled(auraStore, mode === "on", creator, aura.owned);
+      return reply(
+        mode === "on"
+          ? "✨ Aura is now ON globally. Run $auraannounce in this group to explain the system; choose drop groups with $auradrops on."
+          : "Aura is now OFF globally. No new Aura fees, rewards, purchases, transfers, duels or drops. Balances are retained; existing reservations can settle/refund.",
+      );
+    }
+    if (command === "auraannounce") {
+      const creator = await auraIdentity(sock, info);
+      if (!aura.owned(creator) || !info.isGroup)
+        throw Error(
+          "Only the creator can announce the Aura guide inside a group.",
+        );
+      await reply(
+        `✨ *AURA SYSTEM: ${(await isAuraEnabled(auraStore)) ? "ON" : "OFF"}*\nHere is the full member guide in three parts. Read with $auraguide anytime.`,
+      );
+      for (const page of pages) await reply(page);
+      return;
+    }
+    const readOnly = [
+      "aura",
+      "balance",
+      "auraprofile",
+      "aurarank",
+      "auraboard",
+      "aurabadges",
+      "aurarules",
+      "aurahelp",
+      "auraprices",
+      "prices",
+      "auratransactions",
+      "transactions",
+      "aurashop",
+      "aurainventory",
+      "auraappeal",
+      "auraappeals",
+      "aurarefund",
+    ];
+    if (!readOnly.includes(command) && !(await isAuraEnabled(auraStore)))
+      return reply(
+        "Aura is currently OFF. No currency is earned or spent. The creator can activate it with $aurasystem on; read $auraguide.",
+      );
     const actor = await auraIdentity(sock, info),
       owner = aura.owned(actor),
       cmd = info.command;
@@ -31,7 +92,7 @@ const handler = async (sock, msg, from, args, info) => {
       );
     if (["auraprices", "prices"].includes(cmd))
       return reply(
-        "✨ *AURA PRICES — per successful command*\n" +
+        "✨ *AURA PRICES — apply only while Aura is ON*\n" +
           PRICES.map(
             (x) => `${x.commands.map((c) => "$" + c).join(" / ")} — ${x.price}`,
           ).join("\n") +
@@ -352,6 +413,9 @@ const handler = async (sock, msg, from, args, info) => {
 };
 export default () => ({
   cmd: [
+    "aurasystem",
+    "auraguide",
+    "auraannounce",
     "aurabadges",
     "auraboard",
     "aura",

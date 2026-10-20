@@ -2,15 +2,23 @@
 
 Aura is virtual currency with no cash value, purchases, withdrawals or cash betting. Only the FIRST number in the existing private `MY_NUMBER` environment setting is the creator with unlimited spending and gifting authority. Do not post the setting or credentials in a group. Group ownership, admin status, moderator status, message sender names and the generic `isOwner` flag do not grant unlimited Aura. Verified WhatsApp phone/LID mappings unify each member's global wallet; unresolved identities fail safely.
 
+## Activation — OFF by default
+
+Aura starts OFF when no activation record exists. Only the primary creator can run `$aurasystem on` or `$aurasystem off`. The setting is global and persists across restarts. Anyone can run `$aurasystem status`.
+
+While OFF, ordinary commands use their normal permissions and provider quotas WITHOUT Aura fees. New Aura earnings, coupon redemption, gifts, transfers, purchases, Evo upgrades, ranked duels and drop broadcasts pause. Balances remain saved. Existing reservations can still settle/refund, and private journals, appeals and creator refunds remain accessible. Already-admitted operations may finish after a toggle; deactivation does not erase completed transactions. A database failure to read activation blocks a potentially priced request safely rather than silently bypassing an enabled economy.
+
+`$auraguide 1`, `$auraguide 2` and `$auraguide 3` explain the full system to members, including while OFF. The creator can run `$auraannounce` inside a group to post a status introduction and all three guide pages. This is an explicit announcement command, never an automatic broadcast to every group.
+
 ## Before deployment
 
 1. Use a transaction-capable MongoDB deployment (for example, an Atlas replica set). Existing `MONGODB_KEY` is reused. Aura refuses unsafe writes if the server cannot run transactions; it does not fall back to independent debit/credit updates. Indexes are created automatically. The database account needs normal collection/index creation and transactional read/write permission.
 2. Confirm the FIRST international number in `MY_NUMBER` is your creator account. Only this account can mint gifts/coupons, configure drops or review penalties. Other numbers in the older setting do not receive Aura creator powers.
 3. Deploy the commit and restart Alpha. Existing startup confirmation will identify the deployed commit. MongoDB and live WhatsApp still require a deployment smoke test.
-4. In EACH group you select, run `$auradrops on` yourself. Use `$auradrops off` to remove a group. Nothing is broadcast to all groups by default. At most 20 groups are selected.
+4. Run `$aurasystem on` yourself when ready. Then, in EACH group you select, run `$auradrops on` yourself. Use `$auradrops off` to remove a group. Nothing is broadcast to all groups by default. At most 20 groups are selected.
 5. As an ordinary test member, run `$daily`, `$balance`, `$quests 1`, and `$prices`. Then test one cheap command, its insufficient-funds response and a provider failure refund. Test a small owner gift before distributing a large amount.
 
-No new API keys or payment integration are required. Existing provider keys/quotas still apply. Normal transport, media and safety limits remain in force for the creator too. To suspend automatic drops, remove every selected group using `$auradrops off`. Aura prices are maintained in `utils/aura/policy.js`.
+No new API keys or payment integration are required. Existing provider keys/quotas still apply. Normal transport, media and safety limits remain in force for the creator too. To pause the entire economy, use `$aurasystem off`. To remove a selected drop group while the economy is ON, use `$auradrops off`. Aura prices are maintained in `utils/aura/policy.js`.
 
 ## What remains separate
 
@@ -42,6 +50,8 @@ Transfers without `--confirm` show the fee and total debit first. The creator us
 Drop creation and delivery claims are persisted. Reconnects and restarts do not regenerate a slot's prize. A five-minute dispatch window tolerates normal scheduling delay; missed windows are skipped, not released in a burst. The bot must be running and connected to deliver a drop. Delivery is claimed before sending, so an uncertain/failed send is not automatically reposted; no claim of guaranteed exactly-once WhatsApp delivery is made.
 
 ## Member commands
+
+Activation: `$aurasystem on` / `$aurasystem off` (creator only); `$aurasystem status` (everyone). Full guide: `$auraguide 1`, `2` or `3`. Group introduction: `$auraannounce` (creator only).
 
 | Command                                          | Example / result                                                                         |
 | ------------------------------------------------ | ---------------------------------------------------------------------------------------- |

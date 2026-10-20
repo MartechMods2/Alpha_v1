@@ -1,5 +1,9 @@
 import { key, priceFor } from "./policy.js";
-export function createAuraChargeRunner({ getEngine, identify }) {
+export function createAuraChargeRunner({
+  getEngine,
+  identify,
+  isEnabled = async () => true,
+}) {
   return async (handler, sock, msg, from, args, info) => {
     const price = priceFor(info.command);
     if (!price) return handler(sock, msg, from, args, info);
@@ -7,6 +11,7 @@ export function createAuraChargeRunner({ getEngine, identify }) {
       info.sendMessageWTyping(from, { text }, { quoted: msg });
     let engine, actor, charge;
     try {
+      if (!(await isEnabled())) return handler(sock, msg, from, args, info);
       engine = await getEngine();
       actor = await identify(sock, info);
       // Only the primary configured creator bypasses cost, never isOwner/isModerator flags.

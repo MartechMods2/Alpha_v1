@@ -187,7 +187,7 @@ const loadCommands = async (dirPath, commandsObj, cmdDetails) => {
 				console.warn(`⚠️ Warning: ${file} has invalid handler`);
 				continue;
 			}
-			cmdDetails.push({ cmd: cmd_info.cmd, desc: cmd_info.desc + (priceFor(cmd_info.cmd[0]) ? ` · ${priceFor(cmd_info.cmd[0]).price} Aura per successful use` : ""), usage: cmd_info.usage, source: path.relative(path.join(__dirname, ".."), filePath).replaceAll("\\", "/") });
+			cmdDetails.push({ cmd: cmd_info.cmd, desc: cmd_info.desc + (priceFor(cmd_info.cmd[0]) ? ` · ${priceFor(cmd_info.cmd[0]).price} Aura when enabled, per successful use` : ""), usage: cmd_info.usage, source: path.relative(path.join(__dirname, ".."), filePath).replaceAll("\\", "/") });
 			for (const c of cmd_info.cmd) commandsObj[c] = wrapCommandHandler(cmd_info.handler, c);
 		} catch (error) {
 			commandLoadErrors.push({ file, error: error.message });

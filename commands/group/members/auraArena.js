@@ -1,3 +1,4 @@
+import { isAuraEnabled } from "../../../utils/aura/activation.js";
 import { randomUUID } from "node:crypto";
 import { aura, auraStore } from "../../../db/auraData.js";
 import { auraIdentity } from "../../../utils/aura/identity.js";
@@ -10,6 +11,10 @@ const handler = async (sock, msg, from, args, info) => {
   const reply = (text) =>
     info.sendMessageWTyping(from, { text }, { quoted: msg });
   try {
+    if (!(await isAuraEnabled(auraStore)))
+      return reply(
+        "Aura is currently OFF. Ranked Aura duels are paused; no points or currency are deducted.",
+      );
     if (!info.isGroup) throw Error("Aura ranked duels require a group.");
     const actor = await auraIdentity(sock, info),
       id = key("duel-group", from),
