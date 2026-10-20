@@ -1,3 +1,4 @@
+import { PACKS, grantPack } from "./packs.js";
 import { AuraUserError } from "./errors.js";
 import { assertAuraWallet, isUnexpired } from "./walletSafety.js";
 import { salvageRefund } from "./refunds.js";
@@ -128,6 +129,16 @@ export function createAuraEngine(
       requireUser(id);
       return (await store.get("AuraWallets", id)) || fresh(id);
     },
+    buyPack: (actor, packId, event) =>
+      mutate(["pack", actor, event], actor, async (_tx, wallet) => {
+        const pack = PACKS.find((row) => row.id === packId);
+        if (!pack) throw new AuraUserError("Choose a pack from $aura shop packs.");
+        if (wallet.packs?.includes(pack.id))
+          throw new AuraUserError("This one-time pack is already owned.");
+        spend(wallet, pack.price, actor);
+        const result = grantPack(wallet, pack);
+        return { ...result, spent: owned(actor) ? 0 : pack.price, balance: wallet.balance };
+      }),
     history: (id) => store.find("AuraLedger", { actor: id }, { at: -1 }, 10),
     daily: (id) =>
       mutate(["daily", id, dayKey(now())], id, async (_tx, w) => {

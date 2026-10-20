@@ -10,6 +10,7 @@ Aura is Alpha's virtual currency. It is not real money and cannot be cashed out.
 
 *SHOP & SHARE*
 • ${p}aura shop — see items and current prices.
+• ${p}aura shop packs — one-time Pro, Legendary Pro+ and Infinity bundles. ${p}aura shop pack infinity previews everything before buying. Bundles include Evo and storage, bypass individual XP/quest gates, and give no admin powers. New bundled items have no salvage refund.
 • ${p}aura shop buy byte-fox — buy an item. Purchases of 100,000+ need --confirm.
 • ${p}aura shop equip ruby-frame — equip an owned cosmetic.
 • ${p}aura inventory — your items. Bags start with 20 slots; ${p}aura bag shows upgrades. Cards and earned prestige rewards use no slots.
