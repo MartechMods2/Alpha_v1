@@ -1,3 +1,4 @@
+import { applyPrices } from "./pricing.js";
 export const BAG_TIERS = [
   { slots: 8, price: 0 },
   { slots: 16, price: 5000 },
@@ -5,6 +6,7 @@ export const BAG_TIERS = [
   { slots: 40, price: 25000 },
   { slots: 64, price: 50000 },
 ];
+applyPrices(BAG_TIERS.slice(1), "bags", (row) => row.slots);
 export const inventoryUsed = (w) =>
   new Set(w.inventory || []).size +
   Object.values(w.items || {}).reduce(

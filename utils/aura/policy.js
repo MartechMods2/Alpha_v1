@@ -1,3 +1,4 @@
+import { applyPrices } from "./pricing.js";
 import { AI_FEATURE_COMMANDS } from "../alphaFeatureCatalog.js";
 import { createHash } from "node:crypto";
 export const dayKey = (now = new Date()) =>
@@ -275,6 +276,9 @@ export const PRICES = [
     kind: "media",
   },
 ];
+applyPrices(SHOP, "shop", (row) => row.id);
+applyPrices(EVO.slice(1), "evo", (row) => row.name);
+applyPrices(PRICES, "commands", (row) => row.commands[0]);
 export const priceFor = (command) =>
   PRICES.find((row) => row.commands.includes(command));
 export const scheduledSlot = (now = new Date()) => {
