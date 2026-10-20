@@ -118,6 +118,7 @@ const handler = async (sock, msg, from, args, info) => {
 				messages: [{ role: "user", content: prompt.slice(0, 5000) }],
 			});
 			providerSucceeded = true;
+			if (text) info.auraSuccess?.();
 			return reply(applyAlphaTextStyle(text || "Alpha returned no answer.", prefs.textStyle));
 		} catch (error) {
 			if (quotaClaim?.charged && !providerSucceeded) {

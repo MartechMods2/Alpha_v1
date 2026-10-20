@@ -1,3 +1,5 @@
+import { runAuraCommand } from "./aura/runtime.js";
+import { priceFor } from "./aura/policy.js";
 import fs from "fs";
 import util from "util";
 import path from "path";
@@ -86,13 +88,17 @@ const withAlphaPresentation = async (info, command) => {
 };
 
 const wrapCommandHandler = (originalHandler, registeredCommand) => async (sock, msg, from, args, info = {}) => {
-	const currentCommand = String(info.command || registeredCommand).toLowerCase();
+	const registered = String(registeredCommand).toLowerCase();
+ // Preserve the natural group summarizer's equivalent AI alias, while never trusting
+ // an arbitrary supplied command name to select a cheaper billing policy.
+ const currentCommand = ["alpha", "gemini"].includes(registered) && ["alpha", "gemini"].includes(info.command) ? info.command : registered;
 	const presentedInfo = await withAlphaPresentation(info, currentCommand);
-	if (info.multiCommandChild) return originalHandler(sock, msg, from, args, presentedInfo);
+ const execute = (...callArgs) => runAuraCommand(originalHandler, ...callArgs);
+	if (info.multiCommandChild) return execute(sock, msg, from, args, { ...presentedInfo, command: currentCommand });
 	const prefix = info.prefix || process.env.PREFIX || "$";
 	const chain = parseCommandChain(extractMessageBody(msg), prefix, 6);
 	if (chain.commands.length <= 1 || chain.commands[0]?.command !== currentCommand) {
-		return originalHandler(sock, msg, from, args, presentedInfo);
+		return execute(sock, msg, from, args, { ...presentedInfo, command: currentCommand });
 	}
 
 	const moderator = isConfiguredModerator(info.groupMetadata, [
@@ -181,7 +187,7 @@ const loadCommands = async (dirPath, commandsObj, cmdDetails) => {
 				console.warn(`⚠️ Warning: ${file} has invalid handler`);
 				continue;
 			}
-			cmdDetails.push({ cmd: cmd_info.cmd, desc: cmd_info.desc, usage: cmd_info.usage, source: path.relative(path.join(__dirname, ".."), filePath).replaceAll("\\", "/") });
+			cmdDetails.push({ cmd: cmd_info.cmd, desc: cmd_info.desc + (priceFor(cmd_info.cmd[0]) ? ` · ${priceFor(cmd_info.cmd[0]).price} Aura per successful use` : ""), usage: cmd_info.usage, source: path.relative(path.join(__dirname, ".."), filePath).replaceAll("\\", "/") });
 			for (const c of cmd_info.cmd) commandsObj[c] = wrapCommandHandler(cmd_info.handler, c);
 		} catch (error) {
 			commandLoadErrors.push({ file, error: error.message });

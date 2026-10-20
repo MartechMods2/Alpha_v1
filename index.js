@@ -1,3 +1,4 @@
+import { startAuraScheduler, stopAuraScheduler } from "./utils/aura/scheduler.js";
 import { createControlledShutdown } from "./utils/controlledShutdown.js";
 import { defenseHealth, beginDraining, startDefenseMonitoring } from "./utils/defenseHealth.js";
 import { safeLogParts } from "./utils/safeLog.js";
@@ -293,6 +294,7 @@ async function startServer() {
 	startReminderScheduler();
 	startGroupAutomationScheduler();
 	startSafePackScheduler();
+	startAuraScheduler();
 	// handleNewSock() is called by the onNewSock hook inside connection.js,
 	// so app.locals.sock and connection.update listener are both set up there.
 
@@ -335,7 +337,7 @@ async function startServer() {
 
 const stopMonitoring = startDefenseMonitoring();
 const shutdown = createControlledShutdown({
- begin: () => { console.warn("[PROCESS] Controlled shutdown started."); beginDraining(); stopMonitoring(); messageQueue.stop(); },
+ begin: () => { console.warn("[PROCESS] Controlled shutdown started."); beginDraining(); stopAuraScheduler(); stopMonitoring(); messageQueue.stop(); },
  flush: () => app.locals.sock?.flushAuth?.(),
  closeSockets: () => { stopConnections(); for(const client of wss.clients) client.terminate(); wss.close(); },
  closeServer: () => new Promise(resolve => { server.close(resolve); server.closeIdleConnections?.(); }),

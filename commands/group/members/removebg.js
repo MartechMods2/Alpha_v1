@@ -1,80 +1,36 @@
-import dotenv from "dotenv";
-dotenv.config();
-const REMOVE_BG_KEY = process.env.REMOVE_BG_KEY || "";
-
-import axios from "axios";
-import FormData from "form-data";
-import fs from "fs";
-import path from "path";
-const removebgAPI = REMOVE_BG_KEY;
-import { writeFile } from "fs/promises";
-
 import { downloadResolvedMedia } from "../../../utils/mediaInput.js";
-
-const getRandom = (ext) => {
-	return `${Math.floor(Math.random() * 10000)}${ext}`;
+import { removeImageBackground } from "../../../utils/mediaStudio.js";
+import { runMediaJob } from "../../../utils/mediaJobs.js";
+const handler = async (sock, msg, from, _args, info) => {
+  try {
+    const { buffer } = await downloadResolvedMedia(sock, msg, {
+      allowedKinds: ["image"],
+      maxBytes: 10 * 1048576,
+    });
+    const image = await runMediaJob({
+      feature: "removebg",
+      groupJid: from,
+      senderJid: info.senderJid,
+      task: () => removeImageBackground(buffer),
+    });
+    return info.sendMessageWTyping(
+      from,
+      { image, mimetype: "image/png", caption: "Created by Alpha — Martech" },
+      { quoted: msg },
+    );
+  } catch {
+    return info.sendMessageWTyping(
+      from,
+      {
+        text: "❌ Background removal failed. Reply to a supported image and check whether the provider is configured.",
+      },
+      { quoted: msg },
+    );
+  }
 };
-
-const getRemoveBg = async (Path, outputPath) => {
-	const inputPath = `./${Path}`;
-	const formData = new FormData();
-	formData.append("size", "auto");
-	formData.append("image_file", fs.createReadStream(inputPath), path.basename(inputPath));
-	const response = await axios({
-		method: "post",
-		url: "https://api.remove.bg/v1.0/removebg",
-		data: formData,
-		responseType: "arraybuffer",
-		headers: {
-			...formData.getHeaders(),
-			"X-Api-Key": removebgAPI,
-		},
-		encoding: null,
-	});
-	await fs.promises.writeFile(outputPath, response.data);
-	console.log("DONE");
-};
-
-const handler = async (sock, msg, from, args, msgInfoObj) => {
-	const { type, content, sendMessageWTyping, extendedMessageOriginal } = msgInfoObj;
-
-	if (!REMOVE_BG_KEY)
-		return sendMessageWTyping(from, { text: "```Remove BG API Key is Missing```" }, { quoted: msg });
-
-	const isTaggedImage = type === "extendedTextMessage" && content.includes("imageMessage");
-
-	if (isTaggedImage || msg.message.imageMessage) {
-		const { buffer } = await downloadResolvedMedia(sock, msg, { allowedKinds: ["image"], maxBytes: 12 * 1048576 });
-		const media = getRandom(".jpeg");
-		await writeFile(media, buffer);
-		const outputPath = getRandom(".png");
-		try {
-			await getRemoveBg(media, outputPath);
-			try {
-				await sendMessageWTyping(from, {
-					image: await fs.promises.readFile(outputPath),
-					mimetype: "image/png",
-					caption: `*Created by Alpha — Martech*`,
-				}, { quoted: msg });
-			} catch (err) {
-				sendMessageWTyping(from, { text: err.toString() }, { quoted: msg });
-			} finally {
-				try { fs.unlinkSync(media); } catch {}
-				try { fs.unlinkSync(outputPath); } catch {}
-			}
-		} catch (err) {
-			console.log("Status : ", err.status);
-			sendMessageWTyping(from, { text: err.toString() }, { quoted: msg });
-			try { fs.unlinkSync(media); } catch {}
-		}
-	} else {
-		sendMessageWTyping(from, { text: `*Reply to image only*` }, { quoted: msg });
-	}
-};
-
 export default () => ({
-	cmd: ["removebg", "bg"],
-	desc: "Remove background from image",
-	usage: "removebg | reply to image",
-	handler,
+  cmd: ["removebg", "bg"],
+  desc: "Remove an image background with bounded provider processing",
+  usage: "removebg --confirm (reply to image)",
+  handler,
 });

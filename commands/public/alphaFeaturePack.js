@@ -108,6 +108,7 @@ const handler = async (sock, msg, from, args, info) => {
 			maxTokens: alphaResponseTokenBudget({ prompt: input, preferences: prefs }),
 		});
 		providerSucceeded = true;
+		if (text) info.auraSuccess?.();
 		const response = text || "Alpha returned no text for that workflow.";
 		return reply(applyAlphaTextStyle(response, prefs.textStyle));
 	} catch (error) {

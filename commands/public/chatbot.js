@@ -466,6 +466,7 @@ ${chatContext}
 		// Send Alpha response
 		// -----------------------------------------------------------------------------------------
 
+		msgInfoObj.auraSuccess?.();
 		return sendMessageWTyping(
 			from,
 			{
