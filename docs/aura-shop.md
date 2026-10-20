@@ -226,6 +226,11 @@ Item gifts transfer **one already-owned item** at no Aura fee, capped at ten per
 
 Pet friendship stays with each member rather than moving with the pet. Gifts do not equip themselves on the recipient. Original purchase costs follow the item, so gifting cannot reset its salvage value. Creator-origin items carry zero refundable cost. Prestige frames, awarded titles, ranks, XP, badges, storage upgrades and album cards cannot be transferred. Item gifts and received thanks have private ledger entries; public gift acknowledgements mention the two selected members without displaying balances or financial history.
 
-Use `$aura thanks @member` to spotlight a helpful member. Each sender can thank three different members per Lagos day, once per recipient daily. Ten received thanks grants **Community Favourite**. Sending five item gifts grants **Community Giver**. Both are cosmetic social badges: they pay no Aura or XP and grant no permissions. They are not proof of trustworthiness or moderation status. All sharing and thanks pause when Aura is OFF.
+Use `$aura thanks @member` to spotlight a helpful member. Each sender can thank three different members per Lagos day, once per recipient daily. Thanks from ten different members grants **Community Favourite**. Gifting to five different members grants **Community Giver**. Both are cosmetic social badges: they pay no Aura or XP and grant no permissions. They are not proof of trustworthiness or moderation status. All sharing and thanks pause when Aura is OFF.
 
 The shop continues to use a local, bounded PNG renderer and a readable caption. These social actions do not introduce an image-generation provider, external payment service or new dependency.
+
+
+## Reviewed sharing safeguards
+
+Use `$aura help` for a short, ready-to-forward member guide; `$aura guide` keeps the full three-page version. A transfer/gift accepts exactly one selected recipient and one amount/item, rejecting ambiguous inputs before any wallet changes. Transfer previews name the recipient. Private `$aura history` includes item IDs and thanks totals. New social badges count distinct recipient/thank-you accounts using bounded tracking (five/ten entries); existing badges remain. Distinct accounts do not prove distinct humans. See [the review report](aura-review.md) for tested fixes and limitations.

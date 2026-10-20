@@ -106,7 +106,13 @@ test("daily item gift limits reset and generosity badges grant no currency or XP
     .slice(0, 11)
     .map((x) => x.id);
   await seed(f, a, { inventory: stock });
-  for (let i = 0; i < 10; i++) await e.giftItem(a, b, stock[i], "g" + i);
+  for (let i = 0; i < 10; i++)
+    await e.giftItem(
+      a,
+      `234800000000${2 + (i % 5)}@s.whatsapp.net`,
+      stock[i],
+      "g" + i,
+    );
   await assert.rejects(
     e.giftItem(a, b, stock[10], "limited"),
     /ten per Lagos day/,

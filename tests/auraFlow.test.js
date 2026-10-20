@@ -433,3 +433,62 @@ test("Aura help advertises a single entry point without exposing the long compat
     delete globalThis.__auraFlow;
   }
 });
+test("reviewed routing and sharing reject ambiguity and expose safe short help and item history", async () => {
+  const f = setup();
+  globalThis.__auraFlow = f;
+  try {
+    const command = await load("../commands/public/aura.js"),
+      sent = [];
+    let i = 0;
+    const run = (actor, args, mentions = [b]) =>
+      command.handler(
+        {},
+        { key: { id: "review-" + ++i } },
+        "12345@g.us",
+        args,
+        {
+          command: "aura",
+          senderJid: actor,
+          isGroup: true,
+          extendedMessageOriginal: { mentionedJid: mentions },
+          sendMessageWTyping: async (to, p) => sent.push({ to, ...p }),
+        },
+      );
+    await run(a, ["help"]);
+    assert.match(sent.at(-1).text, /SIMPLE MEMBER GUIDE/);
+    await run(a, ["constructor"]);
+    assert.match(sent.at(-1).text, /Start with/);
+    await run(a, ["shop", "toString"]);
+    assert.match(sent.at(-1).text, /Use \$aurashop/);
+    await f.store.put("AuraSettings", { _id: "economy", enabled: true });
+    await f.store.put("AuraWallets", {
+      ...(await f.engine.profile(a)),
+      balance: 20000,
+      inventory: ["byte-fox", "cloud-cat"],
+    });
+    await run(a, ["send", "@one", "@two", "1000", "--confirm"], [b, owner]);
+    assert.match(sent.at(-1).text, /one recipient/);
+    await run(a, ["send", "@member", "1000", "2000", "--confirm"]);
+    assert.match(sent.at(-1).text, /exactly one/);
+    await run(a, [
+      "shop",
+      "gift",
+      "@member",
+      "byte-fox",
+      "cloud-cat",
+      "--confirm",
+    ]);
+    assert.match(sent.at(-1).text, /exactly one/);
+    assert.equal((await f.engine.profile(a)).balance, 20000);
+    assert.equal((await f.engine.profile(a)).inventory.length, 2);
+    await run(a, ["send", "@member", "1000"]);
+    assert.deepEqual(sent.at(-1).mentions, [b]);
+    assert.match(sent.at(-1).text, /gets 1000/);
+    await run(a, ["shop", "gift", "@member", "byte-fox", "--confirm"]);
+    await run(b, ["history"]);
+    assert.equal(sent.at(-1).to, b);
+    assert.match(sent.at(-1).text, /Item: byte-fox/);
+  } finally {
+    delete globalThis.__auraFlow;
+  }
+});

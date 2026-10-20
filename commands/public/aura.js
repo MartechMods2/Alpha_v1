@@ -1,3 +1,9 @@
+import {
+  selectedRecipient,
+  selectedAmount,
+  selectedItem,
+} from "../../utils/aura/selection.js";
+import { auraQuickGuide } from "../../utils/aura/quickGuide.js";
 import { salvageRefund } from "../../utils/aura/refunds.js";
 import { shopCardPayload } from "../../utils/aura/shopCard.js";
 import { inventoryStatus } from "../../utils/aura/inventory.js";
@@ -34,7 +40,7 @@ const handler = async (sock, msg, from, args, info) => {
         daily: "daily",
         send: "aurasend",
         thanks: "aurathanks",
-        help: "auraguide",
+        help: "auraquickhelp",
         quests: "quests",
         answer: "questanswer",
         redeem: "redeem",
@@ -47,7 +53,7 @@ const handler = async (sock, msg, from, args, info) => {
         ranks: "aurarank",
         badges: "aurabadges",
         board: "auraboard",
-        rules: "aurarules",
+        rules: "auraquickhelp",
         appeal: "auraappeal",
       },
       aurashop: {
@@ -67,7 +73,11 @@ const handler = async (sock, msg, from, args, info) => {
     };
     // At most two hops: $aura shop gift -> internal item-gift action.
     for (let depth = 0; depth < 2; depth++) {
-      const routed = routes[info.command]?.[args[0]];
+      const group = Object.hasOwn(routes, info.command)
+        ? routes[info.command]
+        : null;
+      const routed =
+        group && Object.hasOwn(group, args[0]) ? group[args[0]] : null;
       if (!routed) break;
       args = args.slice(1);
       info = { ...info, command: routed };
@@ -78,6 +88,8 @@ const handler = async (sock, msg, from, args, info) => {
       );
     const command = info.command;
     const pages = auraMemberGuide(info.prefix || "$");
+    if (command === "auraquickhelp")
+      return reply(auraQuickGuide(info.prefix || "$"));
     if (command === "auraguide") {
       const page = String(args[0] || "1");
       if (!/^[1-3]$/.test(page))
@@ -120,6 +132,7 @@ const handler = async (sock, msg, from, args, info) => {
       "auraboard",
       "aurabadges",
       "aurarules",
+      "auraquickhelp",
       "aurahelp",
       "auraprices",
       "prices",
@@ -259,7 +272,7 @@ const handler = async (sock, msg, from, args, info) => {
           ? rows
               .map(
                 (x) =>
-                  `${x.kind} · ${x.delta >= 0 ? "+" : ""}${x.delta} Aura\nReceipt: ${x._id}${x.reason ? "\nReason: " + x.reason : ""}`,
+                  `${x.kind} · ${x.delta >= 0 ? "+" : ""}${x.delta} Aura${x.result?.item ? "\nItem: " + x.result.item : ""}${x.result?.kudos ? "\nThanks received: " + x.result.kudos : ""}\nReceipt: ${x._id}${x.reason ? "\nReason: " + x.reason : ""}`,
               )
               .join("\n\n")
           : "No Aura transactions yet.",
@@ -510,11 +523,7 @@ const handler = async (sock, msg, from, args, info) => {
       );
     }
     if (["auraitemgift", "aurathanks"].includes(cmd)) {
-      const targetRaw =
-        info.extendedMessageOriginal?.mentionedJid?.[0] ||
-        info.extendedMessageOriginal?.participant;
-      if (!targetRaw)
-        throw Error("Mention or reply to the member you want to choose.");
+      const targetRaw = selectedRecipient(info);
       const target = await auraIdentity(sock, info, targetRaw);
       if (target === actor) throw Error("Choose another member.");
       if (cmd === "aurathanks") {
@@ -529,11 +538,7 @@ const handler = async (sock, msg, from, args, info) => {
           { quoted: msg },
         );
       }
-      const item = SHOP.find((x) => args.includes(x.id));
-      if (!item)
-        throw Error(
-          "Choose an owned shop item ID. Example: $aura shop gift @member byte-fox",
-        );
+      const item = selectedItem(args, SHOP);
       if (args.at(-1) !== "--confirm")
         return info.sendMessageWTyping(
           from,
@@ -558,13 +563,12 @@ const handler = async (sock, msg, from, args, info) => {
       );
     }
     if (cmd === "aurasend" || cmd === "auragift" || cmd === "aurapenalty") {
-      const targetRaw =
-        info.extendedMessageOriginal?.mentionedJid?.[0] ||
-        info.extendedMessageOriginal?.participant;
-      if (!targetRaw)
-        throw Error("Mention or reply to a member, then give an amount.");
+      const targetRaw = selectedRecipient(info);
       const target = await auraIdentity(sock, info, targetRaw);
-      const amount = args.find((x) => /^\d+$/.test(x));
+      const amount =
+        cmd === "aurapenalty"
+          ? args.find((x) => /^\d+$/.test(x))
+          : selectedAmount(args);
       if (!amount) throw Error("Provide a whole positive amount.");
       if (cmd === "aurapenalty") {
         const at = args.indexOf(amount),
@@ -590,8 +594,13 @@ const handler = async (sock, msg, from, args, info) => {
           throw Error(
             "Transfer amount must be 1–10,000 Aura (creator gifts: up to 500,000).",
           );
-        return reply(
-          `Recipient gets ${principal} Aura; fee ${fee}; total debit ${principal + fee}. Repeat the transfer with --confirm to proceed. ${owner ? "Creator gift/coupon budget: 500,000 daily." : "Daily principal limit: 20,000."}`,
+        return info.sendMessageWTyping(
+          from,
+          {
+            text: `@${target.split("@")[0]} gets ${principal} Aura; fee ${fee}; total debit ${principal + fee}. Repeat with --confirm to proceed. ${owner ? "Creator gift/coupon budget: 500,000 daily." : "Daily principal limit: 20,000."}`,
+            mentions: [target],
+          },
+          { quoted: msg },
         );
       }
       const r =

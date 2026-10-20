@@ -27,7 +27,7 @@ $aura evo — ranks, prices and permanent rewards
 *SHARE & CONNECT*
 $aura send @member 1000 — preview; add --confirm to send. Member fee: 5%; max 10,000 per transfer / 20,000 daily. Creator gifts use the existing 500,000 daily budget, without a fee.
 $aura shop gift @member byte-fox — preview; add --confirm to gift ONE owned item. No fee. Ten item gifts daily. Recipient needs space and XP/Evo requirements. Prestige rewards, ranks, badges and cards cannot be given away. Pet bond stays with its earner.
-$aura thanks @member — thank three different members daily. Ten received thanks grants Community Favourite. Five item gifts grants Community Giver. These badges grant no Aura or XP.
+$aura thanks @member — thank three different members daily. Thanks from ten different members grants Community Favourite. Gifts to five different members grants Community Giver. These badges grant no Aura or XP.
 
 *SHOP SHORTCUTS*
 $aura shop frames / titles / pets / evo / legendary

@@ -260,7 +260,11 @@ export function createAuraEngine(
         }
         w.itemsGiven = (w.itemsGiven || 0) + 1;
         recipient.itemsReceived = (recipient.itemsReceived || 0) + 1;
-        if (w.itemsGiven >= 5)
+        w.giftPeers ||= [];
+        const peer = key("social-peer", target);
+        if (w.giftPeers.length < 5 && !w.giftPeers.includes(peer))
+          w.giftPeers.push(peer);
+        if (w.giftPeers.length >= 5)
           w.badges = [...new Set([...w.badges, "Community Giver"])];
         await tx.put("AuraWallets", recipient);
         await tx.put("AuraLedger", {
@@ -292,7 +296,14 @@ export function createAuraEngine(
         w.thankedToday.push(target);
         recipient.kudos = (recipient.kudos || 0) + 1;
         recipient.badges ||= [];
-        if (recipient.kudos >= 10)
+        recipient.thanksPeers ||= [];
+        const peer = key("social-peer", actor);
+        if (
+          recipient.thanksPeers.length < 10 &&
+          !recipient.thanksPeers.includes(peer)
+        )
+          recipient.thanksPeers.push(peer);
+        if (recipient.thanksPeers.length >= 10)
           recipient.badges = [
             ...new Set([...recipient.badges, "Community Favourite"]),
           ];
