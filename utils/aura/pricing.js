@@ -12,7 +12,7 @@ export function applyPrices(rows, section, identify, config = priceConfig) {
   for (const key of Object.keys(config))
     if (!["shop", "bags", "evo", "commands"].includes(key))
       throw Error(`Unknown Aura price section: ${key}`);
-  const prices = config[section] ?? {};
+  const prices = Object.hasOwn(config, section) ? config[section] : {};
   if (!prices || typeof prices !== "object" || Array.isArray(prices))
     throw Error(`Aura prices.${section} must be an object.`);
   const allowed = new Set(rows.map((row) => String(identify(row))));

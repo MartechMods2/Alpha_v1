@@ -1,3 +1,4 @@
+import { isUnexpired } from "./walletSafety.js";
 import { isAuraEnabled } from "./activation.js";
 import { aura, auraStore } from "../../db/auraData.js";
 import { getSock } from "../../core/socketRef.js";
@@ -20,9 +21,22 @@ export async function checkAuraSchedules(deps = {}) {
       { expiresAt: 1 },
       50,
     );
-    for (const row of stale) await engine.settle(row.actor, row._id, false);
+    for (const row of stale) {
+      try {
+        await engine.settle(row.actor, row._id, false);
+      } catch {
+        console.warn(
+          "[AURA] One reservation recovery failed; continuing bounded recovery.",
+        );
+      }
+    }
     if (!(await isAuraEnabled(store))) return;
-    const pending = await store.find("AuraDuels", { state: "result" }, {}, 20);
+    const pending = await store.find(
+      "AuraDuels",
+      { state: "result" },
+      { expiresAt: 1 },
+      20,
+    );
     for (const row of pending)
       await engine
         .ranked(row.winner, row.loser, row.matchId, row._id)
@@ -37,7 +51,7 @@ export async function checkAuraSchedules(deps = {}) {
       .slice(0, 20);
     if (!groups.length) return;
     const coupon = await engine.createDrop(slot, groups);
-    if (coupon.status !== "open" || +new Date(coupon.expiresAt) <= +instant)
+    if (coupon.status !== "open" || !isUnexpired(coupon.expiresAt, instant))
       return;
     for (const group of groups.filter((jid) => coupon.groups.includes(jid))) {
       const claimed = await store.transaction(async (tx) => {
@@ -51,10 +65,24 @@ export async function checkAuraSchedules(deps = {}) {
       await queue
         .enqueue(
           group,
-          () =>
-            sock.sendMessage(group, {
-              text: `✨ *AURA DROP · 20,000 AURA*\n\nFirst valid claim wins globally.\nRedeem: $redeem ${coupon.code}\nExpires 30 minutes after creation. One scheduled win per member per Lagos day.\nAura has no cash value.`,
-            }),
+          async () => {
+            // Queues may outlive a coupon claim, expiry, group opt-out or economy pause.
+            const current = await store.get("AuraCoupons", coupon._id);
+            const currentSettings = await store.get("AuraSettings", "drops");
+            const sendTime = deps.clock?.() || deps.now || new Date();
+            if (
+              !(await isAuraEnabled(store)) ||
+              !current ||
+              current.status !== "open" ||
+              !isUnexpired(current.expiresAt, sendTime) ||
+              !current.code ||
+              !currentSettings?.groups?.includes(group)
+            )
+              return;
+            return sock.sendMessage(group, {
+              text: `✨ *AURA DROP · 20,000 AURA*\n\nFirst valid claim wins globally.\nRedeem: $redeem ${current.code}\nExpires 30 minutes after creation. One scheduled win per member per Lagos day.\nAura has no cash value.`,
+            });
+          },
           2,
         )
         .catch(() =>

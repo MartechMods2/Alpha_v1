@@ -1,3 +1,5 @@
+import { AuraUserError, publicAuraError } from "../../utils/aura/errors.js";
+import { isUnexpired } from "../../utils/aura/walletSafety.js";
 import {
   selectedRecipient,
   selectedAmount,
@@ -115,7 +117,7 @@ const handler = async (sock, msg, from, args, info) => {
     if (command === "auraannounce") {
       const creator = await auraIdentity(sock, info);
       if (!aura.owned(creator) || !info.isGroup)
-        throw Error(
+        throw new AuraUserError(
           "Only the creator can announce the Aura guide inside a group.",
         );
       await reply(
@@ -157,7 +159,7 @@ const handler = async (sock, msg, from, args, info) => {
       owner = aura.owned(actor),
       cmd = info.command;
     const event = key(from, msg.key?.id, cmd);
-    if (!msg.key?.id) throw Error("Missing message identity.");
+    if (!msg.key?.id) throw new AuraUserError("Missing message identity.");
     if (["aurarules", "aurahelp"].includes(cmd))
       return reply(
         help +
@@ -186,6 +188,9 @@ const handler = async (sock, msg, from, args, info) => {
         title: "YOUR AURA PROFILE",
         lines: [
           `Aura: ${owner ? "∞ · CREATOR" : w.balance}`,
+          ...(w.heldAura > 0
+            ? [`Reserved fees: ${w.heldAura} Aura (not spendable)`]
+            : []),
           `Lifetime XP: ${w.xp} · ${xpRank(w.xp)[1]}`,
           `Ranked: ${rpRank(current)} · ${current} RP`,
           `Evo rank: ${EVO[w.evo].name} · Completed quests: ${w.quests}`,
@@ -213,7 +218,7 @@ const handler = async (sock, msg, from, args, info) => {
     }
     if (cmd === "auraboard") {
       if (!info.isGroup)
-        throw Error("Group Aura leaderboards require a group.");
+        throw new AuraUserError("Group Aura leaderboards require a group.");
       const roster = (info.groupMetadata?.participants || [])
         .flatMap((p) => participantJids(p))
         .filter((j) => /^\d{7,15}@s\.whatsapp\.net$/.test(j) && !aura.owned(j));
@@ -286,7 +291,8 @@ const handler = async (sock, msg, from, args, info) => {
         );
       if (!(await isAuraEnabled(auraStore)))
         return reply("Aura is OFF. Bag expansion is paused.");
-      if (!bag.next) throw Error("No further bag upgrade is available.");
+      if (!bag.next)
+        throw new AuraUserError("No further bag upgrade is available.");
       if (args[1] !== "--confirm")
         return reply(
           `Expand to ${bag.next.slots} slots for ${bag.next.price} Aura${bag.next.evo ? " · Requires " + EVO[bag.next.evo].name : ""}. Use $aura bag expand --confirm.`,
@@ -298,7 +304,7 @@ const handler = async (sock, msg, from, args, info) => {
     }
     if (cmd === "aurasalvage") {
       const item = SHOP.find((x) => x.id === args[0]);
-      if (!item) throw Error("Choose an owned shop item ID.");
+      if (!item) throw new AuraUserError("Choose an owned shop item ID.");
       if (args[1] !== "--confirm")
         return reply(
           `Salvage ONE ${item.name} for ${salvageRefund(await aura.profile(actor), item, owner)} Aura and free one slot. This removes the item, including its equipped state. Use $aurasalvage ${item.id} --confirm to proceed.`,
@@ -317,11 +323,11 @@ const handler = async (sock, msg, from, args, info) => {
       const item = SHOP.find((x) => x.id === args[1]);
       await auraStore.transaction(async (tx) => {
         const row = await tx.get("AuraWallets", actor);
-        if (!row) throw Error("No companion inventory yet.");
+        if (!row) throw new AuraUserError("No companion inventory yet.");
         if (args[1] === "none") delete row.pet;
         else {
           if (!item || item.kind !== "pet" || !row.inventory.includes(item.id))
-            throw Error("Choose a companion you own.");
+            throw new AuraUserError("Choose a companion you own.");
           row.pet = item.id;
         }
         await tx.put("AuraWallets", row);
@@ -392,7 +398,7 @@ const handler = async (sock, msg, from, args, info) => {
     }
     if (cmd === "auraitem" || cmd === "aurapreview") {
       const item = SHOP.find((x) => x.id === args[0]);
-      if (!item) throw Error("Choose an item ID from $aurashop.");
+      if (!item) throw new AuraUserError("Choose an item ID from $aurashop.");
       const details = `${item.name} · ${item.price} Aura\nType: ${item.kind}${item.evo ? " · Requires " + EVO[item.evo].name : ""}${item.xp ? " · Requires " + item.xp + " XP" : ""}\n${item.description || "Permanent cosmetic for your Aura card; no gameplay or admin advantage."}`;
       if (cmd === "auraitem") return reply(details);
       if (item.kind === "tool")
@@ -476,7 +482,7 @@ const handler = async (sock, msg, from, args, info) => {
     if (cmd === "auraequip") {
       await auraStore.transaction(async (tx) => {
         const w = await tx.get("AuraWallets", actor);
-        if (!w) throw Error("Your Aura inventory is empty.");
+        if (!w) throw new AuraUserError("Your Aura inventory is empty.");
         if (args[0] === "none") delete w.equipped;
         else {
           const item = [...SHOP, ...PRESTIGE_FRAMES].find(
@@ -489,7 +495,9 @@ const handler = async (sock, msg, from, args, info) => {
               ? w.evo >= item.prestige
               : w.inventory.includes(item.id))
           )
-            throw Error("Choose a cosmetic you own; tools cannot be equipped.");
+            throw new AuraUserError(
+              "Choose a cosmetic you own; tools cannot be equipped.",
+            );
           w.equipped = item.id;
         }
         await tx.put("AuraWallets", w);
@@ -525,7 +533,7 @@ const handler = async (sock, msg, from, args, info) => {
     if (["auraitemgift", "aurathanks"].includes(cmd)) {
       const targetRaw = selectedRecipient(info);
       const target = await auraIdentity(sock, info, targetRaw);
-      if (target === actor) throw Error("Choose another member.");
+      if (target === actor) throw new AuraUserError("Choose another member.");
       if (cmd === "aurathanks") {
         const r = await aura.thank(actor, target, event);
         if (r.duplicate) return reply("This thank-you was already recorded.");
@@ -569,7 +577,7 @@ const handler = async (sock, msg, from, args, info) => {
         cmd === "aurapenalty"
           ? args.find((x) => /^\d+$/.test(x))
           : selectedAmount(args);
-      if (!amount) throw Error("Provide a whole positive amount.");
+      if (!amount) throw new AuraUserError("Provide a whole positive amount.");
       if (cmd === "aurapenalty") {
         const at = args.indexOf(amount),
           reason = args.slice(at + 1).join(" ");
@@ -591,7 +599,7 @@ const handler = async (sock, msg, from, args, info) => {
           principal < 1 ||
           principal > (owner ? 500000 : 10000)
         )
-          throw Error(
+          throw new AuraUserError(
             "Transfer amount must be 1–10,000 Aura (creator gifts: up to 500,000).",
           );
         return info.sendMessageWTyping(
@@ -632,12 +640,14 @@ const handler = async (sock, msg, from, args, info) => {
       const receipt = args[0],
         reason = args.slice(1).join(" ").slice(0, 300);
       if (!/^[a-f0-9]{64}$/.test(receipt || "") || reason.length < 8)
-        throw Error(
+        throw new AuraUserError(
           "Use $auraappeal <receipt> <reason of at least 8 characters>.",
         );
       const entry = await auraStore.get("AuraLedger", receipt);
       if (entry?.actor !== actor || entry.kind !== "penalty")
-        throw Error("You can appeal only your own penalty receipt.");
+        throw new AuraUserError(
+          "You can appeal only your own penalty receipt.",
+        );
       await auraStore.transaction(async (tx) => {
         const id = key("appeal", receipt);
         if (await tx.get("AuraAppeals", id)) return;
@@ -653,7 +663,7 @@ const handler = async (sock, msg, from, args, info) => {
       return reply("Appeal recorded for creator review. No extra fee.");
     }
     if (cmd === "auraappeals") {
-      if (!owner) throw Error("Creator only.");
+      if (!owner) throw new AuraUserError("Creator only.");
       const rows = await auraStore.find(
         "AuraAppeals",
         { status: "open" },
@@ -668,11 +678,11 @@ const handler = async (sock, msg, from, args, info) => {
     }
     if (cmd === "auradrops") {
       if (!owner || !info.isGroup)
-        throw Error(
+        throw new AuraUserError(
           "Only the creator can configure drops inside a selected group.",
         );
       if (!["on", "off"].includes(args[0]))
-        throw Error(
+        throw new AuraUserError(
           "Use $auradrops on or $auradrops off in each chosen group.",
         );
       await auraStore.transaction(async (tx) => {
@@ -683,7 +693,7 @@ const handler = async (sock, msg, from, args, info) => {
         row.groups = row.groups.filter((x) => x !== from);
         if (args[0] === "on") {
           if (row.groups.length >= 20)
-            throw Error("Maximum 20 selected drop groups.");
+            throw new AuraUserError("Maximum 20 selected drop groups.");
           row.groups.push(from);
         }
         await tx.put("AuraSettings", row);
@@ -695,35 +705,40 @@ const handler = async (sock, msg, from, args, info) => {
     if (cmd === "quests") {
       const id = key("quest", actor, dayKey(), String(args[0] || "1"));
       if (!["1", "2"].includes(args[0] || "1"))
-        throw Error("Use $quests 1 or $quests 2.");
-      let row = await auraStore.get("AuraQuests", id);
-      if (!row) {
-        const { prompt, options, answer } = learningQuest(
-          actor,
-          dayKey(),
-          args[0] || "1",
-        );
-        row = {
-          _id: id,
-          actor,
-          prompt,
-          options,
-          answer,
-          expiresAt: new Date(Date.now() + 10 * 60000),
-        };
-        await auraStore.transaction(async (tx) => {
-          const existing = await tx.get("AuraQuests", id);
-          if (existing) row = existing;
-          else await tx.put("AuraQuests", row);
-        });
-      }
+        throw new AuraUserError("Use $quests 1 or $quests 2.");
+      const today = dayKey();
+      const row = await auraStore.transaction(async (tx) => {
+        let current = await tx.get("AuraQuests", id);
+        if (!current) {
+          const { prompt, options, answer } = learningQuest(
+            actor,
+            today,
+            args[0] || "1",
+          );
+          current = {
+            _id: id,
+            actor,
+            prompt,
+            options,
+            answer,
+            expiresAt: new Date(Date.now() + 10 * 60000),
+          };
+          await tx.put("AuraQuests", current);
+        } else if (!current.done && !isUnexpired(current.expiresAt)) {
+          current.expiresAt = new Date(Date.now() + 10 * 60000);
+          await tx.put("AuraQuests", current);
+        }
+        return current;
+      });
       return reply(
         `${row.done ? "Quest already answered. " : ""}${row.prompt}\n${row.options.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n$questanswer ${args[0] || 1} <option 1–3> · One attempt; expires after 10 minutes. Reward: 750 Aura.`,
       );
     }
     if (cmd === "questanswer") {
       if (!["1", "2"].includes(args[0]) || !/^[1-3]$/.test(args[1] || ""))
-        throw Error("Use $questanswer 1 2 (quest number, answer option).");
+        throw new AuraUserError(
+          "Use $questanswer 1 2 (quest number, answer option).",
+        );
       const r = await aura.quest(
         actor,
         key("quest", actor, dayKey(), args[0]),
@@ -737,11 +752,10 @@ const handler = async (sock, msg, from, args, info) => {
       );
     }
   } catch (error) {
-    const message = /Mongo|transaction|ECONN|timed out|server|topology/i.test(
-      error.message,
-    )
-      ? "Aura database is unavailable or does not support transactions. No unsafe balance change was attempted."
-      : error.message;
+    const message = publicAuraError(
+      error,
+      "Aura could not confirm this operation. Check $aura history before retrying; contact the owner if it persists.",
+    );
     return reply(`⚠️ ${message}`);
   }
 };

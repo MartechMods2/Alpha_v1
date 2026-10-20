@@ -19,6 +19,10 @@ test("Mongo adapter initializes indexes and attaches the same session to all tra
     db: () => ({
       collection: (name) => ({
         createIndex: async (...args) => calls.push(["index", name, ...args]),
+        aggregate: (pipeline, opts) => {
+          calls.push(["aggregate", name, pipeline, opts]);
+          return { next: async () => ({ total: 75 }) };
+        },
         findOne: async (query, opts) => {
           calls.push(["get", name, query, opts]);
           return null;
@@ -33,12 +37,15 @@ test("Mongo adapter initializes indexes and attaches the same session to all tra
   const store = createAuraMongoStore(client, "isolated-test");
   await store.transaction(async (tx) => {
     await tx.get("AuraWallets", "member");
+    assert.equal(await tx.reservedTotal("member"), 75);
     await tx.findOne("AuraCoupons", { codeHash: "hash" });
     await tx.put("AuraWallets", { _id: "member", balance: 10 });
   });
   assert.equal(ended, true);
-  assert.equal(calls.filter((x) => x[0] === "index").length, 9);
-  for (const call of calls.filter((x) => ["get", "put"].includes(x[0])))
+  assert.equal(calls.filter((x) => x[0] === "index").length, 11);
+  for (const call of calls.filter((x) =>
+    ["get", "put", "aggregate"].includes(x[0]),
+  ))
     assert.equal(call.at(-1).session, session);
   assert.ok(
     calls.some(

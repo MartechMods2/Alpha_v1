@@ -1,3 +1,4 @@
+import { AuraUserError, publicAuraError } from "./errors.js";
 import { key, priceFor } from "./policy.js";
 export function createAuraChargeRunner({
   getEngine,
@@ -25,7 +26,7 @@ export function createAuraChargeRunner({
         });
       }
       if (!msg?.key?.id)
-        throw Error(
+        throw new AuraUserError(
           "Missing message identity; this paid command cannot run safely.",
         );
       const event = key(from, msg.key.id, info.multiCommandIndex || 0);
@@ -50,16 +51,22 @@ export function createAuraChargeRunner({
           approved = true;
         },
         sendMessageWTyping: async (to, payload, opts) => {
-          const result = await original(to, payload, opts);
-          if (
+          const isResult =
             to === from &&
             ((price.kind === "ai" && approved) ||
               (price.kind === "media" &&
                 ["image", "video", "audio", "sticker", "document"].some(
                   (k) => payload?.[k],
-                )))
+                )));
+          if (
+            isResult &&
+            !(await engine.activeReservation(actor, charge.reservation))
           )
-            delivered = true;
+            throw new AuraUserError(
+              "Aura reservation expired or was recovered; result was not sent. Check $aura history.",
+            );
+          const result = await original(to, payload, opts);
+          if (isResult) delivered = true;
           return result;
         },
       };
@@ -71,9 +78,9 @@ export function createAuraChargeRunner({
           delivered,
         );
         await reply(
-          delivered
-            ? `✨ Spent: ${price.price} Aura · Balance: ${settled.balance}`
-            : `✨ Reservation refunded: ${price.price} Aura · Balance: ${settled.balance}`,
+          settled.status === "spent"
+            ? `✨ Spent: ${settled.spent} Aura · Balance: ${settled.balance}`
+            : `✨ Reservation refunded: ${settled.refunded} Aura · Balance: ${settled.balance}`,
         );
         return result;
       } catch (error) {
@@ -81,12 +88,10 @@ export function createAuraChargeRunner({
         throw error;
       }
     } catch (error) {
-      const safe =
-        /^(Not enough Aura|Conduct score|Amount must|Aura cannot|A verified|Missing message)/.test(
-          error.message,
-        )
-          ? error.message
-          : "Aura could not complete this request safely. No unreserved paid work was started. Check $auratransactions; pending reservations are recovered automatically.";
+      const safe = publicAuraError(
+        error,
+        "Aura could not complete or confirm this request. Check $aura history before retrying; pending reservations recover automatically.",
+      );
       return reply(`⚠️ ${safe}`);
     }
   };

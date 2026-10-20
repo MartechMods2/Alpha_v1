@@ -1,3 +1,5 @@
+import { AuraUserError } from "./errors.js";
+import { assertAuraWallet, isUnexpired } from "./walletSafety.js";
 import { salvageRefund } from "./refunds.js";
 import {
   initialiseInventory,
@@ -18,6 +20,7 @@ import {
 const fresh = (id) => ({
   _id: id,
   balance: 0,
+  heldAura: 0,
   xp: 0,
   quests: 0,
   evo: 0,
@@ -27,7 +30,7 @@ const fresh = (id) => ({
 });
 const requireUser = (id) => {
   if (typeof id !== "string" || !/^\d{7,15}@s\.whatsapp\.net$/.test(id))
-    throw Error(
+    throw new AuraUserError(
       "A verified phone identity is required for Aura. Try again after group metadata refresh.",
     );
 };
@@ -36,6 +39,30 @@ export function createAuraEngine(
   { now = () => new Date(), owner = () => "" } = {},
 ) {
   const owned = (id) => Boolean(owner()) && id === owner();
+  const assertRecipient = (wallet) => {
+    try {
+      assertAuraWallet(wallet);
+    } catch {
+      throw new AuraUserError(
+        "Recipient Aura balance limit reached (including reserved fees).",
+      );
+    }
+  };
+  const prepareWallet = async (tx, wallet) => {
+    if (typeof tx.reservedTotal !== "function")
+      throw new AuraUserError(
+        "Aura transaction store cannot reconcile reserved fees safely.",
+      );
+    // Reservation records are authoritative, including after restarts or legacy writes.
+    wallet.heldAura = await tx.reservedTotal(wallet._id);
+    if (
+      !Number.isSafeInteger(wallet.heldAura) ||
+      wallet.heldAura < 0 ||
+      wallet.heldAura > 1e12
+    )
+      throw new AuraUserError("Aura reservation accounting requires review.");
+    return wallet;
+  };
   const mutate = (id, actor, fn) => {
     requireUser(actor);
     return store.transaction(async (tx) => {
@@ -43,18 +70,14 @@ export function createAuraEngine(
       const previous = await tx.get("AuraLedger", eventId);
       if (previous) return { ...previous.result, duplicate: true };
       const wallet = (await tx.get("AuraWallets", actor)) || fresh(actor);
+      await prepareWallet(tx, wallet);
       wallet.badges ||= [];
       wallet.items ||= {};
       wallet.collection ||= [];
       initialiseInventory(wallet);
       const before = wallet.balance;
       const result = await fn(tx, wallet);
-      if (
-        !Number.isSafeInteger(wallet.balance) ||
-        wallet.balance < 0 ||
-        wallet.balance > 1e12
-      )
-        throw Error("Aura balance limit reached.");
+      assertAuraWallet(wallet);
       await tx.put("AuraWallets", wallet);
       await tx.put("AuraLedger", {
         _id: eventId,
@@ -67,6 +90,14 @@ export function createAuraEngine(
       return result;
     });
   };
+  const creditReward = (wallet, amount) => {
+    const paid = Math.max(
+      0,
+      Math.min(amount, 1e12 - wallet.balance - wallet.heldAura),
+    );
+    wallet.balance += paid;
+    return paid;
+  };
   const addXp = (wallet, n) => {
     const before = xpRank(wallet.xp)[0];
     wallet.xp += n;
@@ -75,15 +106,17 @@ export function createAuraEngine(
       wallet.badges = [
         ...new Set([...(wallet.badges || []), xpRank(wallet.xp)[1]]),
       ];
-      bonus = Math.min(10000, 1000 + Math.floor(wallet.xp / 10));
-      wallet.balance += bonus;
+      bonus = creditReward(
+        wallet,
+        Math.min(10000, 1000 + Math.floor(wallet.xp / 10)),
+      );
     }
     return bonus;
   };
   const spend = (w, n, id) => {
     if (!owned(id)) {
       if (w.balance < n)
-        throw Error(
+        throw new AuraUserError(
           `Not enough Aura. You need ${n}; balance ${w.balance}. Use $daily or $quests.`,
         );
       w.balance -= n;
@@ -129,8 +162,11 @@ export function createAuraEngine(
       mutate(["gift", actor, event], actor, async (tx, w) => {
         requireUser(target);
         if (!owned(actor))
-          throw Error("Only the configured creator can issue Aura gifts.");
-        if (owned(target)) throw Error("The owner already has unlimited Aura.");
+          throw new AuraUserError(
+            "Only the configured creator can issue Aura gifts.",
+          );
+        if (owned(target))
+          throw new AuraUserError("The owner already has unlimited Aura.");
         const n = amountValue(value);
         const budgetId = key("gift-budget", dayKey(now()));
         const budget = (await tx.get("AuraLimits", budgetId)) || {
@@ -138,19 +174,16 @@ export function createAuraEngine(
           total: 0,
         };
         if (budget.total + n > 500000)
-          throw Error(
+          throw new AuraUserError(
             "The combined owner gift/coupon budget is 500,000 Aura per Lagos day.",
           );
         budget.total += n;
         await tx.put("AuraLimits", budget);
         const recipient =
           (await tx.get("AuraWallets", target)) || fresh(target);
+        await prepareWallet(tx, recipient);
         recipient.balance += n;
-        if (
-          !Number.isSafeInteger(recipient.balance) ||
-          recipient.balance > 1e12
-        )
-          throw Error("Recipient Aura balance limit reached.");
+        assertRecipient(recipient);
         await tx.put("AuraWallets", recipient);
         await tx.put("AuraLedger", {
           _id: key("gift-receipt", actor, event),
@@ -166,7 +199,7 @@ export function createAuraEngine(
       mutate(["transfer", actor, event], actor, async (tx, w) => {
         requireUser(target);
         if (actor === target || owned(actor) || owned(target))
-          throw Error(
+          throw new AuraUserError(
             "Use owner gifting for the creator; ordinary transfers require two different members.",
           );
         const n = amountValue(value, 10000),
@@ -177,13 +210,13 @@ export function createAuraEngine(
           w.transferred = 0;
         }
         if ((w.transferred || 0) + n > 20000)
-          throw Error("Daily transfer limit is 20,000 Aura.");
+          throw new AuraUserError("Daily transfer limit is 20,000 Aura.");
         spend(w, n + fee, actor);
         w.transferred = (w.transferred || 0) + n;
         const targetW = (await tx.get("AuraWallets", target)) || fresh(target);
+        await prepareWallet(tx, targetW);
         targetW.balance += n;
-        if (!Number.isSafeInteger(targetW.balance) || targetW.balance > 1e12)
-          throw Error("Recipient Aura balance limit reached.");
+        assertRecipient(targetW);
         await tx.put("AuraWallets", targetW);
         await tx.put("AuraLedger", {
           _id: key("transfer-receipt", actor, event),
@@ -199,33 +232,41 @@ export function createAuraEngine(
       mutate(["item-gift", actor, event], actor, async (tx, w) => {
         requireUser(target);
         if (actor === target)
-          throw Error("Choose another member to receive your gift.");
+          throw new AuraUserError(
+            "Choose another member to receive your gift.",
+          );
         const product = SHOP.find((x) => x.id === item);
         if (!product)
-          throw Error(
+          throw new AuraUserError(
             "Only owned shop items can be gifted; prestige rewards, cards and badges stay with their earner.",
           );
         const recipient =
           (await tx.get("AuraWallets", target)) || fresh(target);
+        await prepareWallet(tx, recipient);
         recipient.items ||= {};
         recipient.inventory ||= [];
         recipient.badges ||= [];
         initialiseInventory(recipient);
         if (product.evo && (recipient.evo || 0) < product.evo)
-          throw Error(`Recipient must unlock ${EVO[product.evo].name} first.`);
+          throw new AuraUserError(
+            `Recipient must unlock ${EVO[product.evo].name} first.`,
+          );
         if (product.xp && recipient.xp < product.xp && !owned(target))
-          throw Error(
+          throw new AuraUserError(
             `Recipient needs ${product.xp} lifetime XP for this item.`,
           );
         if (product.kind === "tool") {
-          if (!(w.items[item] > 0)) throw Error("You do not own this tool.");
+          if (!(w.items[item] > 0))
+            throw new AuraUserError("You do not own this tool.");
           if ((recipient.items[item] || 0) >= product.max)
-            throw Error("Recipient has reached this tool's quantity limit.");
+            throw new AuraUserError(
+              "Recipient has reached this tool's quantity limit.",
+            );
         } else {
           if (!w.inventory.includes(item))
-            throw Error("You do not own this item.");
+            throw new AuraUserError("You do not own this item.");
           if (recipient.inventory.includes(item))
-            throw Error("Recipient already owns this item.");
+            throw new AuraUserError("Recipient already owns this item.");
         }
         requireInventorySpace(recipient);
         const today = dayKey(now());
@@ -234,7 +275,9 @@ export function createAuraEngine(
           w.itemGiftsToday = 0;
         }
         if ((w.itemGiftsToday || 0) >= 10)
-          throw Error("Item gifts are limited to ten per Lagos day.");
+          throw new AuraUserError(
+            "Item gifts are limited to ten per Lagos day.",
+          );
         w.itemGiftsToday = (w.itemGiftsToday || 0) + 1;
         w.purchaseCosts ||= {};
         recipient.purchaseCosts ||= {};
@@ -280,7 +323,7 @@ export function createAuraEngine(
     thank: (actor, target, event) =>
       mutate(["thanks", actor, event], actor, async (tx, w) => {
         requireUser(target);
-        if (actor === target) throw Error("Thank another member.");
+        if (actor === target) throw new AuraUserError("Thank another member.");
         const today = dayKey(now());
         if (w.thanksDay !== today) {
           w.thanksDay = today;
@@ -288,11 +331,12 @@ export function createAuraEngine(
         }
         w.thankedToday ||= [];
         if (w.thankedToday.includes(target))
-          throw Error("You already thanked this member today.");
+          throw new AuraUserError("You already thanked this member today.");
         if (w.thankedToday.length >= 3)
-          throw Error("Three thank-you messages per Lagos day.");
+          throw new AuraUserError("Three thank-you messages per Lagos day.");
         const recipient =
           (await tx.get("AuraWallets", target)) || fresh(target);
+        await prepareWallet(tx, recipient);
         w.thankedToday.push(target);
         recipient.kudos = (recipient.kudos || 0) + 1;
         recipient.badges ||= [];
@@ -321,18 +365,22 @@ export function createAuraEngine(
     buy: (actor, item, event) =>
       mutate(["buy", actor, event], actor, async (_tx, w) => {
         const product = SHOP.find((x) => x.id === item);
-        if (!product) throw Error("Choose an item from $aurashop.");
+        if (!product) throw new AuraUserError("Choose an item from $aurashop.");
         if (product.evo && (w.evo || 0) < product.evo)
-          throw Error(
+          throw new AuraUserError(
             `Unlock ${EVO[product.evo].name} before buying this item.`,
           );
         if (product.xp && w.xp < product.xp && !owned(actor))
-          throw Error(`This item unlocks at ${product.xp} lifetime XP.`);
+          throw new AuraUserError(
+            `This item unlocks at ${product.xp} lifetime XP.`,
+          );
         if (product.kind === "tool") {
           if ((w.items[item] || 0) >= product.max)
-            throw Error(`Inventory limit: ${product.max} of this tool.`);
+            throw new AuraUserError(
+              `Inventory limit: ${product.max} of this tool.`,
+            );
         } else if (w.inventory.includes(item))
-          throw Error("You already own this item.");
+          throw new AuraUserError("You already own this item.");
         requireInventorySpace(w);
         spend(w, product.price, actor);
         w.purchaseCosts ||= {};
@@ -356,11 +404,13 @@ export function createAuraEngine(
       mutate(["bag-expand", actor, event], actor, async (_tx, w) => {
         const next = inventoryStatus(w).next;
         if (!next)
-          throw Error(
+          throw new AuraUserError(
             "Your bag is at maximum capacity. Existing grandfathered items remain safe.",
           );
         if (next.evo && (w.evo || 0) < next.evo)
-          throw Error(`Unlock ${EVO[next.evo].name} before this bag upgrade.`);
+          throw new AuraUserError(
+            `Unlock ${EVO[next.evo].name} before this bag upgrade.`,
+          );
         spend(w, next.price, actor);
         w.bagSlots = next.slots;
         return {
@@ -373,16 +423,17 @@ export function createAuraEngine(
       mutate(["salvage", actor, event], actor, async (_tx, w) => {
         const product = SHOP.find((x) => x.id === item);
         if (!product)
-          throw Error(
+          throw new AuraUserError(
             "Unknown shop item. Collection cards and badges cannot be salvaged.",
           );
         const reward = salvageRefund(w, product, owned(actor));
         if (product.kind === "tool") {
-          if (!(w.items[item] > 0)) throw Error("You do not own this tool.");
+          if (!(w.items[item] > 0))
+            throw new AuraUserError("You do not own this tool.");
           w.items[item]--;
         } else {
           if (!w.inventory.includes(item))
-            throw Error("You do not own this item.");
+            throw new AuraUserError("You do not own this item.");
           w.inventory = w.inventory.filter((x) => x !== item);
           if (w.equipped === item) delete w.equipped;
           if (w.pet === item) delete w.pet;
@@ -401,11 +452,15 @@ export function createAuraEngine(
       mutate(["use-item", actor, event], actor, async (_tx, w) => {
         if (item === "pet-treat") {
           if (!w.pet || !w.inventory.includes(w.pet))
-            throw Error("Equip a companion with $aurapet equip <id> first.");
+            throw new AuraUserError(
+              "Equip a companion with $aurapet equip <id> first.",
+            );
           if (!(w.items[item] > 0))
-            throw Error("You do not own a pet treat. See $aurashop tools.");
+            throw new AuraUserError(
+              "You do not own a pet treat. See $aurashop tools.",
+            );
           if ((w.petBonds?.[w.pet] || 0) >= 100)
-            throw Error(
+            throw new AuraUserError(
               "This companion already has maximum bond; your treat was not consumed.",
             );
           const today = dayKey(now());
@@ -414,7 +469,9 @@ export function createAuraEngine(
             w.petPlays = 0;
           }
           if (w.petPlays >= 3)
-            throw Error("Three companion interactions per Lagos day.");
+            throw new AuraUserError(
+              "Three companion interactions per Lagos day.",
+            );
           w.petPlays++;
           w.items[item]--;
           w.purchaseCosts?.[item]?.shift?.();
@@ -428,11 +485,13 @@ export function createAuraEngine(
           };
         }
         if (item !== "tagline-ticket")
-          throw Error(
+          throw new AuraUserError(
             "Streak shields work automatically; use $auraitem <id> for details.",
           );
         if (!(w.items[item] > 0))
-          throw Error("You do not own a tagline ticket. See $aurashop tools.");
+          throw new AuraUserError(
+            "You do not own a tagline ticket. See $aurashop tools.",
+          );
         const line = String(text || "").trim();
         if (
           !line ||
@@ -442,7 +501,7 @@ export function createAuraEngine(
           ) ||
           /https?:|www\./i.test(line)
         )
-          throw Error(
+          throw new AuraUserError(
             "Use a plain tagline of 1–40 characters without links, mentions or formatting.",
           );
         w.items[item]--;
@@ -456,7 +515,7 @@ export function createAuraEngine(
           (x) => !w.collection.includes(x.id),
         );
         if (!missing.length)
-          throw Error(
+          throw new AuraUserError(
             "Your collection is complete. Your permanent Curator badge is already unlocked.",
           );
         const chosen =
@@ -481,9 +540,13 @@ export function createAuraEngine(
       mutate(["evolve", actor, event], actor, async (_tx, w) => {
         const next = EVO[w.evo + 1];
         if (!next)
-          throw Error("You already hold the ultimate Evo-Legendary+ tier.");
+          throw new AuraUserError(
+            "You already hold the ultimate Evo-Legendary+ tier.",
+          );
         if (w.quests < next.quests && !owned(actor))
-          throw Error(`Complete ${next.quests} quests to unlock ${next.name}.`);
+          throw new AuraUserError(
+            `Complete ${next.quests} quests to unlock ${next.name}.`,
+          );
         spend(w, next.price, actor);
         w.evo++;
         if (next.frame) {
@@ -501,10 +564,12 @@ export function createAuraEngine(
       mutate(["charge", actor, event, command], actor, async (tx, w) => {
         const n = amountValue(value, 10000);
         if (w.conduct < 40 && !owned(actor))
-          throw Error(
+          throw new AuraUserError(
             "Conduct score is too low for paid features. Use $aurarules or appeal a mistaken penalty.",
           );
         spend(w, n, actor);
+        const held = owned(actor) ? 0 : n;
+        w.heldAura += held;
         const reservation = key("charge", actor, event, command);
         await tx.put("AuraCharges", {
           _id: reservation,
@@ -516,16 +581,41 @@ export function createAuraEngine(
         });
         return { reservation, spent: owned(actor) ? 0 : n, balance: w.balance };
       }),
+    activeReservation: async (actor, reservation) => {
+      const charge = await store.get("AuraCharges", reservation);
+      return (
+        charge?.actor === actor &&
+        charge.status === "reserved" &&
+        isUnexpired(charge.expiresAt, now())
+      );
+    },
     settle: (actor, reservation, success) =>
-      mutate(["settle", reservation], actor, async (tx, w) => {
+      mutate(["settle", actor, reservation], actor, async (tx, w) => {
         const charge = await tx.get("AuraCharges", reservation);
-        if (!charge || charge.actor !== actor) throw Error("Unknown charge.");
-        if (charge.status !== "reserved") return { balance: w.balance };
+        if (!charge || charge.actor !== actor)
+          throw new AuraUserError("Unknown charge.");
+        if (charge.status !== "reserved")
+          return {
+            balance: w.balance,
+            status: charge.status,
+            spent: charge.status === "spent" ? charge.amount : 0,
+            refunded: charge.status === "refunded" ? charge.amount : 0,
+          };
+        if (
+          !Number.isSafeInteger(charge.amount) ||
+          charge.amount < 0 ||
+          charge.amount > w.heldAura
+        )
+          throw new AuraUserError(
+            "Aura reservation accounting requires review.",
+          );
+        w.heldAura -= charge.amount;
         charge.status = success ? "spent" : "refunded";
         if (!success) w.balance += charge.amount;
         await tx.put("AuraCharges", charge);
         return {
           balance: w.balance,
+          status: charge.status,
           refunded: success ? 0 : charge.amount,
           spent: success ? charge.amount : 0,
         };
@@ -552,7 +642,8 @@ export function createAuraEngine(
       }),
     createCoupon: (actor, value, event) =>
       mutate(["coupon", actor, event], actor, async (tx) => {
-        if (!owned(actor)) throw Error("Only the creator can issue coupons.");
+        if (!owned(actor))
+          throw new AuraUserError("Only the creator can issue coupons.");
         const n = amountValue(value);
         const id = key("gift-budget", dayKey(now()));
         const budget = (await tx.get("AuraLimits", id)) || {
@@ -560,7 +651,7 @@ export function createAuraEngine(
           total: 0,
         };
         if (budget.total + n > 500000)
-          throw Error("Daily gift/coupon budget exceeded.");
+          throw new AuraUserError("Daily gift/coupon budget exceeded.");
         budget.total += n;
         await tx.put("AuraLimits", budget);
         const code = randomBytes(8).toString("hex").toUpperCase();
@@ -576,21 +667,31 @@ export function createAuraEngine(
     redeem: (actor, code, chat, event) =>
       mutate(["redeem", actor, event], actor, async (tx, w) => {
         if (owned(actor))
-          throw Error("The creator cannot claim member coupons.");
+          throw new AuraUserError("The creator cannot claim member coupons.");
         if (!/^[A-F0-9]{16}$/.test(code))
-          throw Error("Enter the exact 16-character coupon code.");
+          throw new AuraUserError("Enter the exact 16-character coupon code.");
         const coupon = await tx.findOne("AuraCoupons", { codeHash: key(code) });
         if (
           !coupon ||
           coupon.status !== "open" ||
-          +new Date(coupon.expiresAt) <= +now()
+          !isUnexpired(coupon.expiresAt, now())
         )
-          throw Error("Coupon expired, invalid or already claimed.");
+          throw new AuraUserError(
+            "Coupon expired, invalid or already claimed.",
+          );
+        if (
+          !Number.isSafeInteger(coupon.amount) ||
+          coupon.amount < 1 ||
+          coupon.amount > 500000
+        )
+          throw new AuraUserError("Coupon has invalid reward data.");
         if (coupon.slot) {
           if (!coupon.groups.includes(chat))
-            throw Error("Redeem this drop in a selected group.");
+            throw new AuraUserError("Redeem this drop in a selected group.");
           if (w.dropDay === dayKey(now()))
-            throw Error("One scheduled drop win per member per Lagos day.");
+            throw new AuraUserError(
+              "One scheduled drop win per member per Lagos day.",
+            );
           w.dropDay = dayKey(now());
         }
         coupon.status = "claimed";
@@ -607,9 +708,11 @@ export function createAuraEngine(
           !q ||
           q.actor !== actor ||
           q.done ||
-          +new Date(q.expiresAt) <= +now()
+          !isUnexpired(q.expiresAt, now())
         )
-          throw Error("Quest expired or already answered. Use $quests.");
+          throw new AuraUserError(
+            "Quest expired or already answered. Use $quests.",
+          );
         q.done = true;
         await tx.put("AuraQuests", q);
         if (String(answer).trim() !== String(q.answer))
@@ -620,7 +723,7 @@ export function createAuraEngine(
           w.questToday = 0;
         }
         if (w.questToday >= 2)
-          throw Error("Two rewarded learning quests per day.");
+          throw new AuraUserError("Two rewarded learning quests per day.");
         w.questToday++;
         w.quests++;
         w.balance += 750;
@@ -635,18 +738,20 @@ export function createAuraEngine(
     discipline: (actor, target, value, reason, event) =>
       mutate(["penalty", actor, event], actor, async (tx) => {
         if (!owned(actor))
-          throw Error("Only the creator may confirm a penalty.");
+          throw new AuraUserError("Only the creator may confirm a penalty.");
         requireUser(target);
-        if (owned(target)) throw Error("Cannot penalize the creator.");
+        if (owned(target))
+          throw new AuraUserError("Cannot penalize the creator.");
         const n = amountValue(value, 1000);
         if (
           typeof reason !== "string" ||
           reason.trim().length < 8 ||
           reason.length > 160
         )
-          throw Error("Provide a reason of 8–160 characters.");
+          throw new AuraUserError("Provide a reason of 8–160 characters.");
         const w = (await tx.get("AuraWallets", target)) || fresh(target),
           today = dayKey(now());
+        await prepareWallet(tx, w);
         if (w.penaltyDay !== today) {
           w.penaltyDay = today;
           w.penaltyToday = 0;
@@ -673,7 +778,7 @@ export function createAuraEngine(
           };
         }
         if (w.penaltyToday + n > 5000)
-          throw Error("Member daily penalty cap is 5,000 Aura.");
+          throw new AuraUserError("Member daily penalty cap is 5,000 Aura.");
         const deducted = Math.min(n, w.balance);
         w.balance -= deducted;
         w.penaltyToday += n;
@@ -695,13 +800,17 @@ export function createAuraEngine(
     refund: (actor, receipt, event) =>
       mutate(["owner-refund", actor, event], actor, async (tx) => {
         if (!owned(actor))
-          throw Error("Only the creator can reverse deductions.");
+          throw new AuraUserError("Only the creator can reverse deductions.");
         const entry = await tx.get("AuraLedger", receipt);
         if (!entry || entry.kind !== "penalty" || entry.reversed)
-          throw Error("Penalty receipt not found or already reversed.");
+          throw new AuraUserError(
+            "Penalty receipt not found or already reversed.",
+          );
         const w =
           (await tx.get("AuraWallets", entry.actor)) || fresh(entry.actor);
+        await prepareWallet(tx, w);
         w.balance -= entry.delta;
+        assertAuraWallet(w);
         w.conduct = Math.min(100, w.conduct + (entry.conductLoss || 0));
         await tx.put("AuraWallets", w);
         entry.reversed = true;
@@ -731,12 +840,14 @@ export function createAuraEngine(
           duel.winner !== winner ||
           duel.loser !== loser
         )
-          throw Error("Ranked result is not verified.");
+          throw new AuraUserError("Ranked result is not verified.");
         duel.state = "settled";
         await tx.put("AuraDuels", duel);
         requireUser(loser);
-        if (winner === loser) throw Error("Ranked players must be different.");
+        if (winner === loser)
+          throw new AuraUserError("Ranked players must be different.");
         const loss = (await tx.get("AuraWallets", loser)) || fresh(loser);
+        await prepareWallet(tx, loss);
         const season = seasonKey(now()),
           today = dayKey(now());
         for (const account of [w, loss]) {
@@ -785,16 +896,17 @@ export function createAuraEngine(
         w.rp = (w.rp || 0) + 30;
         w.seasonWins++;
         w.bestRp = Math.max(w.bestRp || 0, w.rp);
-        const protectedLoss = loss.lossDay !== today || (loss.shields || 0) > 0;
+        const firstLoss = loss.lossDay !== today;
+        const useShield = !firstLoss && (loss.shields || 0) > 0;
+        const protectedLoss = firstLoss || useShield;
         loss.lossDay = today;
-        if (loss.shields > 0) loss.shields--;
+        if (useShield) loss.shields--;
         const floor = (loss.rp || 0) >= 300 ? 300 : 0;
         loss.rp = Math.max(floor, (loss.rp || 0) - (protectedLoss ? 0 : 15));
         if (Math.floor(w.rp / 300) > previousTier) w.shields = 2;
         let reward = 0;
         if (w.rewardedWins < 3 && !owned(winner)) {
-          reward = 1000;
-          w.balance += reward;
+          reward = creditReward(w, 1000);
           w.rewardedWins++;
         }
         const rankBonus = addXp(w, 100);
@@ -813,6 +925,7 @@ export function createAuraEngine(
           balance: w.balance,
           rp: w.rp,
           loserRp: loss.rp,
+          capReached: w.balance + w.heldAura >= 1e12,
           protectedLoss,
         };
       }),

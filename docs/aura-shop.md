@@ -234,3 +234,8 @@ The shop continues to use a local, bounded PNG renderer and a readable caption. 
 ## Reviewed sharing safeguards
 
 Use `$aura help` for a short, ready-to-forward member guide; `$aura guide` keeps the full three-page version. A transfer/gift accepts exactly one selected recipient and one amount/item, rejecting ambiguous inputs before any wallet changes. Transfer previews name the recipient. Private `$aura history` includes item IDs and thanks totals. New social badges count distinct recipient/thank-you accounts using bounded tracking (five/ten entries); existing badges remain. Distinct accounts do not prove distinct humans. See [the review report](aura-review.md) for tested fixes and limitations.
+
+
+## Deep-audit follow-up
+
+See [the extensive Aura audit](aura-deep-audit.md) for findings, regression coverage and deployment/rollback steps. Pending paid-feature fees are reserved rather than spendable; the profile displays the known reserved total. Wallet capacity includes pending fees so later refunds keep their headroom. Expired unanswered quests may be re-opened, while completed attempts cannot be reset. The free first daily ranked loss preserves promotion shields. Operational failures show safe recovery guidance: check private history before starting a new financial request after an uncertain acknowledgement.

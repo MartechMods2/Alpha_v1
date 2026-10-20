@@ -1,3 +1,4 @@
+import { AuraUserError } from "./errors.js";
 import { participantJids, normalizeUserJid } from "../groupParticipants.js";
 import { getPNFromLID } from "../lid.js";
 export async function auraIdentity(sock, info, jid = info.senderJid) {
@@ -14,7 +15,7 @@ export async function auraIdentity(sock, info, jid = info.senderJid) {
     ? normalizeUserJid(await getPNFromLID(sock, normalized))
     : "";
   if (/^\d{7,15}@s\.whatsapp\.net$/.test(mapped)) return mapped;
-  throw Error(
+  throw new AuraUserError(
     "Aura cannot verify this member's phone identity yet. Refresh group metadata and try again.",
   );
 }

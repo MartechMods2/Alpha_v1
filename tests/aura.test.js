@@ -38,6 +38,10 @@ function setup() {
           return await fn({
             get,
             put,
+            reservedTotal: async (actor) =>
+              (
+                await store.find("AuraCharges", { actor, status: "reserved" })
+              ).reduce((n, row) => n + row.amount, 0),
             findOne: async (c, q) => (await store.find(c, q))[0] || null,
           });
         } catch (e) {

@@ -492,3 +492,106 @@ test("reviewed routing and sharing reject ambiguity and expose safe short help a
     delete globalThis.__auraFlow;
   }
 });
+test("unanswered expired quests reopen without resetting an already-used attempt", async () => {
+  const f = setup();
+  f.setTime(new Date());
+  globalThis.__auraFlow = f;
+  try {
+    const command = await load("../commands/public/aura.js"),
+      sent = [];
+    let i = 0;
+    await f.store.put("AuraSettings", { _id: "economy", enabled: true });
+    const id = key("quest", a, dayKey(), "1");
+    await f.store.put("AuraQuests", {
+      _id: id,
+      actor: a,
+      prompt: "Original question",
+      options: ["one", "two", "three"],
+      answer: 1,
+      expiresAt: new Date(Date.now() - 1000),
+    });
+    const run = () =>
+      command.handler(
+        {},
+        { key: { id: "renew-" + ++i } },
+        "12345@g.us",
+        ["quests", "1"],
+        {
+          command: "aura",
+          senderJid: a,
+          sendMessageWTyping: async (to, p) => sent.push(p),
+        },
+      );
+    await run();
+    let row = await f.store.get("AuraQuests", id);
+    assert.ok(+row.expiresAt > Date.now());
+    assert.equal(row.prompt, "Original question");
+    await f.engine.quest(a, id, 2, "wrong");
+    row = await f.store.get("AuraQuests", id);
+    row.expiresAt = new Date(Date.now() - 1000);
+    await f.store.put("AuraQuests", row);
+    await run();
+    assert.equal((await f.store.get("AuraQuests", id)).done, true);
+    await assert.rejects(f.engine.quest(a, id, 1, "retry"), /already answered/);
+    assert.equal((await f.engine.profile(a)).balance, 0);
+  } finally {
+    delete globalThis.__auraFlow;
+  }
+});
+test("old ranked invites and answers cannot execute against a later match", async () => {
+  const f = setup();
+  f.setTime(new Date());
+  globalThis.__auraFlow = f;
+  try {
+    const command = await load("../commands/group/members/auraArena.js"),
+      sent = [];
+    await f.store.put("AuraSettings", { _id: "economy", enabled: true });
+    const run = (actor, cmd, id, args = []) =>
+      command.handler({}, { key: { id } }, "12345@g.us", args, {
+        command: cmd,
+        senderJid: actor,
+        isGroup: true,
+        extendedMessageOriginal: { mentionedJid: [b] },
+        sendMessageWTyping: async (to, p) => sent.push(p.text),
+      });
+    await run(a, "auraduel", "invite-1");
+    await run(b, "auraaccept", "accept-1");
+    const duelId = key("duel-group", "12345@g.us"),
+      first = await f.store.get("AuraDuels", duelId);
+    await run(a, "auraanswer", "answer-1", [first.answers[0]]);
+    assert.equal((await f.store.get("AuraDuels", duelId)).state, "settled");
+    await run(a, "auraduel", "invite-1");
+    assert.equal((await f.store.get("AuraDuels", duelId)).state, "settled");
+    assert.match(sent.at(-1), /already processed/);
+    await run(a, "auraduel", "invite-2");
+    await run(b, "auraaccept", "accept-2");
+    await run(a, "auraanswer", "answer-1", [first.answers[0]]);
+    const current = await f.store.get("AuraDuels", duelId);
+    assert.equal(current.state, "active");
+    assert.deepEqual(current.attempts, []);
+    assert.equal((await f.engine.profile(a)).balance, 1000);
+  } finally {
+    delete globalThis.__auraFlow;
+  }
+});
+test("unexpected store errors are redacted from Aura group replies", async () => {
+  const f = setup();
+  globalThis.__auraFlow = f;
+  try {
+    const command = await load("../commands/public/aura.js"),
+      sent = [];
+    f.engine.profile = async () => {
+      throw Error("E11000 database.secret-collection test-secret");
+    };
+    await command.handler({}, { key: { id: "redaction" } }, "12345@g.us", [], {
+      command: "aura",
+      senderJid: a,
+      sendMessageWTyping: async (to, p) => sent.push(p.text),
+    });
+    assert.match(sent.at(-1), /could not confirm/);
+    assert.ok(!sent.at(-1).includes("test-secret"));
+    assert.ok(!sent.at(-1).includes("secret-collection"));
+  } finally {
+    delete globalThis.__auraFlow;
+  }
+});

@@ -1,3 +1,4 @@
+import { AuraUserError } from "./errors.js";
 import { applyPrices } from "./pricing.js";
 export const BAG_TIERS = [
   { slots: 20, price: 0 },
@@ -33,7 +34,7 @@ export function initialiseInventory(w) {
 export function requireInventorySpace(w) {
   const bag = inventoryStatus(w);
   if (bag.used >= bag.capacity)
-    throw Error(
+    throw new AuraUserError(
       `Inventory full (${bag.used}/${bag.capacity}). Use $aurabag to expand, consume a tool or $aurasalvage an item.`,
     );
 }

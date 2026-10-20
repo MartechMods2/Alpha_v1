@@ -1,5 +1,7 @@
 # Aura sharing and progression review — 20 October 2026
 
+Follow-up: [the extensive state-flow audit](aura-deep-audit.md) covers reservation accounting, ranked replay, scheduler races, expiry handling and operational-error redaction added after this initial review.
+
 Scope: the current Aura economy, grouped command routing, owner authorization, price configuration, inventory, Evo rewards, currency/item sharing, social badges, short help and private history. Existing games and legacy coin wallets are preserved.
 
 ## Concrete findings and fixes
