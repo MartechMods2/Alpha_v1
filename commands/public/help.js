@@ -1,3 +1,4 @@
+import { profileMessage } from "../../utils/profileMessage.js";
 import { cmdToText } from "../../utils/commandLoader.js";
 import { searchCommands } from "../../utils/commandSearch.js";
 import {
@@ -14,7 +15,15 @@ const handler = async (sock, msg, from, args, info) => {
   const all = Object.values(sections).flat();
   const section = String(args[0] || "").toLowerCase();
   if (!section || section === "categories")
-    return reply(menuOverview(sections, prefix));
+    return info.sendMessageWTyping(
+      from,
+      await profileMessage(
+        sock,
+        sock.user?.id || sock.user?.lid,
+        menuOverview(sections, prefix),
+      ),
+      { quoted: msg },
+    );
   if (["all", "public", "group", "admin", "owner"].includes(section)) {
     if (section !== "all" && !sections[section])
       return reply(

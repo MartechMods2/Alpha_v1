@@ -3,7 +3,7 @@ export function premiumReply(text) {
   const value = String(text || "");
   if (
     !value ||
-    value.startsWith("╭─ ✦") ||
+    /^\s*╭/.test(value) ||
     value.includes("```") ||
     value.length > 12000
   )
@@ -21,7 +21,7 @@ export function premiumReply(text) {
   const body = lines.join("\n").trim();
   if (!body || lines[0]?.length > 100 || /^https?:|^[{[]/.test(lines[0]))
     return body || value;
-  return `╭─ ✦ *ALPHA* ✦\n│\n${body}\n│\n╰────────────────`;
+  return `╭─ ✦ *ALPHA* ✦\n│  ─── ◇ ───\n\n${body}\n\n╰─ ✧ ─────────────`;
 }
 export const normalizeWords = (value) =>
   String(value || "")

@@ -27,13 +27,13 @@ export function visibleCommandSections(catalogue, info = {}) {
 }
 export function menuOverview(sections, prefix = "$") {
   const count = Object.values(sections).flat().length;
-  return `*ALPHA*\n\n*YOUR COMMUNITY ASSISTANT*\nCreated and maintained by *Martech*\n\n✦ *What I help with*\n• AI conversations and useful everyday tools\n• Stickers, media and creative cards\n• Games, quizzes and group activities\n• Welcome cards, mentions and moderation\n• Learning, productivity and defensive security\n• Opt-in community notifications and integrations\n\n✦ *Explore ${count} command entries*\n${Object.entries(
+  return `╭─ ✦ *ALPHA* ✦\n╰─ YOUR COMMUNITY ASSISTANT\nCreated and maintained by *Martech*\n\n┌─ ✧ *BUILT FOR YOUR COMMUNITY*\n• AI conversations and useful everyday tools\n• Stickers, media and creative cards\n• Games, quizzes and group activities\n• Welcome cards, mentions and moderation\n• Learning, productivity and defensive security\n• Opt-in community notifications and integrations\n\n┌─ ✧ *EXPLORE · ${count} COMMAND ENTRIES*\n${Object.entries(
     sections,
   )
     .map(([name, rows]) => `• ${prefix}menu ${name} — ${rows.length} entries`)
     .join(
       "\n",
-    )}\n\n✦ *Find exactly what you need*\n• ${prefix}menu all — paged catalogue with usage\n• ${prefix}help <command> — description and aliases\n• ${prefix}help search <task> — search by purpose\n\n✦ *Try these*\n${prefix}help everyone\n${prefix}help ban\n${prefix}worldclock Africa/Lagos\n${prefix}2048 start\n\n*Prefix:* ${prefix}\nGroup tools require a group; moderation requires suitable admin permissions. Some services need owner setup or have quotas. Command visibility does not bypass permissions or disabled features.\n\nI never display owner contact details, credentials, account IDs or internal diagnostics in this menu.`;
+    )}\n\n┌─ ✧ *QUICK NAVIGATION*\n• ${prefix}menu all — paged catalogue with usage\n• ${prefix}help <command> — description and aliases\n• ${prefix}help search <task> — search by purpose\n\n┌─ ✧ *START HERE*\n${prefix}help everyone\n${prefix}help ban\n${prefix}worldclock Africa/Lagos\n${prefix}2048 start\n\n*Prefix:* ${prefix}\nGroup tools require a group; moderation requires suitable admin permissions. Some services need owner setup or have quotas. Command visibility does not bypass permissions or disabled features.\n\nI never display owner contact details, credentials, account IDs or internal diagnostics in this menu.`;
 }
 export function commandPage(
   rows,
