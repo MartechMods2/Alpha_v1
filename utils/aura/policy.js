@@ -34,9 +34,108 @@ export const EVO = [
   { name: "Apex", price: 75000, quests: 100 },
 ];
 export const SHOP = [
-  { id: "gold-title", name: "Golden title", price: 5000 },
-  { id: "aurora-frame", name: "Aurora frame", price: 15000 },
-  { id: "midnight-theme", name: "Midnight theme", price: 10000 },
+  {
+    id: "gold-title",
+    name: "Golden Voice",
+    price: 5000,
+    kind: "title",
+    color: "#e4bc58",
+  },
+  {
+    id: "aurora-frame",
+    name: "Aurora frame",
+    price: 15000,
+    kind: "frame",
+    color: "#72e2c1",
+  },
+  {
+    id: "midnight-theme",
+    name: "Midnight theme",
+    price: 10000,
+    kind: "theme",
+    color: "#354a7c",
+  },
+  {
+    id: "ruby-frame",
+    name: "Ruby frame",
+    price: 8000,
+    kind: "frame",
+    color: "#dc5468",
+  },
+  {
+    id: "ocean-frame",
+    name: "Ocean frame",
+    price: 8000,
+    kind: "frame",
+    color: "#429ae0",
+  },
+  {
+    id: "emerald-frame",
+    name: "Emerald frame",
+    price: 8000,
+    kind: "frame",
+    color: "#3dbb85",
+  },
+  {
+    id: "royal-frame",
+    name: "Royal frame",
+    price: 20000,
+    kind: "frame",
+    color: "#a77be5",
+    xp: 2000,
+  },
+  {
+    id: "legend-frame",
+    name: "Legend frame",
+    price: 30000,
+    kind: "frame",
+    color: "#efcd79",
+    xp: 5000,
+  },
+  {
+    id: "tech-title",
+    name: "Terminal Explorer",
+    price: 6000,
+    kind: "title",
+    color: "#59d8db",
+    xp: 500,
+  },
+  {
+    id: "veteran-title",
+    name: "Community Veteran",
+    price: 12000,
+    kind: "title",
+    color: "#c6c9db",
+    xp: 2000,
+  },
+  {
+    id: "streak-shield",
+    name: "Daily streak shield",
+    price: 2000,
+    kind: "tool",
+    max: 3,
+    description:
+      "Automatically protects one missed daily-claim day. Consumed on the next claim; no reward for the missed day.",
+  },
+  {
+    id: "tagline-ticket",
+    name: "Profile tagline ticket",
+    price: 1000,
+    kind: "tool",
+    max: 3,
+    description:
+      "Use once to set a short tagline on your Aura card. Up to 40 characters; no links or mentions.",
+  },
+];
+export const COLLECTIBLES = [
+  { id: "byte-bot", name: "Byte Bot" },
+  { id: "linux-penguin", name: "Linux Penguin" },
+  { id: "neon-terminal", name: "Neon Terminal" },
+  { id: "lagos-sunset", name: "Lagos Sunset" },
+  { id: "cyber-shield", name: "Cyber Shield" },
+  { id: "circuit-heart", name: "Circuit Heart" },
+  { id: "pixel-crown", name: "Pixel Crown" },
+  { id: "alpha-comet", name: "Alpha Comet" },
 ];
 // Canonical aliases share one price. All unlisted commands remain free.
 export const PRICES = [

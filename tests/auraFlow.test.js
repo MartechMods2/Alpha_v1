@@ -90,6 +90,20 @@ test("commands keep gifts creator-only, coupons and transaction histories privat
     assert.ok(sent.at(-1).image);
     assert.match(sent.at(-1).caption, /20000/);
     assert.ok(!sent.at(-1).caption.includes("∞"));
+    await run(b, "aurabuy", ["tagline-ticket"]);
+    await run(b, "aurause", ["tagline-ticket", "Hello", "community"]);
+    assert.equal((await fixture.engine.profile(b)).tagline, "Hello community");
+    await run(b, "aurapreview", ["ruby-frame"]);
+    assert.ok(sent.at(-1).image);
+    assert.match(sent.at(-1).caption, /PREVIEW ONLY/);
+    assert.equal((await fixture.engine.profile(b)).balance, 19000);
+    await run(b, "auracollect");
+    assert.ok(sent.at(-1).image);
+    assert.match(sent.at(-1).caption, /Collected/);
+    await run(owner, "aurasystem", ["off"]);
+    await run(b, "aurabuy", ["ruby-frame"]);
+    assert.match(sent.at(-1).text, /currently OFF/);
+    assert.equal((await fixture.engine.profile(b)).balance, 19000);
   } finally {
     delete globalThis.__auraFlow;
   }

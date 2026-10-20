@@ -27,6 +27,10 @@ No new API keys or payment integration are required. Existing provider keys/quot
 - Aura lifetime XP starts at zero and is earned from successful quests, daily claims and eligible ranked results. Spending never lowers XP.
 - Aura ranked RP is an opt-in competition separate from existing game leaderboards. Existing Truth or Dare and other games remain available; they do not automatically mint Aura or lose RP. Aura awards are confined to the verified new ranked duel flow and learning quests.
 
+## Expanded shop and collections
+
+See [the shop guide](aura-shop.md) for the full 12-item catalogue, colour previews, XP unlocks, consumable inventory, automatic one-day streak shields, profile taglines and the free eight-card collection. Use `$aurashop`, `$aurainventory`, `$aurapreview ruby-frame`, `$auracollect` and `$auracollection`. These features follow the same OFF-by-default activation switch.
+
 ## Earning and gifting
 
 | Command / activity                 | Reward / effect                                                        | Limit                                                                                |

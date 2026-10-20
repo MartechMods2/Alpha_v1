@@ -7,6 +7,7 @@ import {
   xpRank,
   EVO,
   SHOP,
+  COLLECTIBLES,
 } from "./policy.js";
 const fresh = (id) => ({
   _id: id,
@@ -37,6 +38,8 @@ export function createAuraEngine(
       if (previous) return { ...previous.result, duplicate: true };
       const wallet = (await tx.get("AuraWallets", actor)) || fresh(actor);
       wallet.badges ||= [];
+      wallet.items ||= {};
+      wallet.collection ||= [];
       const before = wallet.balance;
       const result = await fn(tx, wallet);
       if (
@@ -89,7 +92,14 @@ export function createAuraEngine(
     daily: (id) =>
       mutate(["daily", id, dayKey(now())], id, async (_tx, w) => {
         const yesterday = dayKey(new Date(+now() - 86400000));
-        w.streak = w.dailyDay === yesterday ? (w.streak || 0) + 1 : 1;
+        const missedOne =
+          w.dailyDay === dayKey(new Date(+now() - 2 * 86400000));
+        const shieldUsed = Boolean(
+          missedOne && (w.items["streak-shield"] || 0) > 0,
+        );
+        if (shieldUsed) w.items["streak-shield"]--;
+        w.streak =
+          w.dailyDay === yesterday || shieldUsed ? (w.streak || 0) + 1 : 1;
         w.dailyDay = dayKey(now());
         w.conduct = Math.min(100, w.conduct + 1);
         if (w.streak % 7 === 0)
@@ -100,6 +110,7 @@ export function createAuraEngine(
         return {
           reward: reward + rankBonus,
           rankBonus,
+          shieldUsed,
           balance: w.balance,
           streak: w.streak,
         };
@@ -171,13 +182,70 @@ export function createAuraEngine(
       mutate(["buy", actor, event], actor, async (_tx, w) => {
         const product = SHOP.find((x) => x.id === item);
         if (!product) throw Error("Choose an item from $aurashop.");
-        if (w.inventory.includes(item))
+        if (product.xp && w.xp < product.xp && !owned(actor))
+          throw Error(`This item unlocks at ${product.xp} lifetime XP.`);
+        if (product.kind === "tool") {
+          if ((w.items[item] || 0) >= product.max)
+            throw Error(`Inventory limit: ${product.max} of this tool.`);
+        } else if (w.inventory.includes(item))
           throw Error("You already own this item.");
         spend(w, product.price, actor);
-        w.inventory.push(item);
+        if (product.kind === "tool") w.items[item] = (w.items[item] || 0) + 1;
+        else w.inventory.push(item);
         return {
           item,
           spent: owned(actor) ? 0 : product.price,
+          balance: w.balance,
+        };
+      }),
+    useItem: (actor, item, text, event) =>
+      mutate(["use-item", actor, event], actor, async (_tx, w) => {
+        if (item !== "tagline-ticket")
+          throw Error(
+            "Streak shields work automatically; use $auraitem <id> for details.",
+          );
+        if (!(w.items[item] > 0))
+          throw Error("You do not own a tagline ticket. See $aurashop tools.");
+        const line = String(text || "").trim();
+        if (
+          !line ||
+          line.length > 40 ||
+          /[\u0000-\u001f\u007f-\u009f@*_~`\u200b-\u200f\u202a-\u202e\u2060-\u206f]/u.test(
+            line,
+          ) ||
+          /https?:|www\./i.test(line)
+        )
+          throw Error(
+            "Use a plain tagline of 1–40 characters without links, mentions or formatting.",
+          );
+        w.items[item]--;
+        w.tagline = line;
+        return { tagline: line, remaining: w.items[item] };
+      }),
+    collect: (actor) =>
+      mutate(["collect", actor, dayKey(now())], actor, async (_tx, w) => {
+        const missing = COLLECTIBLES.filter(
+          (x) => !w.collection.includes(x.id),
+        );
+        if (!missing.length)
+          throw Error(
+            "Your collection is complete. Your permanent Curator badge is already unlocked.",
+          );
+        const chosen =
+          missing[
+            parseInt(key(actor, dayKey(now())).slice(0, 8), 16) % missing.length
+          ];
+        w.collection.push(chosen.id);
+        let reward = 0;
+        if (w.collection.length === COLLECTIBLES.length) {
+          reward = 2500;
+          w.balance += reward;
+          w.badges = [...new Set([...w.badges, "Collection Curator"])];
+        }
+        return {
+          card: chosen.name,
+          total: w.collection.length,
+          reward,
           balance: w.balance,
         };
       }),

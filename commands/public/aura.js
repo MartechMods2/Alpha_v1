@@ -1,3 +1,4 @@
+import { collectionCardPayload } from "../../utils/aura/collectionCard.js";
 import { isAuraEnabled, setAuraEnabled } from "../../utils/aura/activation.js";
 import { auraMemberGuide } from "../../utils/aura/memberGuide.js";
 import { auraProfilePayload } from "../../utils/aura/profile.js";
@@ -10,6 +11,7 @@ import {
   rpRank,
   EVO,
   SHOP,
+  COLLECTIBLES,
   PRICES,
 } from "../../utils/aura/policy.js";
 import { alphaPanel } from "../../utils/alphaStyle.js";
@@ -71,6 +73,9 @@ const handler = async (sock, msg, from, args, info) => {
       "auratransactions",
       "transactions",
       "aurashop",
+      "auraitem",
+      "aurapreview",
+      "auracollection",
       "aurainventory",
       "auraappeal",
       "auraappeals",
@@ -113,7 +118,9 @@ const handler = async (sock, msg, from, args, info) => {
           `Ranked: ${rpRank(current)} · ${current} RP`,
           `Evo: ${EVO[w.evo].name} · Completed quests: ${w.quests}`,
           `Conduct: ${w.conduct}/100`,
-          `Equipped cosmetic: ${w.equipped || "Default"}`,
+          `Equipped: ${SHOP.find((x) => x.id === w.equipped)?.name || "Default"}`,
+          ...(w.tagline ? [`✧ ${w.tagline}`] : []),
+          `Collection: ${w.collection?.length || 0}/${COLLECTIBLES.length}`,
           `Daily streak: ${w.streak || 0}`,
         ],
         footer: "Spending Aura never lowers lifetime XP. $aurahelp",
@@ -162,7 +169,7 @@ const handler = async (sock, msg, from, args, info) => {
       return reply(
         r.duplicate
           ? "Today's daily reward is already claimed."
-          : `✨ +${r.reward} Aura · Balance ${r.balance} · Streak ${r.streak}`,
+          : `✨ +${r.reward} Aura · Balance ${r.balance} · Streak ${r.streak}${r.shieldUsed ? " · One streak shield used" : ""}`,
       );
     }
     if (cmd === "redeem") {
@@ -191,12 +198,79 @@ const handler = async (sock, msg, from, args, info) => {
           : "No Aura transactions yet.",
       });
     }
-    if (cmd === "aurashop")
+    if (cmd === "aurashop") {
+      const category = args[0] || "all";
+      if (!["all", "frames", "titles", "themes", "tools"].includes(category))
+        return reply("Use $aurashop all | frames | titles | themes | tools.");
+      const kinds = {
+        frames: "frame",
+        titles: "title",
+        themes: "theme",
+        tools: "tool",
+      };
+      const rows = SHOP.filter(
+        (x) => category === "all" || x.kind === kinds[category],
+      );
       return reply(
         "✨ *AURA SHOP*\n" +
-          SHOP.map((x) => `${x.id} — ${x.price} Aura · ${x.name}`).join("\n") +
-          "\n$aurabuy <item-id>\n$aurainventory · $auraequip <item-id>\nCosmetics appear on $auraprofile; no moderation powers.",
+          rows
+            .map(
+              (x) =>
+                `${x.id} — ${x.price} Aura${x.xp ? " · " + x.xp + " XP required" : ""}\n${x.name}`,
+            )
+            .join("\n\n") +
+          "\n\n$auraitem <id> — details\n$aurapreview <id> — free cosmetic preview\n$aurabuy <id> — buy\n$aurainventory — owned items\n$auraequip <id> or none\n$auracollect — free daily collectible\nPurchases work only when Aura is ON.",
       );
+    }
+    if (cmd === "auraitem" || cmd === "aurapreview") {
+      const item = SHOP.find((x) => x.id === args[0]);
+      if (!item) throw Error("Choose an item ID from $aurashop.");
+      const details = `${item.name} · ${item.price} Aura\nType: ${item.kind}${item.xp ? " · Requires " + item.xp + " XP" : ""}\n${item.description || "Permanent cosmetic for your Aura card; no gameplay or admin advantage."}`;
+      if (cmd === "auraitem") return reply(details);
+      if (item.kind === "tool")
+        return reply(details + "\nTools have no visual preview.");
+      return info.sendMessageWTyping(
+        from,
+        await auraProfilePayload(
+          sock,
+          info.senderJid,
+          "PREVIEW ONLY · " + details + "\nNothing purchased or equipped.",
+          item.id,
+        ),
+        { quoted: msg },
+      );
+    }
+    if (cmd === "auracollection") {
+      const w = await aura.profile(actor);
+      return reply(
+        "🃏 *YOUR COLLECTION*\n" +
+          COLLECTIBLES.map(
+            (x) => `${w.collection?.includes(x.id) ? "✅" : "▫️"} ${x.name}`,
+          ).join("\n") +
+          "\n$auracollect — one free new card per Lagos day. Complete all eight for 2,500 Aura and the Curator badge. No paid mystery boxes.",
+      );
+    }
+    if (cmd === "auracollect") {
+      const r = await aura.collect(actor);
+      if (r.duplicate) return reply("Today's collectible is already claimed.");
+      const caption = `🃏 Collected ${r.card}! ${r.total}/${COLLECTIBLES.length}${r.reward ? " · Collection complete! +" + r.reward + " Aura and Curator badge" : ""}`;
+      return info.sendMessageWTyping(
+        from,
+        collectionCardPayload(r.card, r.total, caption),
+        { quoted: msg },
+      );
+    }
+    if (cmd === "aurause") {
+      const r = await aura.useItem(
+        actor,
+        args[0],
+        args.slice(1).join(" "),
+        event,
+      );
+      return reply(
+        `Tagline saved: ${r.tagline}\nTickets remaining: ${r.remaining}. View $auraprofile.`,
+      );
+    }
     if (cmd === "aurabuy") {
       const r = await aura.buy(actor, args[0], event);
       return reply(
@@ -205,19 +279,34 @@ const handler = async (sock, msg, from, args, info) => {
     }
     if (cmd === "aurainventory") {
       const w = await aura.profile(actor);
+      const cosmetics = (w.inventory || []).map(
+        (id) => SHOP.find((x) => x.id === id)?.name || id,
+      );
+      const tools = SHOP.filter((x) => x.kind === "tool").map(
+        (x) => `${x.name}: ${w.items?.[x.id] || 0}/${x.max}`,
+      );
       return reply(
-        w.inventory.join("\n") || "No Aura cosmetics yet. See $aurashop.",
+        "🎒 *YOUR AURA INVENTORY*\nCosmetics: " +
+          (cosmetics.join(", ") || "None yet") +
+          "\n" +
+          tools.join("\n") +
+          `\nCards: ${w.collection?.length || 0}/${COLLECTIBLES.length}\nEquipped: ${SHOP.find((x) => x.id === w.equipped)?.name || "Default"}\n$aurause tagline-ticket Your tagline\nStreak shields work automatically. $auracollection shows cards.`,
       );
     }
     if (cmd === "auraequip") {
       await auraStore.transaction(async (tx) => {
         const w = await tx.get("AuraWallets", actor);
-        if (!w?.inventory.includes(args[0]))
-          throw Error("You do not own that cosmetic.");
-        w.equipped = args[0];
+        if (!w) throw Error("Your Aura inventory is empty.");
+        if (args[0] === "none") delete w.equipped;
+        else {
+          const item = SHOP.find((x) => x.id === args[0]);
+          if (!item || item.kind === "tool" || !w.inventory.includes(item.id))
+            throw Error("Choose a cosmetic you own; tools cannot be equipped.");
+          w.equipped = item.id;
+        }
         await tx.put("AuraWallets", w);
       });
-      return reply("Cosmetic equipped on $auraprofile.");
+      return reply("Profile cosmetic updated. View $auraprofile.");
     }
     if (cmd === "evo") {
       if (args[0] !== "upgrade")
@@ -430,6 +519,11 @@ export default () => ({
     "transactions",
     "aurashop",
     "aurabuy",
+    "auraitem",
+    "aurapreview",
+    "auracollection",
+    "auracollect",
+    "aurause",
     "aurainventory",
     "auraequip",
     "aurasend",
