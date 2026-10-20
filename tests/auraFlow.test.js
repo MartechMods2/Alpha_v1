@@ -634,3 +634,82 @@ test("pack routes preview without spending, require activation and confirmation,
     delete globalThis.__auraFlow;
   }
 });
+
+test("ordinary members use named Aura profiles, earn, buy, share and see goals without moderator flags", async () => {
+  const fixture = setup();
+  fixture.setTime(new Date());
+  await fixture.store.put("AuraSettings", { _id: "economy", enabled: true });
+  await fixture.engine.gift(owner, a, 10000, "seed-member");
+  globalThis.__auraFlow = fixture;
+  try {
+    const command = await load("../commands/public/aura.js");
+    const sent = [];
+    let seq = 0;
+    const run = async (actor, args) => command.handler({
+      profilePictureUrl: async () => { throw Error("private"); },
+    }, { key: { id: "member-" + ++seq }, pushName: "WhatsApp Name" }, "12345@g.us", args, {
+      senderJid: actor, isGroup: true, isOwner: false, isModerator: false,
+      command: "aura", extendedMessageOriginal: { mentionedJid: [b] },
+      sendMessageWTyping: async (to, payload) => sent.push({ to, ...payload }),
+    });
+    await run(a, ["name", "Ọlá", "🌟"]);
+    assert.equal((await fixture.engine.profile(a)).nickname, "Ọlá 🌟");
+    await run(a, []);
+    assert.ok(sent.at(-1).image);
+    assert.match(sent.at(-1).caption, /Member: Ọlá 🌟/);
+    await run(a, ["daily"]);
+    const earned = (await fixture.engine.profile(a)).balance;
+    assert.ok(earned > 10000);
+    await run(a, ["shop", "buy", "tagline-ticket"]);
+    assert.equal((await fixture.engine.profile(a)).items["tagline-ticket"], 1);
+    const before = (await fixture.engine.profile(a)).balance;
+    await run(a, ["gift", "@member", "1000"]);
+    assert.equal((await fixture.engine.profile(a)).balance, before);
+    await run(a, ["gift", "@member", "1000", "--confirm"]);
+    assert.equal((await fixture.engine.profile(a)).balance, before - 1050);
+    assert.equal((await fixture.engine.profile(b)).balance, 1000);
+    await run(a, ["goals"]);
+    assert.match(sent.at(-1).text, /Ọlá 🌟/);
+    assert.match(sent.at(-1).text, /NEXT AURA MOVES/);
+    await run(a, ["gift", "@all", "1"]);
+    assert.match(sent.at(-1).text, /Only the configured creator/);
+    assert.equal(fixture.engine.owned(a), false);
+  } finally { delete globalThis.__auraFlow; }
+});
+test("owner group gifts require fresh roster, preview and confirmation; duplicates and unknown identities do not pay", async () => {
+  const fixture = setup();
+  fixture.setTime(new Date());
+  await fixture.store.put("AuraSettings", { _id: "economy", enabled: true });
+  globalThis.__auraFlow = fixture;
+  try {
+    const command = await load("../commands/public/aura.js");
+    const sent = [];
+    let participants = [{ id: a }, { id: b }, { id: owner }, { id: "2348999999999@s.whatsapp.net" }];
+    const sock = { user: { id: "2348999999999:2@s.whatsapp.net" },
+      groupMetadata: async () => ({ participants }) };
+    let seq = 0;
+    const run = async (args, id = "group-" + ++seq) => command.handler(sock, { key: { id } },
+      "12345@g.us", args, { senderJid: owner, command: "aura", isGroup: true,
+        sendMessageWTyping: async (to, payload) => sent.push({ to, ...payload }) });
+    await run(["gift", "budget"]);
+    assert.match(sent.at(-1).text, /500,000/);
+    await run(["gift", "@all", "50000", "--confirm"]);
+    assert.match(sent.at(-1).text, /Preview/);
+    assert.equal((await fixture.engine.profile(a)).balance, 0);
+    await run(["gift", "@all", "50000"]);
+    assert.match(sent.at(-1).text, /2 members/);
+    assert.equal((await fixture.engine.profile(a)).balance, 0);
+    await run(["gift", "@all", "50000", "--confirm"], "confirmed");
+    assert.match(sent.at(-1).text, /Group gift complete/);
+    assert.equal((await fixture.engine.profile(a)).balance, 50000);
+    assert.equal((await fixture.engine.profile(b)).balance, 50000);
+    await run(["gift", "@all", "50000", "--confirm"], "confirmed");
+    assert.match(sent.at(-1).text, /Already processed/);
+    assert.equal((await fixture.engine.profile(a)).balance, 50000);
+    assert.ok(sent.every((x) => x.to === "12345@g.us"));
+    participants.push({ id: "8888888@lid" });
+    await run(["gift", "@all", "50000"]);
+    assert.match(sent.at(-1).text, /could not be verified/);
+    assert.equal((await fixture.engine.profile(a)).balance, 50000);
+  } finally { delete globalThis.__auraFlow; }
+});

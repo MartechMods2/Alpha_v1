@@ -82,3 +82,36 @@ test("Mongo adapter closes sessions on failure and never falls back to untransac
   assert.equal(writes, 0);
   assert.equal(ended, 1);
 });
+
+test("Mongo group operations batch bounded reads and ordered writes in the transaction session", async () => {
+  const calls = [];
+  const session = { withTransaction: async (fn) => fn(), endSession: async () => {} };
+  const client = {
+    startSession: () => session,
+    db: () => ({ collection: (name) => ({
+      createIndex: async () => {},
+      find: (query, opts) => {
+        calls.push({ kind: "find", name, query, opts });
+        return { toArray: async () => [{ _id: "a", balance: 1 }] };
+      },
+      aggregate: (pipeline, opts) => {
+        calls.push({ kind: "aggregate", name, pipeline, opts });
+        return { toArray: async () => [{ _id: "a", total: 2 }] };
+      },
+      bulkWrite: async (operations, opts) => calls.push({ kind: "bulk", name, operations, opts }),
+    }) }),
+  };
+  await createAuraMongoStore(client).transaction(async (tx) => {
+    assert.equal((await tx.getMany("AuraWallets", ["a"]))[0].balance, 1);
+    assert.equal((await tx.reservedTotals(["a"])).get("a"), 2);
+    await tx.putMany("AuraWallets", [{ _id: "a", balance: 1, heldAura: 2 }]);
+    await tx.putMany("AuraLedger", [{ _id: "receipt" }]);
+    assert.throws(() => tx.putMany("AuraWallets", [{ _id: "a", balance: -1 }]), /safety/);
+  });
+  assert.equal(calls.length, 4);
+  for (const call of calls) assert.equal(call.opts.session, session);
+  for (const call of calls.filter((x) => x.kind === "bulk")) {
+    assert.equal(call.opts.ordered, true);
+    assert.equal(call.operations[0].replaceOne.upsert, true);
+  }
+});

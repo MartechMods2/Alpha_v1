@@ -1,3 +1,4 @@
+import { cleanAuraName } from "./displayName.js";
 import { PACKS, grantPack } from "./packs.js";
 import { AuraUserError } from "./errors.js";
 import { assertAuraWallet, isUnexpired } from "./walletSafety.js";
@@ -123,8 +124,112 @@ export function createAuraEngine(
       w.balance -= n;
     }
   };
+
+  const groupGiftPlan = (actor, chat, targets, value) => {
+    requireUser(actor);
+    if (!owned(actor))
+      throw new AuraUserError("Only the configured creator can gift Aura to all members.");
+    if (typeof chat !== "string" || !/^\d{5,30}(?:-\d{5,30})?@g\.us$/.test(chat))
+      throw new AuraUserError("Group gifts require a group chat.");
+    if (!Array.isArray(targets) || targets.length > 1024)
+      throw new AuraUserError("Group gifts support up to 1,024 verified members.");
+    for (const target of targets) requireUser(target);
+    const recipients = [...new Set(targets)].filter((id) => !owned(id)).sort();
+    if (!recipients.length) throw new AuraUserError("No eligible members to receive Aura.");
+    const amount = amountValue(value);
+    return { recipients, amount, total: amount * recipients.length,
+      rosterHash: key("group-gift-roster", recipients),
+      previewId: key("group-gift-preview", actor, chat) };
+  };
+  const giftBudget = async (tx, total, count = 1) => {
+    const id = key("gift-budget", dayKey(now()));
+    const row = (await tx.get("AuraLimits", id)) || { _id: id, total: 0 };
+    if (!Number.isSafeInteger(row.total) || row.total < 0 || row.total > 500000)
+      throw new AuraUserError("Gift budget accounting requires owner review.");
+    const remaining = Math.max(0, 500000 - row.total);
+    if (total > remaining)
+      throw new AuraUserError(`Gift needs ${total} Aura; daily budget remaining: ${remaining}. Maximum per member for ${count} recipients: ${Math.floor(remaining / count)} Aura. Gifts and custom coupons share 500,000 per Lagos day.`);
+    return { row, remaining };
+  };
+
   return {
     owned,
+    giftBudget: async (actor) => {
+      requireUser(actor);
+      if (!owned(actor)) throw new AuraUserError("Only the configured creator can view the gift budget.");
+      return store.transaction(async (tx) => {
+        const { remaining } = await giftBudget(tx, 0);
+        return { remaining, limit: 500000, day: dayKey(now()) };
+      });
+    },
+    setNickname: (actor, value, event) =>
+      mutate(["nickname", actor, event], actor, async (_tx, w) => {
+        if (value !== "reset") {
+          const name = cleanAuraName(value);
+          if ([...name].length < 2 || !/[\p{L}\p{N}\p{S}]/u.test(name))
+            throw new AuraUserError("Choose a display name with 2–40 visible characters.");
+          w.nickname = name;
+        } else delete w.nickname;
+        return { nickname: w.nickname || "", balance: w.balance };
+      }),
+    previewGroupGift: async (actor, chat, targets, value) => {
+      const plan = groupGiftPlan(actor, chat, targets, value);
+      return store.transaction(async (tx) => {
+        if ((await tx.get("AuraSettings", "economy"))?.enabled !== true)
+          throw new AuraUserError("Aura is OFF. Group gifts are paused.");
+        const { remaining } = await giftBudget(tx, plan.total, plan.recipients.length);
+        const expiresAt = new Date(+now() + 5 * 60000);
+        await tx.put("AuraSettings", { _id: plan.previewId, actor, chat,
+          amount: plan.amount, total: plan.total, rosterHash: plan.rosterHash,
+          state: "pending", expiresAt, updatedAt: now() });
+        return { count: plan.recipients.length, amount: plan.amount,
+          total: plan.total, remaining, expiresAt };
+      });
+    },
+    giftGroup: (actor, chat, targets, value, event) =>
+      mutate(["group-gift", actor, event], actor, async (tx) => {
+        const plan = groupGiftPlan(actor, chat, targets, value);
+        if ((await tx.get("AuraSettings", "economy"))?.enabled !== true)
+          throw new AuraUserError("Aura is OFF. Group gifts are paused.");
+        const preview = await tx.get("AuraSettings", plan.previewId);
+        if (!preview || preview.state !== "pending" ||
+            !isUnexpired(preview.expiresAt, now()) ||
+            preview.amount !== plan.amount || preview.rosterHash !== plan.rosterHash)
+          throw new AuraUserError("Preview expired, was used, or the group changed. Run $aura gift @all AMOUNT again without --confirm.");
+        const { row: budget, remaining } = await giftBudget(tx, plan.total, plan.recipients.length);
+        const saved = typeof tx.getMany === "function"
+          ? await tx.getMany("AuraWallets", plan.recipients) : null;
+        const held = typeof tx.reservedTotals === "function"
+          ? await tx.reservedTotals(plan.recipients) : null;
+        const wallets = new Map((saved || []).map((w) => [w._id, w]));
+        const updated = [], receipts = [];
+        const receipt = key(["group-gift", actor, event]);
+        for (const target of plan.recipients) {
+          const recipient = (saved ? wallets.get(target) : await tx.get("AuraWallets", target)) || fresh(target);
+          if (held) recipient.heldAura = held.get(target) ?? 0;
+          else await prepareWallet(tx, recipient);
+          recipient.balance += plan.amount;
+          assertRecipient(recipient);
+          updated.push(recipient);
+          receipts.push({ _id: key("group-gift-received", receipt, target),
+            actor: target, kind: "group-gift-received", delta: plan.amount, at: now(),
+            result: { reward: plan.amount, balance: recipient.balance, receipt } });
+        }
+        // Validate every recipient before writes: one capped wallet aborts the whole gift.
+        if (typeof tx.putMany === "function") {
+          await tx.putMany("AuraWallets", updated);
+          await tx.putMany("AuraLedger", receipts);
+        } else {
+          for (const row of updated) await tx.put("AuraWallets", row);
+          for (const row of receipts) await tx.put("AuraLedger", row);
+        }
+        budget.total += plan.total;
+        await tx.put("AuraLimits", budget);
+        await tx.put("AuraSettings", { ...preview, state: "confirmed", receipt, updatedAt: now() });
+        return { count: plan.recipients.length, reward: plan.amount,
+          total: plan.total, remaining: remaining - plan.total, receipt };
+      }),
+
     profile: async (id) => {
       requireUser(id);
       return (await store.get("AuraWallets", id)) || fresh(id);
