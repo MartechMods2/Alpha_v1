@@ -1,10 +1,12 @@
 import { applyPrices } from "./pricing.js";
 export const BAG_TIERS = [
-  { slots: 8, price: 0 },
-  { slots: 16, price: 5000 },
-  { slots: 24, price: 12000 },
-  { slots: 40, price: 25000 },
-  { slots: 64, price: 50000 },
+  { slots: 20, price: 0 },
+  { slots: 24, price: 120000 },
+  { slots: 40, price: 250000 },
+  { slots: 64, price: 500000 },
+  { slots: 128, price: 2000000 },
+  { slots: 10000, price: 75000000, evo: 5 },
+  { slots: 9999999, price: 5000000000, evo: 6 },
 ];
 applyPrices(BAG_TIERS.slice(1), "bags", (row) => row.slots);
 export const inventoryUsed = (w) =>
@@ -16,9 +18,9 @@ export const inventoryUsed = (w) =>
 export function inventoryStatus(w) {
   const used = inventoryUsed(w),
     capacity = Math.max(
-      8,
-      w.inventoryFloor ?? Math.max(8, used),
-      w.bagSlots || 8,
+      20,
+      w.inventoryFloor ?? Math.max(20, used),
+      w.bagSlots || 20,
     );
   const next = BAG_TIERS.find((t) => t.slots > capacity);
   return { used, capacity, free: Math.max(0, capacity - used), next };
@@ -26,7 +28,7 @@ export function inventoryStatus(w) {
 export function initialiseInventory(w) {
   // Preserve pre-limit inventories once; new acquisitions cannot raise the floor.
   if (!Number.isSafeInteger(w.inventoryFloor))
-    w.inventoryFloor = Math.max(8, inventoryUsed(w));
+    w.inventoryFloor = Math.max(20, inventoryUsed(w));
 }
 export function requireInventorySpace(w) {
   const bag = inventoryStatus(w);

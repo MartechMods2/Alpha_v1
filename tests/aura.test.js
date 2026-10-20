@@ -200,7 +200,7 @@ test("quest rewards are one attempt, two daily, preserve XP and add milestone re
 });
 test("Evo upgrades and shop spend Aura without lowering XP, repeat purchases roll back", async () => {
   const { engine: e, store } = setup();
-  await e.gift(owner, a, 20000, "g");
+  await e.gift(owner, a, 200000, "g");
   let w = await e.profile(a);
   w.quests = 5;
   w.xp = 1000;
@@ -209,7 +209,7 @@ test("Evo upgrades and shop spend Aura without lowering XP, repeat purchases rol
   await e.buy(a, "gold-title", "b");
   await assert.rejects(e.buy(a, "gold-title", "b2"), /already own/);
   w = await e.profile(a);
-  assert.equal(w.balance, 10000);
+  assert.equal(w.balance, 60000);
   assert.equal(w.xp, 1000);
   assert.equal(w.evo, 1);
 });
@@ -269,7 +269,7 @@ test("charging runner bills only delivered success, not errors, code retries or 
   await e.daily(a);
   const sent = [];
   const info = {
-    command: "alpha",
+    command: "airewrite",
     senderJid: a,
     sendMessageWTyping: async (_, p) => sent.push(p.text),
   };

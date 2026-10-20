@@ -30,7 +30,7 @@ test("overrides affect the price while preserving item identity and requirements
   ]);
 });
 test("unsafe amounts and misspelled configuration are rejected", () => {
-  for (const value of [0, -1, 1.5, "500", null, 500001, Infinity])
+  for (const value of [0, -1, 1.5, "500", null, 10000000001, Infinity])
     assert.throws(
       () =>
         applyPrices([{ id: "x" }], "shop", (x) => x.id, { shop: { x: value } }),

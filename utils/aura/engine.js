@@ -1,3 +1,4 @@
+import { salvageRefund } from "./refunds.js";
 import {
   initialiseInventory,
   requireInventorySpace,
@@ -103,7 +104,10 @@ export function createAuraEngine(
         const shieldUsed = Boolean(
           missedOne && (w.items["streak-shield"] || 0) > 0,
         );
-        if (shieldUsed) w.items["streak-shield"]--;
+        if (shieldUsed) {
+          w.items["streak-shield"]--;
+          w.purchaseCosts?.["streak-shield"]?.shift?.();
+        }
         w.streak =
           w.dailyDay === yesterday || shieldUsed ? (w.streak || 0) + 1 : 1;
         w.dailyDay = dayKey(now());
@@ -188,6 +192,10 @@ export function createAuraEngine(
       mutate(["buy", actor, event], actor, async (_tx, w) => {
         const product = SHOP.find((x) => x.id === item);
         if (!product) throw Error("Choose an item from $aurashop.");
+        if (product.evo && (w.evo || 0) < product.evo)
+          throw Error(
+            `Unlock ${EVO[product.evo].name} before buying this item.`,
+          );
         if (product.xp && w.xp < product.xp && !owned(actor))
           throw Error(`This item unlocks at ${product.xp} lifetime XP.`);
         if (product.kind === "tool") {
@@ -197,8 +205,17 @@ export function createAuraEngine(
           throw Error("You already own this item.");
         requireInventorySpace(w);
         spend(w, product.price, actor);
-        if (product.kind === "tool") w.items[item] = (w.items[item] || 0) + 1;
-        else w.inventory.push(item);
+        w.purchaseCosts ||= {};
+        if (product.kind === "tool") {
+          w.items[item] = (w.items[item] || 0) + 1;
+          w.purchaseCosts[item] ||= Array(Math.max(0, w.items[item] - 1)).fill(
+            product.basePrice,
+          );
+          w.purchaseCosts[item].push(owned(actor) ? 0 : product.price);
+        } else {
+          w.inventory.push(item);
+          w.purchaseCosts[item] = owned(actor) ? 0 : product.price;
+        }
         return {
           item,
           spent: owned(actor) ? 0 : product.price,
@@ -212,6 +229,8 @@ export function createAuraEngine(
           throw Error(
             "Your bag is at maximum capacity. Existing grandfathered items remain safe.",
           );
+        if (next.evo && (w.evo || 0) < next.evo)
+          throw Error(`Unlock ${EVO[next.evo].name} before this bag upgrade.`);
         spend(w, next.price, actor);
         w.bagSlots = next.slots;
         return {
@@ -227,6 +246,7 @@ export function createAuraEngine(
           throw Error(
             "Unknown shop item. Collection cards and badges cannot be salvaged.",
           );
+        const reward = salvageRefund(w, product, owned(actor));
         if (product.kind === "tool") {
           if (!(w.items[item] > 0)) throw Error("You do not own this tool.");
           w.items[item]--;
@@ -237,7 +257,8 @@ export function createAuraEngine(
           if (w.equipped === item) delete w.equipped;
           if (w.pet === item) delete w.pet;
         }
-        const reward = owned(actor) ? 0 : Math.floor(product.price * 0.25);
+        if (product.kind === "tool") w.purchaseCosts?.[item]?.shift?.();
+        else if (w.purchaseCosts) delete w.purchaseCosts[item];
         w.balance += reward;
         return {
           item,
@@ -266,6 +287,7 @@ export function createAuraEngine(
             throw Error("Three companion interactions per Lagos day.");
           w.petPlays++;
           w.items[item]--;
+          w.purchaseCosts?.[item]?.shift?.();
           w.petBonds ||= {};
           w.petBonds[w.pet] = Math.min(100, (w.petBonds[w.pet] || 0) + 1);
           if (w.petBonds[w.pet] >= 10)
@@ -294,6 +316,7 @@ export function createAuraEngine(
             "Use a plain tagline of 1–40 characters without links, mentions or formatting.",
           );
         w.items[item]--;
+        w.purchaseCosts?.[item]?.shift?.();
         w.tagline = line;
         return { tagline: line, remaining: w.items[item] };
       }),
@@ -327,11 +350,16 @@ export function createAuraEngine(
     evolve: (actor, event) =>
       mutate(["evolve", actor, event], actor, async (_tx, w) => {
         const next = EVO[w.evo + 1];
-        if (!next) throw Error("Your emblem is already Apex.");
+        if (!next)
+          throw Error("You already hold the ultimate Evo-Legendary+ tier.");
         if (w.quests < next.quests && !owned(actor))
           throw Error(`Complete ${next.quests} quests to unlock ${next.name}.`);
         spend(w, next.price, actor);
         w.evo++;
+        if (next.frame) {
+          w.equipped = next.frame;
+          w.prestigeTitle = next.title;
+        }
         w.badges = [...new Set([...w.badges, "Evo " + next.name])];
         return {
           evo: next.name,

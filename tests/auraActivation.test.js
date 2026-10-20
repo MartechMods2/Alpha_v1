@@ -82,7 +82,7 @@ test("member guide covers the economy in bounded complete pages and respects pre
   for (const term of [
     "!daily",
     "!redeem",
-    "!prices",
+    "!aura prices",
     "--confirm",
     "5%",
     "!evo",

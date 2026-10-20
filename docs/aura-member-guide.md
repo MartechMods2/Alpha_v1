@@ -1,10 +1,3 @@
-# Aura — ready-to-share member messages
-
-The creator can post these with `$auraannounce`. Anyone can read each page with `$auraguide 1`, `2` or `3`. Check `$aurasystem status` before announcing activation.
-
-## Message 1
-
-```text
 ╭─ ✨ *WELCOME TO AURA*
 ╰─ Alpha's rewards & progression
 
@@ -21,47 +14,56 @@ Aura is virtual currency with no cash value. Your wallet works across Alpha grou
 08:00, 14:00 and 20:00 Africa/Lagos. Each slot shares ONE 20,000-Aura code across selected groups. $redeem CODE — first valid claim wins globally. One scheduled win per person daily; codes expire after 30 minutes. Missed offline slots are skipped.
 
 $auraguide 2 — spending, shop and Evo
-```
 
-## Message 2
+---
 
-```text
-╭─ ✨ *AURA · SPEND & EVOLVE*
+╭─ ✨ *AURA · SHOP & EVOLUTION*
 
-*COMMAND PRICES*
-• AI text/workflows: 500 Aura.
-• Basic sticker creation/conversion: 100.
-• PDF tools and text-to-speech: 300.
-• Voice AI/transcription: 1,000.
-• Background removal/cutout stickers: 1,500.
-• AI image generation: 2,500.
-$prices gives the exact aliases; all unlisted commands are free. Help, rules, privacy and essential moderation stay free.
+*REMEMBER THREE COMMANDS*
+$aura — profile, wallet and shortcuts
+$aurashop — illustrated catalogue, highest price first
+$evo — ranks, prices and permanent rewards
 
-A priced request reserves Aura before running. A successful delivered result keeps the charge; failures refund it. For prices of 1,000+, add --confirm, e.g. $img a futuristic Lagos skyline --confirm. Existing permissions and provider quotas still apply.
+*SHOP SHORTCUTS*
+$aurashop frames / titles / pets / evo / legendary
+$aurashop all 2 — next page
+$aurashop item ruby-frame — details
+$aurashop preview ruby-frame — free preview
+$aurashop buy ruby-frame --confirm
+Purchases of 100,000+ need --confirm. Lower-priced purchases charge immediately. XP and Evo gates still apply.
+$aurashop equip ruby-frame — one cosmetic slot
+$aura inventory — owned items
+$aura bag — capacity and next upgrade
+$aura bag expand --confirm — buy next capacity
 
-*YOUR WALLET & SHOP*
-$balance — Aura profile card
-$transactions — your last ten records sent PRIVATELY
-$aurashop / $aurabuy gold-title
-$aurainventory / $auraequip gold-title
-Gold title: 5,000; Midnight theme: 10,000; Aurora frame: 15,000. More frames and XP-unlocked titles: $aurashop frames or titles. $aurapreview ruby-frame shows a free preview. Cosmetics affect Alpha's profile card, not your WhatsApp account.
+Starter bag: 20 slots. Each item/tool unit uses one slot; cards, badges and awarded prestige frames/titles use no slots. Unequipping does not free space. Normal capacities: 24 / 40 / 64 / 128. Evo storage: 10,000; ultimate storage: 9,999,999. These are total capacities, bought separately after rank unlock.
+$aurashop salvage <id> — preview; add --confirm to remove ONE item. Refund: 25% of the lower of current price and recorded purchase price; legacy items use conservative original prices. No profit from price changes.
 
-$aurashop tools — streak shields (2,000) protect one missed daily day automatically; tagline tickets (1,000) set a short card message with $aurause tagline-ticket Your message. Hold up to three of each.
-Bag starts at 8 slots. Each cosmetic/tool unit uses one slot; cards and badges have their own album. $aurabag shows space; $aurabag expand --confirm buys 16/24/40/64 slots. $aurasalvage <id> previews a 25% return to free space.
-$aurashop pets offers cosmetic companions. $aurapet equip byte-fox activates an owned pet; $aurause pet-treat grows its bond, three times daily. No XP or financial advantage.
-$auracollect — one free collectible card daily while Aura is ON. Complete eight different cards for 2,500 Aura and the Curator badge. $auracollection shows your progress.
+*TOOLS, PETS & COLLECTIONS*
+$aurashop use tagline-ticket Hello community — up to 40 plain characters. Streak shields protect one missed daily day automatically.
+$aurashop pet equip byte-fox — owned companion
+$aurashop use pet-treat — +1 bond, three daily, maximum 100. Badge at ten. No financial/XP advantage.
+$aurashop collect — free daily card; eight cards award 2,500 Aura and Curator once. $aurashop album shows progress.
 
-$aurasend @member 1000 — preview a transfer. Repeat with --confirm to send. Fee: 5%, rounded up. Maximum 10,000 per transfer and 20,000 sent daily.
+*EVO RANKS*
+Spark: 0 Aura / 0 quests
+Pulse: 50,000 Aura / 5 quests
+Surge: 150,000 Aura / 20 quests
+Nova: 350,000 Aura / 50 quests
+Apex: 750,000 Aura / 100 quests
+Evo: 100,000,000 Aura / 200 quests
+Evo-Legendary+: 1,000,000,000 Aura / 500 quests
+$evo upgrade --confirm buys the next stage. Evo and Evo-Legendary+ award an exclusive frame and permanent title, automatically equipped. No moderation privileges or competitive power.
 
-*EVO UPGRADES*
-Spark → Pulse (5,000 + 5 quests) → Surge (15,000 + 20 quests) → Nova (35,000 + 50 quests) → Apex (75,000 + 100 quests). Costs apply to each next upgrade; quest requirements are total completed quests. $evo upgrade --confirm. Stages stay unlocked.
+*COMMAND FEES*
+$aura prices lists current fees and aliases. A priced request reserves Aura; failed work refunds it. Fees of 1,000+ need --confirm. Unlisted commands remain free. Provider quotas still apply.
+$aura history — last ten records in PRIVATE chat
+$aurasend @member 1000 --confirm — 5% rounded-up fee; max 10,000/transfer and 20,000/day.
 
 $auraguide 3 — ranks, fair play and penalties
-```
 
-## Message 3
+---
 
-```text
 ╭─ ✨ *AURA · RANKS & FAIR PLAY*
 
 *THREE SEPARATE TRACKS*
@@ -79,4 +81,3 @@ No Aura fines for being quiet, normal losses, wrong quiz answers or failed APIs.
 Receipts are sent privately. $auraappeal RECEIPT <reason> requests review; the creator can reverse mistaken penalties once. Creator gifts/custom coupons share a 500,000-Aura daily budget.
 
 When Aura is OFF, normal commands use their ordinary permissions/quotas without Aura fees. New Aura rewards, purchases, transfers, duels and drops pause; balances remain saved. Already-running requests may finish and settle; stale reservations are refunded. $aurasystem status checks activation.
-```

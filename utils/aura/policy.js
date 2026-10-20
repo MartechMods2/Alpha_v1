@@ -33,6 +33,20 @@ export const EVO = [
   { name: "Surge", price: 15000, quests: 20 },
   { name: "Nova", price: 35000, quests: 50 },
   { name: "Apex", price: 75000, quests: 100 },
+  {
+    name: "Evo",
+    price: 100000000,
+    quests: 200,
+    frame: "evo-sovereign-frame",
+    title: "Evo Sovereign",
+  },
+  {
+    name: "Evo-Legendary+",
+    price: 1000000000,
+    quests: 500,
+    frame: "legendary-infinity-frame",
+    title: "Evo-Legendary+ Sovereign",
+  },
 ];
 export const SHOP = [
   {
@@ -217,6 +231,70 @@ SHOP.push(
       "Consume with $aurause pet-treat after equipping a pet. Adds one bond point, at most three interactions per Lagos day. Cosmetic only.",
   },
 );
+SHOP.push(
+  {
+    id: "evo-nebula-theme",
+    name: "Evo Nebula",
+    price: 50000000,
+    kind: "theme",
+    evo: 5,
+    color: "#a17bff",
+  },
+  {
+    id: "evo-phoenix",
+    name: "Evo Phoenix",
+    price: 80000000,
+    kind: "pet",
+    evo: 5,
+    color: "#c490ff",
+  },
+  {
+    id: "evo-crest",
+    name: "Evo Crest",
+    price: 60000000,
+    kind: "emblem",
+    evo: 5,
+    color: "#bca4ff",
+  },
+  {
+    id: "legendary-cosmos-theme",
+    name: "Legendary+ Cosmos",
+    price: 500000000,
+    kind: "theme",
+    evo: 6,
+    color: "#ffd77b",
+  },
+  {
+    id: "legendary-celestial-dragon",
+    name: "Legendary+ Celestial Dragon",
+    price: 800000000,
+    kind: "pet",
+    evo: 6,
+    color: "#ffe8aa",
+  },
+  {
+    id: "legendary-crown",
+    name: "Legendary+ Sovereign Crown",
+    price: 600000000,
+    kind: "emblem",
+    evo: 6,
+    color: "#fff1b6",
+  },
+);
+export const PRESTIGE_FRAMES = [
+  {
+    id: "evo-sovereign-frame",
+    name: "Evo Sovereign Frame",
+    color: "#b8a0ff",
+    prestige: 5,
+  },
+  {
+    id: "legendary-infinity-frame",
+    name: "Legendary+ Infinity Frame",
+    color: "#ffe6a0",
+    prestige: 6,
+  },
+];
 export const COLLECTIBLES = [
   { id: "byte-bot", name: "Byte Bot" },
   { id: "linux-penguin", name: "Linux Penguin" },
@@ -276,9 +354,11 @@ export const PRICES = [
     kind: "media",
   },
 ];
+for (const item of SHOP) item.basePrice = item.price;
 applyPrices(SHOP, "shop", (row) => row.id);
 applyPrices(EVO.slice(1), "evo", (row) => row.name);
 applyPrices(PRICES, "commands", (row) => row.commands[0]);
+SHOP.sort((a, b) => b.price - a.price || a.id.localeCompare(b.id));
 export const priceFor = (command) =>
   PRICES.find((row) => row.commands.includes(command));
 export const scheduledSlot = (now = new Date()) => {

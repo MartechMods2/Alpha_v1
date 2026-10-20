@@ -108,12 +108,16 @@ test("commands keep gifts creator-only, coupons and transaction histories privat
     assert.ok(sent.at(-1).image);
     assert.match(sent.at(-1).caption, /Collected/);
     await run(b, "aurashop", ["all", "2"]);
-    assert.match(sent.at(-1).text, /2\/6/);
+    assert.ok(sent.at(-1).image);
+    assert.match(sent.at(-1).caption, /2\/7/);
+    const fundedWallet = await fixture.engine.profile(b);
+    fundedWallet.balance += 120000;
+    await fixture.store.put("AuraWallets", fundedWallet);
     await run(b, "aurabag", ["expand"]);
     assert.match(sent.at(-1).text, /--confirm/);
-    assert.equal((await fixture.engine.profile(b)).balance, 19000);
+    assert.equal((await fixture.engine.profile(b)).balance, 139000);
     await run(b, "aurabag", ["expand", "--confirm"]);
-    assert.equal((await fixture.engine.profile(b)).bagSlots, 16);
+    assert.equal((await fixture.engine.profile(b)).bagSlots, 24);
     await run(b, "aurabuy", ["byte-fox"]);
     await run(b, "aurapet", ["equip", "byte-fox"]);
     await run(b, "aurabuy", ["pet-treat"]);
@@ -122,7 +126,7 @@ test("commands keep gifts creator-only, coupons and transaction histories privat
     await run(owner, "aurasystem", ["off"]);
     await run(b, "aurabuy", ["ruby-frame"]);
     assert.match(sent.at(-1).text, /currently OFF/);
-    assert.equal((await fixture.engine.profile(b)).balance, 5700);
+    assert.equal((await fixture.engine.profile(b)).balance, 10700);
     await run(b, "aurabag", ["expand", "--confirm"]);
     assert.match(sent.at(-1).text, /OFF/);
   } finally {
@@ -262,6 +266,75 @@ test("drop scheduler posts one shared code once per group and recovers stale res
       recovered.length,
       3,
       "stale reservations still recover while disabled",
+    );
+  } finally {
+    delete globalThis.__auraFlow;
+  }
+});
+test("grouped Aura commands preserve activation gates, high-price confirmation and prestige entitlements", async () => {
+  const fixture = setup();
+  globalThis.__auraFlow = fixture;
+  try {
+    const command = await load("../commands/public/aura.js"),
+      sent = [];
+    let sequence = 0;
+    const run = (cmd, args = []) =>
+      command.handler(
+        {
+          profilePictureUrl: async () => {
+            throw Error("private");
+          },
+        },
+        { key: { id: "grouped-" + ++sequence } },
+        "12345@g.us",
+        args,
+        {
+          command: cmd,
+          senderJid: b,
+          isGroup: true,
+          isOwner: true,
+          isModerator: true,
+          sendMessageWTyping: async (to, p) => sent.push({ to, ...p }),
+        },
+      );
+    await run("aurashop", ["buy", "ruby-frame", "--confirm"]);
+    assert.match(sent.at(-1).text, /OFF/);
+    await run("evo");
+    assert.match(sent.at(-1).text, /Evo-Legendary/);
+    await run("evo", ["upgrade", "--confirm"]);
+    assert.match(sent.at(-1).text, /OFF/);
+    await fixture.store.put("AuraSettings", { _id: "economy", enabled: true });
+    await fixture.store.put("AuraWallets", {
+      ...(await fixture.engine.profile(b)),
+      balance: 2000000,
+    });
+    await run("aurashop", ["buy", "ruby-frame"]);
+    assert.match(sent.at(-1).text, /Confirm purchase/);
+    assert.equal((await fixture.engine.profile(b)).balance, 2000000);
+    await run("aurashop", ["buy", "ruby-frame", "--confirm"]);
+    assert.equal((await fixture.engine.profile(b)).balance, 1400000);
+    await run("aurashop", ["equip", "legendary-infinity-frame"]);
+    assert.match(sent.at(-1).text, /Choose a cosmetic/);
+    await run("aurashop", ["equip", "ruby-frame"]);
+    assert.match(sent.at(-1).text, /updated/);
+    await run("aura", ["inventory"]);
+    assert.match(sent.at(-1).text, /ruby-frame/);
+    await run("aura", ["bag"]);
+    assert.match(sent.at(-1).text, /1\/20/);
+    await run("aura", ["history"]);
+    assert.equal(sent.at(-1).to, b);
+    await run("aurashop", ["legendary"]);
+    assert.ok(sent.at(-1).image);
+    assert.match(sent.at(-1).caption, /Evo-Legendary\+ required/);
+    const w = await fixture.engine.profile(b);
+    w.evo = 6;
+    w.quests = 500;
+    await fixture.store.put("AuraWallets", w);
+    await run("aurashop", ["equip", "legendary-infinity-frame"]);
+    assert.match(sent.at(-1).text, /updated/);
+    assert.equal(
+      (await fixture.engine.profile(b)).equipped,
+      "legendary-infinity-frame",
     );
   } finally {
     delete globalThis.__auraFlow;

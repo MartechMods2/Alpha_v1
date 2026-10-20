@@ -29,7 +29,7 @@ No new API keys or payment integration are required. Existing provider keys/quot
 
 ## Expanded shop and collections
 
-See [the shop guide](aura-shop.md) for the full 47-item catalogue, colour previews, XP unlocks, consumable inventory, expandable inventory bags, cosmetic companions, salvage, automatic one-day streak shields, profile taglines and the free eight-card collection. Use `$aurashop`, `$aurainventory`, `$aurapreview ruby-frame`, `$auracollect` and `$auracollection`. These features follow the same OFF-by-default activation switch.
+See [the shop guide](aura-shop.md) for the full 53-item catalogue, colour previews, XP unlocks, consumable inventory, expandable inventory bags, cosmetic companions, salvage, automatic one-day streak shields, profile taglines and the free eight-card collection. Use `$aurashop`, `$aurainventory`, `$aurapreview ruby-frame`, `$auracollect` and `$auracollection`. These features follow the same OFF-by-default activation switch.
 
 ## Earning and gifting
 
@@ -65,8 +65,8 @@ Activation: `$aurasystem on` / `$aurasystem off` (creator only); `$aurasystem st
 | `$prices`, `$auraprices`                         | Exact list of charged aliases and prices; all unlisted commands remain free              |
 | `$transactions`, `$auratransactions`             | Last ten Aura ledger entries delivered to YOUR PRIVATE CHAT                              |
 | `$aurashop`                                      | View Aura cosmetics and prices                                                           |
-| `$aurabuy gold-title`                            | Buy once; 5,000 Aura                                                                     |
-| `$aurabuy aurora-frame`                          | Buy once; 15,000 Aura                                                                    |
+| `$aurabuy gold-title`                            | Buy once; 90,000 Aura                                                                     |
+| `$aurabuy aurora-frame`                          | Buy once; 150,000 Aura; --confirm required                                                                    |
 | `$aurabuy midnight-theme`                        | Buy once; 10,000 Aura                                                                    |
 | `$aurainventory`                                 | View owned Aura cosmetics                                                                |
 | `$auraequip aurora-frame`                        | Apply cosmetic colour border on `$auraprofile`                                           |
@@ -83,10 +83,12 @@ XP thresholds: Rookie 0, Bronze 500, Silver 2,000, Gold 5,000, Platinum 12,000, 
 | Evo stage | Upgrade price | Total correct learning quests required |
 | --------- | ------------: | -------------------------------------: |
 | Spark     |          Free |                                      0 |
-| Pulse     |         5,000 |                                      5 |
-| Surge     |        15,000 |                                     20 |
-| Nova      |        35,000 |                                     50 |
-| Apex      |        75,000 |                                    100 |
+| Pulse     |        50,000 |                                      5 |
+| Surge     |       150,000 |                                     20 |
+| Nova      |       350,000 |                                     50 |
+| Apex      |       750,000 |                                    100 |
+| Evo | 100,000,000 | 200 |
+| Evo-Legendary+ | 1,000,000,000 | 500 |
 
 Unlocked stages and earned badges are permanent. The creator can preview upgrades without the member's currency/quest requirements. No currency purchases can buy RP.
 
@@ -215,3 +217,5 @@ Rollback: turn off selected drops, revert the Aura implementation commit and res
 - `$img2pdf`, `$pdf2img`, `$pdfmerge`, `$pdfsplit`, `$pdfcompress`
 
 All commands not listed above remain free.
+
+For the expanded Evo and Evo-Legendary+ ranks, prices, exclusive frame/title rewards, 20-slot starter bags, special storage and the simplified three-command interface, see [the complete shop guide](aura-shop.md). Current prices come from config/aura-prices.json.

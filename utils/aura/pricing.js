@@ -19,9 +19,13 @@ export function applyPrices(rows, section, identify, config = priceConfig) {
   for (const [id, value] of Object.entries(prices)) {
     if (!allowed.has(id))
       throw Error(`Unknown Aura price ID: ${section}.${id}`);
-    if (!Number.isSafeInteger(value) || value < 1 || value > 500000)
+    if (
+      !Number.isSafeInteger(value) ||
+      value < 1 ||
+      value > (section === "commands" ? 10000 : 10000000000)
+    )
       throw Error(
-        `Aura price ${section}.${id} must be a whole number from 1 to 500000.`,
+        `Aura price ${section}.${id} must be a whole number from 1 to ${section === "commands" ? 10000 : 10000000000}.`,
       );
   }
   for (const row of rows) {

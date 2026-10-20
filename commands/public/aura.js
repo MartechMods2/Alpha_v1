@@ -1,3 +1,5 @@
+import { salvageRefund } from "../../utils/aura/refunds.js";
+import { shopCardPayload } from "../../utils/aura/shopCard.js";
 import { inventoryStatus } from "../../utils/aura/inventory.js";
 import { collectionCardPayload } from "../../utils/aura/collectionCard.js";
 import { isAuraEnabled, setAuraEnabled } from "../../utils/aura/activation.js";
@@ -12,6 +14,7 @@ import {
   rpRank,
   EVO,
   SHOP,
+  PRESTIGE_FRAMES,
   COLLECTIBLES,
   PRICES,
 } from "../../utils/aura/policy.js";
@@ -24,6 +27,42 @@ const handler = async (sock, msg, from, args, info) => {
   const reply = (text) =>
     info.sendMessageWTyping(from, { text }, { quoted: msg });
   try {
+    const routes = {
+      aura: {
+        daily: "daily",
+        quests: "quests",
+        answer: "questanswer",
+        redeem: "redeem",
+        profile: "auraprofile",
+        bag: "aurabag",
+        inventory: "aurainventory",
+        prices: "auraprices",
+        guide: "auraguide",
+        history: "auratransactions",
+        ranks: "aurarank",
+      },
+      aurashop: {
+        buy: "aurabuy",
+        item: "auraitem",
+        preview: "aurapreview",
+        equip: "auraequip",
+        use: "aurause",
+        bag: "aurabag",
+        inventory: "aurainventory",
+        pet: "aurapet",
+        salvage: "aurasalvage",
+        collect: "auracollect",
+        album: "auracollection",
+      },
+    };
+    const routed = routes[info.command]?.[args[0]];
+    if (routed) {
+      args = args.slice(1);
+      info = { ...info, command: routed };
+    } else if (info.command === "aura" && args.length)
+      return reply(
+        "Use $aura for your profile; $aura daily | quests | inventory | bag | prices | guide. Shop: $aurashop. Progress: $evo.",
+      );
     const command = info.command;
     const pages = auraMemberGuide(info.prefix || "$");
     if (command === "auraguide") {
@@ -78,6 +117,7 @@ const handler = async (sock, msg, from, args, info) => {
       "aurapreview",
       "auracollection",
       "aurabag",
+      "evo",
       "aurainventory",
       "auraappeal",
       "auraappeals",
@@ -100,9 +140,13 @@ const handler = async (sock, msg, from, args, info) => {
     if (["auraprices", "prices"].includes(cmd))
       return reply(
         "✨ *AURA PRICES — apply only while Aura is ON*\n" +
-          PRICES.map(
-            (x) => `${x.commands.map((c) => "$" + c).join(" / ")} — ${x.price}`,
-          ).join("\n") +
+          [...PRICES]
+            .sort((a, b) => b.price - a.price)
+            .map(
+              (x) =>
+                `${x.commands.map((c) => "$" + c).join(" / ")} — ${x.price}`,
+            )
+            .join("\n") +
           "\nAll unlisted commands remain free, including help, safety and moderation. Commands priced 1,000+ require a trailing --confirm. Refunds on failure; existing provider quotas still apply. Old virtual coins cannot pay Aura prices.",
       );
     if (["aura", "balance", "auraprofile", "aurarank"].includes(cmd)) {
@@ -118,9 +162,10 @@ const handler = async (sock, msg, from, args, info) => {
           `Aura: ${owner ? "∞ · CREATOR" : w.balance}`,
           `Lifetime XP: ${w.xp} · ${xpRank(w.xp)[1]}`,
           `Ranked: ${rpRank(current)} · ${current} RP`,
-          `Evo: ${EVO[w.evo].name} · Completed quests: ${w.quests}`,
+          `Evo rank: ${EVO[w.evo].name} · Completed quests: ${w.quests}`,
+          ...(w.prestigeTitle ? [`Prestige title: ${w.prestigeTitle}`] : []),
           `Conduct: ${w.conduct}/100`,
-          `Equipped: ${SHOP.find((x) => x.id === w.equipped)?.name || "Default"}`,
+          `Equipped: ${[...SHOP, ...PRESTIGE_FRAMES].find((x) => x.id === w.equipped)?.name || "Default"}`,
           ...(w.tagline ? [`✧ ${w.tagline}`] : []),
           `Collection: ${w.collection?.length || 0}/${COLLECTIBLES.length}`,
           `Daily streak: ${w.streak || 0}`,
@@ -131,7 +176,7 @@ const handler = async (sock, msg, from, args, info) => {
               ]
             : []),
         ],
-        footer: "Spending Aura never lowers lifetime XP. $aurahelp",
+        footer: "$aura daily · $aura inventory · $aurashop · $evo",
       });
       return info.sendMessageWTyping(
         from,
@@ -210,14 +255,14 @@ const handler = async (sock, msg, from, args, info) => {
       const bag = inventoryStatus(await aura.profile(actor));
       if (args[0] !== "expand")
         return reply(
-          `🎒 Bag: ${bag.used}/${bag.capacity} slots · ${bag.free} free.\n${bag.next ? `Next upgrade: ${bag.next.slots} slots for ${bag.next.price} Aura. Use $aurabag expand --confirm.` : "Maximum capacity reached."}\nEach cosmetic or consumable unit uses one slot. Cards and badges use a separate album. Existing oversized inventories are preserved.`,
+          `🎒 Bag: ${bag.used}/${bag.capacity} slots · ${bag.free} free.\n${bag.next ? `Next upgrade: ${bag.next.slots} slots for ${bag.next.price} Aura${bag.next.evo ? " · Requires " + EVO[bag.next.evo].name : ""}. Use $aura bag expand --confirm.` : "Maximum capacity reached."}\nEach cosmetic or consumable unit uses one slot. Cards and badges use a separate album. Existing oversized inventories are preserved.`,
         );
       if (!(await isAuraEnabled(auraStore)))
         return reply("Aura is OFF. Bag expansion is paused.");
       if (!bag.next) throw Error("No further bag upgrade is available.");
       if (args[1] !== "--confirm")
         return reply(
-          `Expand to ${bag.next.slots} slots for ${bag.next.price} Aura. Use $aurabag expand --confirm.`,
+          `Expand to ${bag.next.slots} slots for ${bag.next.price} Aura${bag.next.evo ? " · Requires " + EVO[bag.next.evo].name : ""}. Use $aura bag expand --confirm.`,
         );
       const r = await aura.expandBag(actor, event);
       return reply(
@@ -229,7 +274,7 @@ const handler = async (sock, msg, from, args, info) => {
       if (!item) throw Error("Choose an owned shop item ID.");
       if (args[1] !== "--confirm")
         return reply(
-          `Salvage ONE ${item.name} for ${owner ? 0 : Math.floor(item.price * 0.25)} Aura and free one slot. This removes the item, including its equipped state. Use $aurasalvage ${item.id} --confirm to proceed.`,
+          `Salvage ONE ${item.name} for ${salvageRefund(await aura.profile(actor), item, owner)} Aura and free one slot. This removes the item, including its equipped state. Use $aurasalvage ${item.id} --confirm to proceed.`,
         );
       const r = await aura.salvage(actor, item.id, event);
       return reply(
@@ -267,10 +312,12 @@ const handler = async (sock, msg, from, args, info) => {
           "tools",
           "pets",
           "emblems",
+          "evo",
+          "legendary",
         ].includes(category)
       )
         return reply(
-          "Use $aurashop all | frames | titles | themes | tools | pets | emblems [page].",
+          "Use $aurashop all | frames | titles | themes | tools | pets | emblems | evo | legendary [page].",
         );
       const kinds = {
         frames: "frame",
@@ -281,29 +328,45 @@ const handler = async (sock, msg, from, args, info) => {
         emblems: "emblem",
       };
       const rows = SHOP.filter(
-        (x) => category === "all" || x.kind === kinds[category],
+        (x) =>
+          category === "all" ||
+          (category === "evo"
+            ? x.evo === 5
+            : category === "legendary"
+              ? x.evo === 6
+              : x.kind === kinds[category]),
       );
       const pages = Math.max(1, Math.ceil(rows.length / 8));
       const page = Number(args[1] || 1);
       if (!Number.isSafeInteger(page) || page < 1 || page > pages)
         return reply(`Choose page 1–${pages}: $aurashop ${category} <page>.`);
-      return reply(
+      const caption =
         `✨ *AURA SHOP · ${category} · ${page}/${pages}*\n` +
-          rows
-            .slice((page - 1) * 8, page * 8)
-            .map(
-              (x) =>
-                `${x.id} — ${x.price} Aura${x.xp ? " · " + x.xp + " XP required" : ""}\n${x.name}`,
-            )
-            .join("\n\n") +
-          (page < pages ? `\n\nNext: $aurashop ${category} ${page + 1}` : "") +
-          "\n\n$auraitem <id> — details\n$aurapreview <id> — free cosmetic preview\n$aurabuy <id> — buy\n$aurainventory — owned items\n$auraequip <id> or none\n$auracollect — free daily collectible\nPurchases work only when Aura is ON.",
+        rows
+          .slice((page - 1) * 8, page * 8)
+          .map(
+            (x) =>
+              `${x.id} — ${x.price.toLocaleString("en-US")} Aura${x.evo ? " · " + EVO[x.evo].name + " required" : ""}${x.xp ? " · " + x.xp + " XP required" : ""}\n${x.name}`,
+          )
+          .join("\n\n") +
+        (page < pages ? `\n\nNext: $aurashop ${category} ${page + 1}` : "") +
+        "\n\n✦ $aurashop buy <id>\n✦ $aurashop preview <id>\n✦ $aurashop equip <id>\n✦ $aura inventory · $aura bag\n✦ $evo — prestige ranks & rewards\nPurchases work only when Aura is ON.";
+      return info.sendMessageWTyping(
+        from,
+        shopCardPayload(
+          rows.slice((page - 1) * 8, page * 8),
+          category,
+          page,
+          pages,
+          caption,
+        ),
+        { quoted: msg },
       );
     }
     if (cmd === "auraitem" || cmd === "aurapreview") {
       const item = SHOP.find((x) => x.id === args[0]);
       if (!item) throw Error("Choose an item ID from $aurashop.");
-      const details = `${item.name} · ${item.price} Aura\nType: ${item.kind}${item.xp ? " · Requires " + item.xp + " XP" : ""}\n${item.description || "Permanent cosmetic for your Aura card; no gameplay or admin advantage."}`;
+      const details = `${item.name} · ${item.price} Aura\nType: ${item.kind}${item.evo ? " · Requires " + EVO[item.evo].name : ""}${item.xp ? " · Requires " + item.xp + " XP" : ""}\n${item.description || "Permanent cosmetic for your Aura card; no gameplay or admin advantage."}`;
       if (cmd === "auraitem") return reply(details);
       if (item.kind === "tool")
         return reply(details + "\nTools have no visual preview.");
@@ -352,6 +415,11 @@ const handler = async (sock, msg, from, args, info) => {
       );
     }
     if (cmd === "aurabuy") {
+      const product = SHOP.find((x) => x.id === args[0]);
+      if (product && product.price >= 100000 && args[1] !== "--confirm")
+        return reply(
+          `Confirm purchase: ${product.name} for ${product.price.toLocaleString("en-US")} Aura. Use $aurashop buy ${product.id} --confirm. No Aura spent yet.`,
+        );
       const r = await aura.buy(actor, args[0], event);
       return reply(
         `Purchased ${r.item}. Spent ${r.spent}; balance ${r.balance}.`,
@@ -360,7 +428,8 @@ const handler = async (sock, msg, from, args, info) => {
     if (cmd === "aurainventory") {
       const w = await aura.profile(actor);
       const cosmetics = (w.inventory || []).map(
-        (id) => SHOP.find((x) => x.id === id)?.name || id,
+        (id) =>
+          `${SHOP.find((x) => x.id === id)?.name || "Saved item"} [${id}]`,
       );
       const tools = SHOP.filter((x) => x.kind === "tool").map(
         (x) => `${x.name}: ${w.items?.[x.id] || 0}/${x.max}`,
@@ -370,7 +439,11 @@ const handler = async (sock, msg, from, args, info) => {
           (cosmetics.join(", ") || "None yet") +
           "\n" +
           tools.join("\n") +
-          `\nCards: ${w.collection?.length || 0}/${COLLECTIBLES.length}\nEquipped: ${SHOP.find((x) => x.id === w.equipped)?.name || "Default"}\n$aurause tagline-ticket Your tagline\nStreak shields work automatically. $auracollection shows cards. $aurabag expands space; $aurasalvage <id> previews a 25% return.`,
+          `\nPrestige rewards: ${
+            PRESTIGE_FRAMES.filter((x) => (w.evo || 0) >= x.prestige)
+              .map((x) => x.id)
+              .join(", ") || "None"
+          } (no bag slots)\nCards: ${w.collection?.length || 0}/${COLLECTIBLES.length}\nEquipped: ${[...SHOP, ...PRESTIGE_FRAMES].find((x) => x.id === w.equipped)?.name || "Default"}\n$aurashop use tagline-ticket Your tagline\nStreak shields work automatically. $aurashop album shows cards. $aura bag expands space; $aurashop salvage <id> previews a refund.`,
       );
     }
     if (cmd === "auraequip") {
@@ -379,11 +452,15 @@ const handler = async (sock, msg, from, args, info) => {
         if (!w) throw Error("Your Aura inventory is empty.");
         if (args[0] === "none") delete w.equipped;
         else {
-          const item = SHOP.find((x) => x.id === args[0]);
+          const item = [...SHOP, ...PRESTIGE_FRAMES].find(
+            (x) => x.id === args[0],
+          );
           if (
             !item ||
             ["tool", "pet"].includes(item.kind) ||
-            !w.inventory.includes(item.id)
+            !(item.prestige
+              ? w.evo >= item.prestige
+              : w.inventory.includes(item.id))
           )
             throw Error("Choose a cosmetic you own; tools cannot be equipped.");
           w.equipped = item.id;
@@ -397,15 +474,25 @@ const handler = async (sock, msg, from, args, info) => {
         return reply(
           EVO.map(
             (x, i) =>
-              `${i}. ${x.name}: ${x.price} Aura + ${x.quests} completed quests`,
+              `${i}. ${x.name}: ${x.price.toLocaleString("en-US")} Aura + ${x.quests} completed quests${x.frame ? " · Exclusive frame + permanent title" : ""}`,
           ).join("\n") +
-            "\n$evo upgrade --confirm buys the next stage. Permanent; no power advantage.",
+            "\n$evo upgrade --confirm buys the next stage. Permanent cosmetic ranks. Evo unlocks 10,000-slot bag purchases; Evo-Legendary+ unlocks 9,999,999-slot bag purchases. Storage is bought separately.\nReward frames: $aurashop equip evo-sovereign-frame or legendary-infinity-frame after unlocking.",
         );
+      if (!(await isAuraEnabled(auraStore)))
+        return reply("Aura is OFF. Evo upgrades are paused.");
       if (args[1] !== "--confirm")
         return reply("Read $evo, then use $evo upgrade --confirm.");
       const r = await aura.evolve(actor, event);
-      return reply(
-        `Evolved to ${r.evo}. Spent ${r.spent}; balance ${r.balance}.`,
+      const w = await aura.profile(actor);
+      return info.sendMessageWTyping(
+        from,
+        await auraProfilePayload(
+          sock,
+          info.senderJid,
+          `✦ EVOLUTION COMPLETE ✦\n${r.evo}\n${w.prestigeTitle ? "Permanent title: " + w.prestigeTitle + "\nExclusive frame equipped.\n" : ""}Spent ${r.spent.toLocaleString("en-US")}; balance ${r.balance.toLocaleString("en-US")}.\n$aurashop evo · $aurashop legendary · $aura bag`,
+          w.equipped,
+        ),
+        { quoted: msg },
       );
     }
     if (cmd === "aurasend" || cmd === "auragift" || cmd === "aurapenalty") {
@@ -627,7 +714,7 @@ export default () => ({
     "aurarules",
     "aurahelp",
   ],
-  desc: "Aura wallets, redeem drops, daily quests, cosmetic Evo upgrades and private creator controls",
+  desc: "Three shortcuts: $aura for your wallet, $aurashop for items, $evo for prestige progression",
   usage:
     "aura | daily | redeem CODE | prices | quests 1 | questanswer 1 2 | aurashop | evo | aurahelp",
   handler,

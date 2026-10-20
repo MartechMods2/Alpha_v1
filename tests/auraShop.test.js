@@ -12,9 +12,9 @@ test("new shop stock keeps existing item IDs and enforces XP locks", async () =>
     assert.ok(SHOP.some((x) => x.id === id));
   await assert.rejects(e.buy(a, "royal-frame", "locked"), /2000 lifetime XP/);
   assert.equal((await e.profile(a)).balance, 100000);
-  await e.buy(a, "ruby-frame", "ruby");
-  assert.equal((await e.profile(a)).balance, 92000);
-  await assert.rejects(e.buy(a, "ruby-frame", "dup"), /already own/);
+  await e.buy(a, "neon-frame", "ruby");
+  assert.equal((await e.profile(a)).balance, 10000);
+  await assert.rejects(e.buy(a, "neon-frame", "dup"), /already own/);
 });
 test("consumable inventory is capped and concurrent buys cannot duplicate receipts", async () => {
   const { engine: e } = setup();
