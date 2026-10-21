@@ -2,7 +2,7 @@ export const auraQuickGuide = (p = "$") => `✨ *AURA — SIMPLE MEMBER GUIDE*
 
 Aura is Alpha's virtual currency. It is not real money and cannot be cashed out. Only the verified owner has unlimited Aura.
 
-*CHECK & EARN*
+*CHECK & EARN*\n• Every eligible group text earns 20 Aura automatically while Aura and Alpha are ON. No extra XP. Duplicate delivery, private chats, media-only posts, blocked/spam messages and old history do not earn. Rewards arrive silently; check your wallet or private history.
 • ${p}aura — your wallet and named profile. Every member can earn, spend, buy packs and share Aura while the system is ON.
 • ${p}aura name Your Name — set a free display nickname; use reset to restore your WhatsApp name. Names never grant privileges.
 • ${p}aura goals — daily progress, affordable cosmetics and free activities.

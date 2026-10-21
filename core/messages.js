@@ -1,3 +1,9 @@
+import { handlePassiveCommunityMessage } from "../utils/passiveCommunity.js";
+import { aura, auraStore } from "../db/auraData.js";
+import { auraIdentity } from "../utils/aura/identity.js";
+import { createGroupTextRewards } from "../utils/aura/groupTextRewards.js";
+const rewardGroupText = createGroupTextRewards({ engine: aura, store: auraStore, resolveIdentity: auraIdentity,
+  onError: () => console.warn("[AURA] Group text reward unavailable; normal processing continues.") });
 import { boundedGroupMetadata } from "../utils/groupMetadataDefense.js";
 import { validateMessage } from "../utils/ingestionDefense.js";
 import { maybeContextSticker } from "../utils/contextualStickers.js";
@@ -345,6 +351,10 @@ const getCommand = async (sock, msg, cache) => {
 				console.error("[safe moderation error]", error.message);
 			}
 		}
+
+		await rewardGroupText({ sock, msg, senderJid, groupMetadata, botJids,
+			groupEnabled: groupData?.isBotOn !== false });
+		if (await handlePassiveCommunityMessage(sock, msg).catch(() => false)) return;
 
 		if (isGroup && groupData?.isBotOn !== false && !msg.key.fromMe) {
 			void maybeContextSticker({ groupJid: from, body, sendMessageWTyping, isCommand: isCmd }).catch(() => {});
