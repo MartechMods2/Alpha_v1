@@ -1,3 +1,4 @@
+import { withAuraSenderAliases } from "./identity.js";
 // Silent rewards run after input validation and group moderation, within the
 // existing bounded ingestion handler. No extra queue, message body storage or reply.
 export function createGroupTextRewards({ engine, store, resolveIdentity,
@@ -19,7 +20,7 @@ export function createGroupTextRewards({ engine, store, resolveIdentity,
         stamp * 1000 > now() + 30000) return;
       // Cheap OFF check avoids identity resolution and wallet writes.
       if ((await store.get("AuraSettings", "economy"))?.enabled !== true) return;
-      const actor = await resolveIdentity(sock, { senderJid, groupMetadata });
+      const actor = await resolveIdentity(sock, withAuraSenderAliases({ senderJid, groupMetadata }, msg));
       if (engine.owned(actor) || botJids.includes(actor)) return;
       return await engine.rewardGroupText(actor, chat, msg.key.id);
     } catch {

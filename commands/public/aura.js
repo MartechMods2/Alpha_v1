@@ -17,7 +17,7 @@ import { isAuraEnabled, setAuraEnabled } from "../../utils/aura/activation.js";
 import { auraMemberGuide } from "../../utils/aura/memberGuide.js";
 import { auraProfilePayload } from "../../utils/aura/profile.js";
 import { aura, auraStore } from "../../db/auraData.js";
-import { auraIdentity } from "../../utils/aura/identity.js";
+import { auraIdentity, withAuraSenderAliases } from "../../utils/aura/identity.js";
 import {
   dayKey,
   key,
@@ -35,6 +35,7 @@ import { participantJids } from "../../utils/groupParticipants.js";
 const help =
   "Aura has no cash value. Earn with $daily, $quests, ranked wins and scheduled $redeem codes. Spend with $aurashop or priced commands. Only the primary creator has unlimited Aura. Wallets are global; old virtual coins remain separate. Use $auraprices, $auratransactions, $auraprofile, $aurarank, $evo, $aurarules.";
 const handler = async (sock, msg, from, args, info) => {
+  info = withAuraSenderAliases(info, msg);
   let displayName = auraDisplayName({}, info, msg);
   const send = info.sendMessageWTyping;
   info = { ...info, sendMessageWTyping: (to, payload, ...options) => {
@@ -344,7 +345,7 @@ const handler = async (sock, msg, from, args, info) => {
       return reply(
         r.duplicate
           ? "Today's daily reward is already claimed."
-          : `✨ +${r.reward} Aura · Balance ${r.balance} · Streak ${r.streak}${r.shieldUsed ? " · One streak shield used" : ""}`,
+          : `✨ +${r.reward} Aura · Balance ${r.balance} · Streak ${r.streak}${r.shieldUsed ? " · One streak shield used" : ""}${r.capReached ? " · Wallet cap reached; streak and XP still progressed." : ""}`,
       );
     }
     if (cmd === "redeem") {
@@ -361,16 +362,19 @@ const handler = async (sock, msg, from, args, info) => {
       );
     }
     if (cmd === "auratransactions" || cmd === "transactions") {
-      const rows = await aura.history(actor);
+      const view = args[0] || "important";
+      if (args.length > 1 || !["important", "chat", "all"].includes(view))
+        throw new AuraUserError("Use $aura history, $aura history chat or $aura history all.");
+      const rows = await aura.history(actor, view);
       return info.sendMessageWTyping(actor, {
-        text: rows.length
+        text: `AURA HISTORY · ${view}\nRecent receipts; balances shown are snapshots, not your current balance.\n$aura history chat — text rewards · $aura history all — all activity\n\n` + (rows.length
           ? rows
               .map(
                 (x) =>
-                  `${x.kind} · ${x.delta >= 0 ? "+" : ""}${x.delta} Aura${x.result?.item ? "\nItem: " + x.result.item : ""}${x.result?.kudos ? "\nThanks received: " + x.result.kudos : ""}\nReceipt: ${x._id}${x.reason ? "\nReason: " + x.reason : ""}`,
+                  `${x.kind} · ${x.delta >= 0 ? "+" : ""}${x.delta} Aura${x.result?.item ? "\nItem: " + x.result.item : ""}${x.result?.pack ? "\nPack: " + x.result.pack : ""}${x.result?.status ? "\nStatus: " + x.result.status : ""}${x.result?.kudos ? "\nThanks received: " + x.result.kudos : ""}\nReceipt: ${x._id}${x.reason ? "\nReason: " + x.reason : ""}`,
               )
               .join("\n\n")
-          : "No Aura transactions yet.",
+          : "No receipts in this view yet."),
       });
     }
     if (cmd === "aurabag") {
@@ -381,7 +385,9 @@ const handler = async (sock, msg, from, args, info) => {
         );
       if (!(await isAuraEnabled(auraStore)))
         return reply("Aura is OFF. Bag expansion is paused.");
-      if (!bag.next)
+      if (args.length > 2 || (args[1] && args[1] !== "--confirm"))
+        throw new AuraUserError("Use $aura bag expand [--confirm].");
+      if (!bag.next && args[1] !== "--confirm")
         throw new AuraUserError("No further bag upgrade is available.");
       if (args[1] !== "--confirm")
         return reply(
@@ -389,10 +395,12 @@ const handler = async (sock, msg, from, args, info) => {
         );
       const r = await aura.expandBag(actor, event);
       return reply(
-        `Bag expanded to ${r.slots} slots. Spent ${r.spent}; balance ${r.balance}.`,
+        `${r.duplicate ? "Already processed — no new charge. " : ""}Bag expanded to ${r.slots} slots. Spent ${r.spent}; balance at receipt ${r.balance}.`,
       );
     }
     if (cmd === "aurasalvage") {
+      if (args.length < 1 || args.length > 2 || (args[1] && args[1] !== "--confirm"))
+        throw new AuraUserError("Use $aura shop salvage <id> [--confirm].");
       const item = SHOP.find((x) => x.id === args[0]);
       if (!item) throw new AuraUserError("Choose an owned shop item ID.");
       if (args[1] !== "--confirm")
@@ -401,7 +409,7 @@ const handler = async (sock, msg, from, args, info) => {
         );
       const r = await aura.salvage(actor, item.id, event);
       return reply(
-        `Salvaged ${item.name}. +${r.reward} Aura · Balance ${r.balance} · Free slots ${r.free}.`,
+        `${r.duplicate ? "Already processed — no extra item removed. " : ""}Salvaged ${item.name}. +${r.reward} Aura · Balance at receipt ${r.balance} · Free slots ${r.free}.`,
       );
     }
     if (cmd === "aurapet") {
@@ -549,7 +557,7 @@ const handler = async (sock, msg, from, args, info) => {
     if (cmd === "auracollect") {
       const r = await aura.collect(actor);
       if (r.duplicate) return reply("Today's collectible is already claimed.");
-      const caption = `🃏 Collected ${r.card}! ${r.total}/${COLLECTIBLES.length}${r.reward ? " · Collection complete! +" + r.reward + " Aura and Curator badge" : ""}`;
+      const caption = `🃏 Collected ${r.card}! ${r.total}/${COLLECTIBLES.length}${r.complete ? " · Collection complete! +" + r.reward + " Aura and Curator badge" : ""}${r.capReached ? " · Wallet cap limited the Aura bonus; card and badge are saved." : ""}`;
       return info.sendMessageWTyping(
         from,
         collectionCardPayload(r.card, r.total, caption),
@@ -564,12 +572,14 @@ const handler = async (sock, msg, from, args, info) => {
         event,
       );
       return reply(
-        r.message
+        (r.duplicate ? "Already processed — no extra tool consumed. " : "") + (r.message
           ? `${r.message} Treats left: ${r.remaining}.`
-          : `Tagline saved: ${r.tagline}\nTickets remaining: ${r.remaining}. View $auraprofile.`,
+          : `Tagline saved: ${r.tagline}\nTickets remaining: ${r.remaining}. View $auraprofile.`),
       );
     }
     if (cmd === "aurabuy") {
+      if (args.length < 1 || args.length > 2 || (args[1] && args[1] !== "--confirm"))
+        throw new AuraUserError("Use $aura shop buy <one item-id> [--confirm].");
       const product = SHOP.find((x) => x.id === args[0]);
       if (product && product.price >= 100000 && args[1] !== "--confirm")
         return reply(
@@ -577,7 +587,7 @@ const handler = async (sock, msg, from, args, info) => {
         );
       const r = await aura.buy(actor, args[0], event);
       return reply(
-        `Purchased ${r.item}. Spent ${r.spent}; balance ${r.balance}.`,
+        `${r.duplicate ? "Already processed — no extra purchase or charge. " : ""}Purchased ${r.item}. Spent ${r.spent}; balance at receipt ${r.balance}.`,
       );
     }
     if (cmd === "aurainventory") {
@@ -646,7 +656,7 @@ const handler = async (sock, msg, from, args, info) => {
         await auraProfilePayload(
           sock,
           info.senderJid,
-          `✦ EVOLUTION COMPLETE ✦\n${r.evo}\n${w.prestigeTitle ? "Permanent title: " + w.prestigeTitle + "\nExclusive frame equipped.\n" : ""}Spent ${r.spent.toLocaleString("en-US")}; balance ${r.balance.toLocaleString("en-US")}.\n$aurashop evo · $aurashop legendary · $aura bag`,
+          `${r.duplicate ? "Already processed — no extra evolution or charge.\n" : ""}✦ EVOLUTION COMPLETE ✦\n${r.evo}\n${w.prestigeTitle ? "Permanent title: " + w.prestigeTitle + "\nExclusive frame equipped.\n" : ""}Spent ${r.spent.toLocaleString("en-US")}; balance at receipt ${r.balance.toLocaleString("en-US")}.\n$aurashop evo · $aurashop legendary · $aura bag`,
           w.equipped,
         ),
         { quoted: msg },
@@ -868,9 +878,9 @@ const handler = async (sock, msg, from, args, info) => {
         event,
       );
       return reply(
-        r.correct
-          ? `Correct! +${r.reward} Aura · Balance ${r.balance}`
-          : "Not correct this time. No Aura deducted.",
+        (r.duplicate ? "Already processed — no extra reward or XP. " : "") + (r.correct
+          ? `Correct! +${r.reward} Aura · Balance ${r.balance}${r.capReached ? " · Wallet cap limited Aura; XP and quest completion are saved." : ""}`
+          : "Not correct this time. No Aura deducted."),
       );
     }
   } catch (error) {

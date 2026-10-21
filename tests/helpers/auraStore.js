@@ -10,7 +10,9 @@ export function setup() {
     data.set(k(c, row._id), structuredClone(row));
   };
   const match = (row, query) =>
-    Object.entries(query).every(([name, value]) => row[name] === value);
+    Object.entries(query).every(([name, value]) =>
+      value && typeof value === "object" && "$ne" in value
+        ? row[name] !== value.$ne : row[name] === value);
   const store = {
     get,
     put,

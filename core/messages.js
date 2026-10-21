@@ -1,6 +1,6 @@
 import { handlePassiveCommunityMessage } from "../utils/passiveCommunity.js";
 import { aura, auraStore } from "../db/auraData.js";
-import { auraIdentity } from "../utils/aura/identity.js";
+import { auraIdentity, withAuraSenderAliases } from "../utils/aura/identity.js";
 import { createGroupTextRewards } from "../utils/aura/groupTextRewards.js";
 const rewardGroupText = createGroupTextRewards({ engine: aura, store: auraStore, resolveIdentity: auraIdentity,
   onError: () => console.warn("[AURA] Group text reward unavailable; normal processing continues.") });
@@ -28,7 +28,7 @@ const moderatos = (process.env.MODERATORS || "")
 	.map((number) => number.replace(/[^0-9]/g, ""))
 	.filter(Boolean);
 import getGroupAdmins from "../utils/groupAdmins.js";
-import { extractPhoneNumber, getPNFromLID } from "../utils/lid.js";
+import { extractPhoneNumber } from "../utils/lid.js";
 import {
 	getBotIdentityJids,
 	isJidGroupAdmin,
@@ -314,7 +314,8 @@ const getCommand = async (sock, msg, cache) => {
 		let resolvedSenderNumber = senderNumber;
 		if (senderJid.endsWith("@lid")) {
 			try {
-				resolvedSenderNumber = extractPhoneNumber((await Promise.resolve(getPNFromLID(sock, senderJid))) || senderJid);
+				resolvedSenderNumber = extractPhoneNumber(await auraIdentity(sock,
+					withAuraSenderAliases({ senderJid, groupMetadata }, msg)));
 			} catch {}
 		}
 		const isNaturalCommandOwner = isOwner && isMartechOwner(resolvedSenderNumber);
