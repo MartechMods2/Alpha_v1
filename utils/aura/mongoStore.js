@@ -6,6 +6,7 @@ export function createAuraMongoStore(client, database = "MyBotDataDB") {
     (ready ||= Promise.all([
       db.collection("AuraWallets").createIndex({ xp: -1 }),
       db.collection("AuraLedger").createIndex({ actor: 1, at: -1 }),
+      db.collection("AuraLedger").createIndex({ actor: 1, kind: 1, at: -1 }),
       db
         .collection("AuraCoupons")
         .createIndex({ codeHash: 1 }, { unique: true }),
@@ -34,6 +35,7 @@ export function createAuraMongoStore(client, database = "MyBotDataDB") {
         .find(query)
         .sort(sort)
         .limit(Math.max(1, Math.min(100, limit)))
+        .maxTimeMS(5000)
         .toArray(),
     put: async (name, row) => {
       await ensure();

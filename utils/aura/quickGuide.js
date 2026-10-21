@@ -30,4 +30,6 @@ Aura is Alpha's virtual currency. It is not real money and cannot be cashed out.
 • Read previews before confirming. Failed paid features refund their Aura fee. ${p}aura history sends your records privately.
 • When Aura is OFF, earning and spending pause; your saved balance and items stay.
 
+${p}aura history — important receipts privately; history chat shows text rewards, history all shows every activity type. Wallet caps can limit earned bonuses without blocking XP/cards; coupon and salvage payouts require room for the full amount.
+
 ${p}aura help — this short guide. ${p}aura guide — the detailed guide.`;

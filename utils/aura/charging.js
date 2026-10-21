@@ -1,5 +1,6 @@
 import { AuraUserError, publicAuraError } from "./errors.js";
 import { key, priceFor } from "./policy.js";
+import { withAuraSenderAliases } from "./identity.js";
 export function createAuraChargeRunner({
   getEngine,
   identify,
@@ -14,7 +15,7 @@ export function createAuraChargeRunner({
     try {
       if (!(await isEnabled())) return handler(sock, msg, from, args, info);
       engine = await getEngine();
-      actor = await identify(sock, info);
+      actor = await identify(sock, withAuraSenderAliases(info, msg));
       // Only the primary configured creator bypasses cost, never isOwner/isModerator flags.
       if (engine.owned(actor)) {
         const cleanArgs =

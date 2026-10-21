@@ -22,6 +22,53 @@ async function load(file) {
     )
   ).default();
 }
+test("member audit: ambiguous purchases do not debit and private histories separate chat rewards", async () => {
+  const f = setup();
+  await f.store.put("AuraSettings", { _id: "economy", enabled: true });
+  await f.engine.gift(owner, a, 10000, "seed-audit");
+  globalThis.__auraFlow = f;
+  try {
+    const command = await load("../commands/public/aura.js"), sent = [];
+    let id = 0;
+    const run = (args, event = "audit-" + ++id) => command.handler({}, { key: { id: event } },
+      "12345@g.us", args, { senderJid: a, command: "aura", isGroup: true,
+        sendMessageWTyping: async (to, p) => sent.push({ to, ...p }) });
+    await run(["shop", "buy", "tagline-ticket", "pet-treat"]);
+    assert.match(sent.at(-1).text, /one item-id/);
+    assert.equal((await f.engine.profile(a)).balance, 10000);
+    await run(["shop", "buy", "tagline-ticket"], "buy-once");
+    await run(["shop", "buy", "tagline-ticket"], "buy-once");
+    assert.match(sent.at(-1).text, /Already processed/);
+    assert.equal((await f.engine.profile(a)).items["tagline-ticket"], 1);
+    for (let i = 0; i < 12; i++) await f.engine.rewardGroupText(a, "12345@g.us", "audit-chat-" + i);
+    await run(["history"]);
+    assert.equal(sent.at(-1).to, a);
+    assert.match(sent.at(-1).text, /Item: tagline-ticket/);
+    assert.ok(!sent.at(-1).text.includes("group-text ·"));
+    await run(["history", "chat"]);
+    assert.equal(sent.at(-1).to, a);
+    assert.match(sent.at(-1).text, /group-text ·/);
+  } finally { delete globalThis.__auraFlow; }
+});
+test("member audit: last bag upgrade retries report the saved purchase instead of a false maximum error", async () => {
+  const f = setup();
+  await f.store.put("AuraSettings", { _id: "economy", enabled: true });
+  await f.store.put("AuraWallets", { ...(await f.engine.profile(a)), balance: 10000000000, evo: 6, bagSlots: 10000 });
+  globalThis.__auraFlow = f;
+  try {
+    const command = await load("../commands/public/aura.js"), sent = [];
+    const run = () => command.handler({}, { key: { id: "last-bag" } }, "12345@g.us", ["bag", "expand", "--confirm"], {
+      senderJid: a, command: "aura", isGroup: true,
+      sendMessageWTyping: async (_, p) => sent.push(p),
+    });
+    await run();
+    const balance = (await f.engine.profile(a)).balance;
+    await run();
+    assert.match(sent.at(-1).text, /Already processed/);
+    assert.equal((await f.engine.profile(a)).balance, balance);
+    assert.equal((await f.engine.profile(a)).bagSlots, 9999999);
+  } finally { delete globalThis.__auraFlow; }
+});
 test("Aura identities unify PN and LID aliases, reject unknown mappings and ignore role flags", async () => {
   const info = {
     senderJid: "12345678@lid",

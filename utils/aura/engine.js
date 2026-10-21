@@ -272,7 +272,15 @@ export function createAuraEngine(
         return result;
       });
     },
-    history: (id) => store.find("AuraLedger", { actor: id }, { at: -1 }, 10),
+    history: (id, view = "all") => {
+      requireUser(id);
+      if (!["all", "important", "chat"].includes(view))
+        throw new AuraUserError("Use $aura history, $aura history chat or $aura history all.");
+      const query = { actor: id };
+      if (view === "important") query.kind = { $ne: "group-text" };
+      if (view === "chat") query.kind = "group-text";
+      return store.find("AuraLedger", query, { at: -1 }, 10);
+    },
     daily: (id) =>
       mutate(["daily", id, dayKey(now())], id, async (_tx, w) => {
         const yesterday = dayKey(new Date(+now() - 86400000));
@@ -291,13 +299,14 @@ export function createAuraEngine(
         w.conduct = Math.min(100, w.conduct + 1);
         if (w.streak % 7 === 0)
           w.badges = [...new Set([...w.badges, "Seven-day streak"])];
-        const reward = 500 + (w.streak % 7 === 0 ? 2000 : 0);
-        w.balance += reward;
+        const promised = 500 + (w.streak % 7 === 0 ? 2000 : 0);
+        const reward = creditReward(w, promised);
         const rankBonus = addXp(w, 50);
         return {
           reward: reward + rankBonus,
           rankBonus,
           shieldUsed,
+          capReached: reward < promised,
           balance: w.balance,
           streak: w.streak,
         };
@@ -571,6 +580,8 @@ export function createAuraEngine(
             "Unknown shop item. Collection cards and badges cannot be salvaged.",
           );
         const reward = salvageRefund(w, product, owned(actor));
+        if (reward > 1e12 - w.balance - w.heldAura)
+          throw new AuraUserError("Not enough wallet space for this salvage refund. Spend or send Aura first; your item was not removed.");
         if (product.kind === "tool") {
           if (!(w.items[item] > 0))
             throw new AuraUserError("You do not own this tool.");
@@ -669,13 +680,14 @@ export function createAuraEngine(
         w.collection.push(chosen.id);
         let reward = 0;
         if (w.collection.length === COLLECTIBLES.length) {
-          reward = 2500;
-          w.balance += reward;
+          reward = creditReward(w, 2500);
           w.badges = [...new Set([...w.badges, "Collection Curator"])];
         }
         return {
           card: chosen.name,
           total: w.collection.length,
+          complete: w.collection.length === COLLECTIBLES.length,
+          capReached: w.collection.length === COLLECTIBLES.length && reward < 2500,
           reward,
           balance: w.balance,
         };
@@ -838,6 +850,8 @@ export function createAuraEngine(
             );
           w.dropDay = dayKey(now());
         }
+        if (coupon.amount > 1e12 - w.balance - w.heldAura)
+          throw new AuraUserError("Not enough wallet space for the full coupon reward. Spend or send Aura first; this code was not consumed.");
         coupon.status = "claimed";
         coupon.winner = actor;
         delete coupon.code;
@@ -870,11 +884,12 @@ export function createAuraEngine(
           throw new AuraUserError("Two rewarded learning quests per day.");
         w.questToday++;
         w.quests++;
-        w.balance += 750;
+        const reward = creditReward(w, 750);
         const rankBonus = addXp(w, 100);
         return {
           correct: true,
-          reward: 750 + rankBonus,
+          reward: reward + rankBonus,
+          capReached: reward < 750,
           rankBonus,
           balance: w.balance,
         };

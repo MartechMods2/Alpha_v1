@@ -1,6 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createAuraMongoStore } from "../utils/aura/mongoStore.js";
+test("member history queries retain filtering, bounded result size and a server execution deadline", async () => {
+  const calls = [];
+  const cursor = {
+    sort: (value) => { calls.push(["sort", value]); return cursor; },
+    limit: (value) => { calls.push(["limit", value]); return cursor; },
+    maxTimeMS: (value) => { calls.push(["deadline", value]); return cursor; },
+    toArray: async () => [],
+  };
+  const store = createAuraMongoStore({ db: () => ({ collection: () => ({
+    find: (query) => { calls.push(["find", query]); return cursor; },
+  }) }) });
+  const query = { actor: "member", kind: { $ne: "group-text" } };
+  await store.find("AuraLedger", query, { at: -1 }, 1000);
+  assert.deepEqual(calls, [["find", query], ["sort", { at: -1 }], ["limit", 100], ["deadline", 5000]]);
+});
 test("Mongo adapter initializes indexes and attaches the same session to all transactional operations", async () => {
   const calls = [];
   let ended = false;
@@ -42,7 +57,7 @@ test("Mongo adapter initializes indexes and attaches the same session to all tra
     await tx.put("AuraWallets", { _id: "member", balance: 10 });
   });
   assert.equal(ended, true);
-  assert.equal(calls.filter((x) => x[0] === "index").length, 11);
+  assert.equal(calls.filter((x) => x[0] === "index").length, 12);
   for (const call of calls.filter((x) =>
     ["get", "put", "aggregate"].includes(x[0]),
   ))
