@@ -279,6 +279,7 @@ const handler = async (sock, msg, from, args, info) => {
           ...(w.heldAura > 0
             ? [`Reserved fees: ${w.heldAura} Aura (not spendable)`]
             : []),
+          `Chat earnings: ${w.chatAuraEarned || 0} Aura · ${w.rewardedTextMessages || 0} rewarded texts`,
           `Lifetime XP: ${w.xp} · ${xpRank(w.xp)[1]}`,
           `Ranked: ${rpRank(current)} · ${current} RP`,
           `Evo rank: ${EVO[w.evo].name} · Completed quests: ${w.quests}`,

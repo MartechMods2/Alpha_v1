@@ -6,7 +6,6 @@ import getConnectionUpdate from "./connectionUpdate.js";
 import getCommand from "./messages.js";
 import getGroupEvent from "./groupEvent.js";
 import getCallEvent from "./callEvents.js";
-import { handlePassiveCommunityMessage } from "../utils/passiveCommunity.js";
 import {
   handleInteractivePollUpdate,
   handleInteractivePollMessage,
@@ -93,12 +92,6 @@ const events = async (sock, startSock, cache) => {
               await syncGroup(sock, msg);
               await handleOwnerMentionReaction(sock, msg).catch(() => {});
               await handleAfkPresence(sock, msg).catch(() => {});
-              if (
-                await handlePassiveCommunityMessage(sock, msg).catch(
-                  () => false,
-                )
-              )
-                return;
               await getCommand(sock, msg, cache);
             }),
           );

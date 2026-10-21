@@ -244,6 +244,34 @@ export function createAuraEngine(
         const result = grantPack(wallet, pack);
         return { ...result, spent: owned(actor) ? 0 : pack.price, balance: wallet.balance };
       }),
+    rewardGroupText: async (actor, chat, messageId) => {
+      requireUser(actor);
+      if (owned(actor)) return { reward: 0, creator: true };
+      if (typeof chat !== "string" || !chat.endsWith("@g.us") ||
+          typeof messageId !== "string" || !messageId || messageId.length > 200)
+        throw new AuraUserError("Invalid group message identity.");
+      return store.transaction(async (tx) => {
+        // Check inside the economic transaction: never credit while switched OFF.
+        if ((await tx.get("AuraSettings", "economy"))?.enabled !== true)
+          return { reward: 0, disabled: true };
+        const receipt = key("group-text", actor, chat, messageId);
+        const previous = await tx.get("AuraLedger", receipt);
+        if (previous) return { ...previous.result, duplicate: true };
+        const w = (await tx.get("AuraWallets", actor)) || fresh(actor);
+        await prepareWallet(tx, w);
+        assertAuraWallet(w);
+        const reward = creditReward(w, 20);
+        w.chatAuraEarned = (w.chatAuraEarned || 0) + reward;
+        w.rewardedTextMessages = (w.rewardedTextMessages || 0) + (reward > 0 ? 1 : 0);
+        assertAuraWallet(w);
+        await tx.put("AuraWallets", w);
+        const result = { reward, balance: w.balance,
+          capReached: reward < 20, chatAuraEarned: w.chatAuraEarned };
+        await tx.put("AuraLedger", { _id: receipt, actor,
+          kind: "group-text", at: now(), delta: reward, result });
+        return result;
+      });
+    },
     history: (id) => store.find("AuraLedger", { actor: id }, { at: -1 }, 10),
     daily: (id) =>
       mutate(["daily", id, dayKey(now())], id, async (_tx, w) => {
