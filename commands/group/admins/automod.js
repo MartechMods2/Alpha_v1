@@ -43,11 +43,14 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			antistatus: "isAntiStatusMentionOn",
 		};
 		const update = { [fields[feature]]: value === "on" };
+		if (feature === "antilink" && value === "on") update.antiLinkAction = "delete";
+		if (feature === "antilink" && args[2] && !["warn", "delete"].includes(args[2].toLowerCase()))
+			return reply("❌ Use: automod antilink on [delete|warn].");
 		if (feature === "antilink" && ["warn", "delete"].includes(args[2]?.toLowerCase())) {
 			update.antiLinkAction = args[2].toLowerCase();
 		}
 		await group.updateOne({ _id: from }, { $set: update });
-		return reply(`✅ ${feature} turned *${value.toUpperCase()}*.`);
+		return reply(`✅ ${feature} turned *${value.toUpperCase()}*.${feature === "antilink" && value === "on" ? ` Mode: ${update.antiLinkAction}.` : ""}${["antilink", "antispam", "antistatus"].includes(feature) && value === "on" && !isBotAdmin ? " Alpha needs group-admin permission to delete messages." : ""}`);
 	}
 
 	if (feature === "warnings") {

@@ -209,26 +209,32 @@ test("word and confirmed-bot enforcement deletes only when Alpha has admin right
     );
     const info = {
       sock: {
+        user: { id: "999@s.whatsapp.net" },
         sendMessage: async (_g, p) =>
           globalThis.__moderationTest.deleted.push(p),
       },
       msg: { key: { id: "message" }, message: { conversation: "bad" } },
       groupJid: "moderation@g.us",
-      senderJid: "sender@lid",
+      senderJid: "123@lid",
       body: "bad",
       isBotAdmin: false,
-      groupMetadata: { participants: [] },
+      groupMetadata: { participants: [{ id: "999@s.whatsapp.net", admin: "admin" }] },
       sendMessageWTyping: async (_g, p) =>
         globalThis.__moderationTest.sent.push(p),
     };
-    assert.equal((await moderate(info)).handled, false);
+    info.groupMetadata.participants = [];
+    const denied = await moderate(info);
+    assert.equal(denied.handled, true);
+    assert.equal(denied.deleted, false);
+    assert.equal(denied.deletionStatus, "not-admin");
     assert.equal(globalThis.__moderationTest.deleted.length, 0);
+    info.groupMetadata.participants = [{ id: "999@s.whatsapp.net", admin: "admin" }];
     info.isBotAdmin = true;
     assert.equal((await moderate(info)).handled, true);
     assert.equal(globalThis.__moderationTest.deleted.length, 1);
     info.body = "badminton";
     assert.equal((await moderate(info)).handled, false);
-    globalThis.__moderationTest.settings.blockedBotJids = ["sender@lid"];
+    globalThis.__moderationTest.settings.blockedBotJids = ["123@lid"];
     assert.equal((await moderate(info)).handled, true);
     info.isGroupAdmin = true;
     assert.equal((await moderate(info)).handled, false);

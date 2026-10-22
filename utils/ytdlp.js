@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { constants as youtubeDlConstants, create } from "youtube-dl-exec";
+import { constants as youtubeDlConstants, args as ytDlpArgs } from "youtube-dl-exec";
 import ffmpegStatic from "ffmpeg-static";
 
 const execFileAsync = promisify(execFile);
@@ -201,16 +201,25 @@ export async function buildYtDlpOptions(extra = {}) {
 		fragmentRetries: 3,
 		concurrentFragments: 1,
 		socketTimeout: 25,
-		ffmpegLocation: process.env.FFMPEG_PATH || ffmpegStatic || "ffmpeg",
+		ffmpegLocation: process.env.FFMPEG_PATH || (ffmpegStatic && fs.existsSync(ffmpegStatic) ? ffmpegStatic : "ffmpeg"),
 		...(jsRuntime ? { jsRuntimes: jsRuntime } : {}),
 		...extra,
 	};
 }
 
+export const createBoundedYtDlpExecutor = (execute = execFileAsync) => async (binary, target, options = {}) => {
+  if (!isYouTubeUrl(target)) throw Error("Use a secure public YouTube URL.");
+  const { stdout } = await execute(binary, [target, ...ytDlpArgs(options)], {
+    timeout: 120000, killSignal: "SIGKILL", maxBuffer: 2 * 1024 * 1024, windowsHide: true,
+  });
+  const output = String(stdout || "").trim();
+  return output.startsWith("{") ? JSON.parse(output) : output;
+};
+const executeYtDlp = createBoundedYtDlpExecutor();
 export async function runYtDlp(target, options = {}) {
 	const binary = await ensureYtDlp();
 	if (!binary?.path) throw new Error("YT_DLP_MISSING: yt-dlp is not installed");
-	return create(binary.path)(target, options);
+	return executeYtDlp(binary.path, target, options);
 }
 
 const rawYtDlpError = (error) => String(error?.stderr || error?.message || error || "").toLowerCase();
@@ -348,7 +357,7 @@ export const isYouTubeUrl = (value) => {
 	try {
 		const url = new URL(String(value || ""));
 		const host = url.hostname.toLowerCase().replace(/^www\./, "");
-		return url.protocol === "https:" && ["youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(host);
+		return url.protocol === "https:" && !url.username && !url.password && !url.port && ["youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(host);
 	} catch {
 		return false;
 	}
@@ -356,6 +365,8 @@ export const isYouTubeUrl = (value) => {
 
 export function describeYtDlpError(error) {
 	const message = rawYtDlpError(error);
+	if (error?.killed || error?.code === "ETIMEDOUT") return "The download engine reached its time limit. Try a shorter track later.";
+	if (error?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") return "The download engine returned too much output and was stopped safely.";
 	if (message.includes("yt_dlp_missing") || message.includes("yt-dlp is missing") || message.includes("enoent")) {
 		return "The download engine is missing. Ask the bot owner to run -downloadhealth.";
 	}
