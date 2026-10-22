@@ -1,6 +1,6 @@
 import { group } from "../db/groupData.js";
 import { isSameGroupUser } from "./groupParticipants.js";
-import { claimDeletionBudget } from "./moderationCircuit.js";
+import { deleteModerationMessage, notifyDeletionProblem } from "./moderationDelete.js";
 import {
 	configuredModeratorNumbers,
 	getModeratorTargetProtection,
@@ -31,7 +31,7 @@ export const findModeratorMute = (groupData, memberJid, metadata) => {
 };
 
 export const enforceModeratorMute = async ({
-	sock, msg, groupJid, memberJid, groupData, groupMetadata, botJids = [], isBotAdmin,
+	sock, msg, groupJid, memberJid, groupData, groupMetadata, botJids = [], isBotAdmin, sendMessageWTyping,
 }) => {
 	// Soft Moderator mutes intentionally apply to members, ordinary admins,
 	// group owners and configured moderators. Only Alpha and the creator account
@@ -45,10 +45,8 @@ export const enforceModeratorMute = async ({
 		);
 	}
 	if (!muted.entry) return { handled: false };
-	if (isBotAdmin && claimDeletionBudget(groupJid)) {
-		await sock.sendMessage(groupJid, { delete: msg.key }).catch((error) =>
-			console.warn("Could not delete moderator-muted message:", error.message));
-	}
+	const deletion = await deleteModerationMessage({ sock, msg, groupJid, memberJid, groupMetadata, botJids, isBotAdmin, allowAdminTarget: true });
+	await notifyDeletionProblem({ result: deletion, groupJid, sendMessageWTyping });
 	return { handled: true, moderatorMuted: true };
 };
 

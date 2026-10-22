@@ -5,7 +5,7 @@ import { extractPhoneNumber } from "./lid.js";
 import { isGroupOwner, isJidGroupAdmin, isSameGroupUser } from "./groupParticipants.js";
 import { findMutedMember, getGroupSafetySettings } from "./groupSafety.js";
 import { getSafeSettings } from "../db/safePackData.js";
-import { claimDeletionBudget } from "./moderationCircuit.js";
+import { deleteModerationMessage, deletionNotice, notifyDeletionProblem, participantActionSucceeded } from "./moderationDelete.js";
 import { renderGroupTemplate } from "./groupTemplates.js";
 
 config();
@@ -61,13 +61,15 @@ export const clearStatusMentionWarnings = async (groupJid, memberJid, matches = 
 	if (members.length) await group.updateOne({ _id: groupJid }, { $pull: { statusMentionWarnCount: { member: { $in: members } } } });
 };
 
-export const enforceMemberMute = async ({ sock, msg, groupJid, memberJid, groupData, groupMetadata, botJids, isBotAdmin }) => {
+export const enforceMemberMute = async ({ sock, msg, groupJid, memberJid, groupData, groupMetadata, botJids, isBotAdmin, sendMessageWTyping }) => {
 	if (isProtectedGroupMember(groupMetadata, memberJid, botJids)) return { handled: false };
 	const matches = (left, right) => isSameGroupUser(groupMetadata, left, right);
 	const muted = findMutedMember(groupData, memberJid, matches);
 	if (muted.expiredMembers.length) await group.updateOne({ _id: groupJid }, { $pull: { mutedMembers: { member: { $in: muted.expiredMembers } } } });
 	if (!muted.entry) return { handled: false };
-	if (isBotAdmin && claimDeletionBudget(groupJid)) await sock.sendMessage(groupJid, { delete: msg.key }).catch((error) => console.warn("Could not delete a muted member's message:", error.message));
+	const deletion = await deleteModerationMessage({ sock, msg, groupJid, memberJid, groupMetadata, botJids, isBotAdmin });
+	if (deletion.status === "protected") return { handled: false };
+	await notifyDeletionProblem({ result: deletion, groupJid, sendMessageWTyping });
 	return { handled: true, muted: true };
 };
 
@@ -75,7 +77,9 @@ export const warnStatusMentionMember = async ({ sock, msg, groupJid, memberJid, 
 	const settings = getGroupSafetySettings(groupData);
 	if (!settings.isAntiStatusMentionOn || isProtectedGroupMember(groupMetadata, memberJid, botJids)) return { handled: false };
 	const matches = (left, right) => isSameGroupUser(groupMetadata, left, right);
-	if (isBotAdmin) await sock.sendMessage(groupJid, { delete: msg.key }).catch((error) => console.warn("Could not delete group status mention:", error.message));
+	const deletion = await deleteModerationMessage({ sock, msg, groupJid, memberJid, groupMetadata, botJids, isBotAdmin });
+	if (deletion.status === "protected") return { handled: false };
+	isBotAdmin = deletion.isBotAdmin ?? isBotAdmin;
 	const limit = settings.statusMentionWarningLimit || 3;
 	const count = await addStatusMentionWarning({ groupJid, memberJid, matches });
 	let removed = false;
@@ -83,19 +87,19 @@ export const warnStatusMentionMember = async ({ sock, msg, groupJid, memberJid, 
 	if (count >= limit) {
 		if (!isBotAdmin) action = "Strike limit reached, but Alpha must be a group admin before it can remove this member.";
 		else {
-			try { await sock.groupParticipantsUpdate(groupJid, [memberJid], "remove"); await clearStatusMentionWarnings(groupJid, memberJid, matches); removed = true; action = "Member removed after reaching the Status-Mention strike limit."; }
-			catch (error) { console.warn("Could not remove status-mention offender:", error.message); action = "Strike limit reached; automatic removal failed, so an admin should review this member."; }
+			try { const results = await sock.groupParticipantsUpdate(groupJid, [memberJid], "remove"); if (!participantActionSucceeded(results, memberJid, matches)) throw Error("Removal rejected"); await clearStatusMentionWarnings(groupJid, memberJid, matches); removed = true; action = "Member removed after reaching the Status-Mention strike limit."; }
+			catch (error) { console.warn("Could not remove status-mention offender"); action = "Strike limit reached; automatic removal failed, so an admin should review this member."; }
 		}
 	}
 	const phone = extractPhoneNumber(memberJid);
-	const text = renderGroupTemplate(count >= limit ? "anti-status-final" : "anti-status", { user: `@${phone}`, group: groupData?.grpName || "this group", warning: count, count, max: limit, action });
-	await sendMessageWTyping(groupJid, { text, mentions: [memberJid] }, { quoted: msg });
-	return { handled: true, count, limit, removed };
+	const text = renderGroupTemplate(count >= limit ? "anti-status-final" : "anti-status", { user: `@${phone}`, group: groupData?.grpName || "this group", warning: count, count, max: limit, action }) + "\n" + deletionNotice(deletion);
+	await sendMessageWTyping(groupJid, { text, mentions: [memberJid] });
+	return { handled: true, count, limit, removed, deletionStatus: deletion.status };
 };
 
 export const isProtectedGroupMember = (metadata, memberJid, botJids = []) => isGroupOwner(metadata, memberJid) || isJidGroupAdmin(metadata, memberJid) || isSameGroupUser(metadata, memberJid, botJids) || ownerJids.some((ownerJid) => isSameGroupUser(metadata, memberJid, ownerJid));
 
-export const warnGroupMember = async ({ sock, msg, groupJid, memberJid, groupData, groupMetadata, botJids, isBotAdmin, sendMessageWTyping, reason = "Group rule violation", templateKey = "warning" }) => {
+export const warnGroupMember = async ({ sock, msg, groupJid, memberJid, groupData, groupMetadata, botJids, isBotAdmin, sendMessageWTyping, reason = "Group rule violation", templateKey = "warning", deletion }) => {
 	const settings = getGroupSafetySettings(groupData);
 	const count = await addGroupWarning(groupJid, memberJid);
 	const atLimit = count >= settings.warningLimit;
@@ -106,7 +110,7 @@ export const warnGroupMember = async ({ sock, msg, groupJid, memberJid, groupDat
 		if (protectedMember) action = "Removal skipped because this member is an admin/owner or otherwise protected.";
 		else if (!isBotAdmin) action = "Removal skipped because Alpha is not a group admin.";
 		else {
-			try { await sock.groupParticipantsUpdate(groupJid, [memberJid], "remove"); await clearGroupWarnings(groupJid, memberJid); removed = true; action = "Member removed after reaching the configured warning limit."; }
+			try { const results = await sock.groupParticipantsUpdate(groupJid, [memberJid], "remove"); if (!participantActionSucceeded(results, memberJid, (a,b) => isSameGroupUser(groupMetadata,a,b))) throw Error("Removal rejected"); await clearGroupWarnings(groupJid, memberJid); removed = true; action = "Member removed after reaching the configured warning limit."; }
 			catch (error) { console.warn("Could not remove warned member:", error.message); action = "Removal failed; an admin should review this member."; }
 		}
 	} else if (atLimit) action = "Warning limit reached; admins should review this member.";
@@ -115,7 +119,7 @@ export const warnGroupMember = async ({ sock, msg, groupJid, memberJid, groupDat
 	let key = templateKey;
 	if (atLimit && templateKey === "anti-link") key = "anti-link-action";
 	else if (atLimit && templateKey === "warning") key = "final-warning";
-	const text = renderGroupTemplate(key, { user: `@${phone}`, group: groupData?.grpName || "this group", reason, warning: count, count, max: settings.warningLimit, meter, action });
-	await sendMessageWTyping(groupJid, { text, mentions: [memberJid] }, { quoted: msg });
+	const text = renderGroupTemplate(key, { user: `@${phone}`, group: groupData?.grpName || "this group", reason, warning: count, count, max: settings.warningLimit, meter, action }) + (deletion ? "\n" + deletionNotice(deletion) : "");
+	await sendMessageWTyping(groupJid, { text, mentions: [memberJid] });
 	return { count, limit: settings.warningLimit, atLimit, removed };
 };

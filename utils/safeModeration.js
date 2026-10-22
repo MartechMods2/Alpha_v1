@@ -2,17 +2,13 @@ import {isSameGroupUser} from "./groupParticipants.js";
 import {containsBannedPhrase} from "./premiumReplies.js";
 import { getSafeSettings, updateSafeSettings, recordSafeAudit, createSafeItem, listSafeItems } from "../db/safePackData.js";
 import { isProtectedGroupMember } from "./moderation.js";
-import { claimDeletionBudget, moderationCircuitStatus } from "./moderationCircuit.js";
+import { moderationCircuitStatus } from "./moderationCircuit.js";
+import { deleteModerationMessage, deletionNotice } from "./moderationDelete.js";
 
 const lastMessages = new Map();
 const mediaWindows = new Map();
 const joinWindows = new Map();
 const noticeCooldowns = new Map();
-
-const deleteSafely = async (sock, groupJid, msg) => {
-	if (!claimDeletionBudget(groupJid)) return false;
-	try { await sock.sendMessage(groupJid, { delete: msg.key }); return true; } catch { return false; }
-};
 
 const mentionCount = (msg) => {
 	const message = msg?.message || {};
@@ -29,15 +25,15 @@ export const handleSafeModerationMessage = async ({ sock, msg, groupJid, senderJ
 	if (isOwner || isGroupAdmin || isProtectedGroupMember(groupMetadata, senderJid, botJids)) return { handled: false };
 	const settings = await getSafeSettings(groupJid);
 	const violation = async (action, reason) => {
-		if (!isBotAdmin) return { handled: false };
-		const deleted = await deleteSafely(sock, groupJid, msg);
-		await recordSafeAudit({ groupJid, action, targetJid: senderJid, reason });
+		const deletion = await deleteModerationMessage({ sock, msg, groupJid, memberJid: senderJid, groupMetadata, botJids, isBotAdmin });
+		if (deletion.status === "protected") return { handled: false };
+		await recordSafeAudit({ groupJid, action, targetJid: senderJid, reason: `${reason} Deletion: ${deletion.status}.` });
 		const noticeKey = `${groupJid}:${senderJid}:${action}`;
 		if ((noticeCooldowns.get(noticeKey) || 0) < Date.now()) {
 			noticeCooldowns.set(noticeKey, Date.now() + 10 * 60_000);
-			await sendMessageWTyping(groupJid, { text: `🛡️ @${senderJid.split("@")[0]}: ${reason}`, mentions: [senderJid] }, { quoted: msg }).catch(() => {});
+			await sendMessageWTyping(groupJid, { text: `🛡️ @${senderJid.split("@")[0]}: ${reason}\n${deletionNotice(deletion)}`, mentions: [senderJid] }).catch(() => {});
 		}
-		return { handled: deleted };
+		return { handled: true, deleted: deletion.deleted, deletionStatus: deletion.status };
 	};
 
 	if ((settings.blockedBotJids||[]).some(jid=>isSameGroupUser(groupMetadata,jid,senderJid))) return violation('confirmed-bot','This account is blocked by the group administrators.');

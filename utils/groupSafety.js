@@ -109,13 +109,15 @@ export const isGroupStatusMentionMessage = (msg) => {
 	if (msg?.statusMentionMessageInfo?.quotedStatus) return true;
 	let content = msg?.message;
 	for (let depth = 0; content && depth < 6; depth += 1) {
-		if (content.groupStatusMentionMessage) return true;
+		if (content.groupStatusMentionMessage || content.statusMentionMessage ||
+			content.groupStatusMessage || content.groupStatusMessageV2) return true;
 		content = content.ephemeralMessage?.message ||
 			content.viewOnceMessage?.message ||
 			content.viewOnceMessageV2?.message ||
 			content.viewOnceMessageV2Extension?.message ||
 			content.associatedChildMessage?.message ||
 			content.groupStatusMessage?.message ||
+			content.groupStatusMessageV2?.message ||
 			null;
 	}
 	return false;
