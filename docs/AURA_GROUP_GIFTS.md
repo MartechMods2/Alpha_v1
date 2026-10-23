@@ -22,8 +22,16 @@ Names are sanitized and bounded; normal multilingual text/emoji is preserved. Ni
 5. Roster or amount changes require a fresh preview. All wallet credits, receipts, budget and preview consumption commit in one transaction; any capped wallet or database failure rolls everything back.
 6. Alpha posts one group summary. Members get receipts in their existing private history; no mass mentions or automatic DM flood.
 
-`$aura gift budget` shows the shared creator gift/custom-coupon budget: **500,000 Aura per Africa/Lagos day**, retained from the existing economy.
-Example: 8 recipients × 50,000 = 400,000, within a fresh daily budget. 20 recipients × 50,000 = 1,000,000, so Alpha rejects it and shows a maximum of 25,000 each when the budget is unused.
+`$aura gift budget` shows the separate creator **group-gift budget: 512,000,000 Aura per Africa/Lagos day**, enough for 1,024 recipients at 500,000 each. Each recipient can receive up to 500,000 per batch. Earlier group gifts count against this new budget only after this update; existing personal gift/coupon budget rows are preserved. Individual creator gifts and custom coupons still share their original 500,000 daily budget. Member transfer limits are unchanged.
+
+To give every eligible group member 500,000:
+
+```
+$aura gift @all 500000
+$aura gift @all 500000 --confirm
+```
+
+Read the preview before confirming. This credits virtual Aura; it does not transfer money. A new preview permits another batch, subject to remaining daily budget; there is no per-recipient daily cap across batches. Example: 20 recipients × 500,000 = 10,000,000 Aura.
 Scheduled drops keep their existing separate rules.
 
 A successful confirmation cannot be replayed to credit twice. Another successful gift requires a new preview. After an ambiguous timeout, check `$aura history` / `$aura gift budget` before starting another preview. Receipts contain a batch ID.
