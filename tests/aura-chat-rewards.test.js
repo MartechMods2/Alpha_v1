@@ -28,7 +28,7 @@ test("each distinct eligible group text earns exactly 20 with no XP or gift budg
   assert.equal(w.xp, 0);
   assert.equal(w.chatAuraEarned, 60);
   assert.equal(w.rewardedTextMessages, 3);
-  assert.equal((await f.engine.giftBudget(owner)).remaining, 500000);
+  assert.equal((await f.engine.giftBudget(owner)).remaining, 512000000);
   assert.equal((await f.engine.history(a)).length, 3);
   assert.ok(!(JSON.stringify(await f.engine.history(a))).includes("Hello everyone"));
 });

@@ -19,7 +19,7 @@ Aura is Alpha's virtual currency. It is not real money and cannot be cashed out.
 • ${p}aura send @member 1000 — preview a transfer; add --confirm to send. Fee: 5%, rounded up. Maximum: 10,000 per transfer and 20,000 sent daily.
 • ${p}aura shop gift @member byte-fox — preview gifting ONE owned item; add --confirm to send. No fee; ten item gifts daily. Recipient needs space and required XP/Evo rank. Gifts are final.
 • ${p}aura gift @member 1000 — same wallet transfer as send; preview first, then add --confirm. Members spend their own Aura with the existing 5% fee and limits.
-• Creator only: ${p}aura gift @all 50000 — fresh group preview, then --confirm. Total must fit the shared 500,000 daily gift/coupon budget; use ${p}aura gift budget. Nobody is paid if any recipient fails validation.
+• Creator only: ${p}aura gift @all 50000 — fresh group preview, then --confirm. Total must fit the separate 512,000,000 daily group-gift budget (max 500,000 each); use ${p}aura gift budget. Nobody is paid if any recipient fails validation.
 • ${p}aura collect / ${p}aura album — free daily collectible and your album.
 • ${p}aura thanks @member — thank three different people daily. Gift to five different members for Community Giver; receive thanks from ten different members for Community Favourite. Badges give no Aura or XP.
 

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import sharp from "sharp";
 import { auraProfilePayload } from "../utils/aura/profile.js";
+import { key } from "../utils/aura/policy.js";
 import { setup } from "./helpers/auraStore.js";
 import { cleanAuraName, auraDisplayName, escapeAuraSvg } from "../utils/aura/displayName.js";
 import { auraGiftRoster } from "../utils/aura/groupGiftRoster.js";
@@ -53,7 +54,7 @@ test("group preview spends nothing and confirmation credits everyone with privat
   assert.equal((await engine.profile(a)).balance, 0);
   const r = await engine.giftGroup(owner, group, [b, a], "50000", "gift");
   assert.equal(r.total, 100000);
-  assert.equal(r.remaining, 400000);
+  assert.equal(r.remaining, 511900000);
   assert.equal((await engine.profile(a)).balance, 50000);
   assert.equal((await engine.profile(b)).balance, 50000);
   const receipt = await store.get("AuraLedger", r.receipt);
@@ -96,14 +97,17 @@ test("same confirmation replay and concurrent confirmations pay only once", asyn
   assert.equal(r.filter((x) => x.status === "fulfilled").length, 1);
   assert.equal((await engine.profile(a)).balance, 100000);
 });
-test("group gifts share daily gift/coupon mint budget and reject oversized totals before writing", async () => {
+test("creator can give 500,000 each independently of the personal coupon budget", async () => {
   const { engine } = await enabled();
-  await engine.gift(owner, a, 400000, "personal");
-  await assert.rejects(engine.previewGroupGift(owner, group, [a,b], 50001), /Maximum per member.*50000/);
-  await engine.previewGroupGift(owner, group, [a,b], 50000);
-  await engine.giftGroup(owner, group, [a,b], 50000, "all");
-  assert.equal((await engine.giftBudget(owner)).remaining, 0);
+  await engine.gift(owner, a, 500000, "personal");
+  await engine.previewGroupGift(owner, group, [a,b], 500000);
+  const result = await engine.giftGroup(owner, group, [a,b], 500000, "all");
+  assert.equal(result.total, 1000000);
+  assert.equal(result.remaining, 511000000);
+  assert.equal((await engine.profile(a)).balance, 1000000);
+  assert.equal((await engine.profile(b)).balance, 500000);
   await assert.rejects(engine.gift(owner, b, 1, "over"), /budget/);
+  await assert.rejects(engine.previewGroupGift(owner, group, [a,b], 500001));
 });
 test("recipient wallet cap includes held fees and aborts the entire group gift", async () => {
   const { engine, store } = await enabled();
@@ -112,7 +116,7 @@ test("recipient wallet cap includes held fees and aborts the entire group gift",
   await engine.previewGroupGift(owner, group, [a,b], 1);
   await assert.rejects(engine.giftGroup(owner, group, [a,b], 1, "capped"), /balance limit/);
   assert.equal((await engine.profile(a)).balance, 0);
-  assert.equal((await engine.giftBudget(owner)).remaining, 500000);
+  assert.equal((await engine.giftBudget(owner)).remaining, 512000000);
   assert.equal((await engine.history(a)).length, 0);
 });
 test("owner identity, positive amount, group, bounded roster and enabled economy are required", async () => {
@@ -124,10 +128,11 @@ test("owner identity, positive amount, group, bounded roster and enabled economy
   await assert.rejects(engine.previewGroupGift(owner, group, Array(1025).fill(a), 1), /1,024/);
   await store.put("AuraSettings", { _id: "economy", enabled: false });
   await assert.rejects(engine.previewGroupGift(owner, group, [a], 1), /OFF/);
-  assert.equal((await engine.giftBudget(owner)).remaining, 500000);
+  assert.equal((await engine.giftBudget(owner)).remaining, 512000000);
 });
 test("activation changes and budget races are checked again on confirmation", async () => {
   const { engine, store } = await enabled();
+  await store.put("AuraLimits", { _id: key("group-gift-budget", "2026-10-20"), total: 511500000 });
   await engine.previewGroupGift(owner, group, [a], 300000);
   await store.put("AuraSettings", { _id: "economy", enabled: false });
   await assert.rejects(engine.giftGroup(owner, group, [a], 300000, "off"), /OFF/);
@@ -188,8 +193,23 @@ test("database failure after batch wallet writes rolls back balances, budget and
   await assert.rejects(engine.giftGroup(owner, group, [a,b], 1, "failed"), /simulated/);
   assert.equal((await engine.profile(a)).balance, 0);
   assert.equal((await engine.profile(b)).balance, 0);
-  assert.equal((await engine.giftBudget(owner)).remaining, 500000);
+  assert.equal((await engine.giftBudget(owner)).remaining, 512000000);
   store.transaction = original;
   await engine.giftGroup(owner, group, [a,b], 1, "retry");
   assert.equal((await engine.profile(a)).balance, 1);
+});
+test("maximum roster receives 500,000 each, exhausted budget blocks new gifts and resets next Lagos day", async () => {
+  const { engine, advance } = await enabled();
+  const targets = Array.from({length:1024}, (_,i) => `2349${String(i).padStart(8,"0")}@s.whatsapp.net`);
+  const preview = await engine.previewGroupGift(owner, group, targets, 500000);
+  assert.equal(preview.total,512000000);
+  const paid = await engine.giftGroup(owner, group, targets, 500000, "maximum");
+  assert.equal(paid.count,1024); assert.equal(paid.remaining,0);
+  assert.equal((await engine.profile(targets[0])).balance,500000);
+  assert.equal((await engine.profile(targets[1023])).balance,500000);
+  const replay = await engine.giftGroup(owner, group, targets, 500000, "maximum");
+  assert.equal(replay.duplicate,true);
+  await assert.rejects(engine.previewGroupGift(owner, group, [a], 1), /budget remaining: 0/);
+  advance(1);
+  assert.equal((await engine.giftBudget(owner)).remaining,512000000);
 });

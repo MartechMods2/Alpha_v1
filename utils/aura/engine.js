@@ -142,13 +142,13 @@ export function createAuraEngine(
       previewId: key("group-gift-preview", actor, chat) };
   };
   const giftBudget = async (tx, total, count = 1) => {
-    const id = key("gift-budget", dayKey(now()));
+    const id = key("group-gift-budget", dayKey(now()));
     const row = (await tx.get("AuraLimits", id)) || { _id: id, total: 0 };
-    if (!Number.isSafeInteger(row.total) || row.total < 0 || row.total > 500000)
+    if (!Number.isSafeInteger(row.total) || row.total < 0 || row.total > 512000000)
       throw new AuraUserError("Gift budget accounting requires owner review.");
-    const remaining = Math.max(0, 500000 - row.total);
+    const remaining = Math.max(0, 512000000 - row.total);
     if (total > remaining)
-      throw new AuraUserError(`Gift needs ${total} Aura; daily budget remaining: ${remaining}. Maximum per member for ${count} recipients: ${Math.floor(remaining / count)} Aura. Gifts and custom coupons share 500,000 per Lagos day.`);
+      throw new AuraUserError(`Gift needs ${total} Aura; daily budget remaining: ${remaining}. Maximum per member for ${count} recipients: ${Math.floor(remaining / count)} Aura. Group gifts have a separate 512,000,000 Aura budget per Lagos day; individual gifts and coupons keep their existing budget.`);
     return { row, remaining };
   };
 
@@ -159,7 +159,7 @@ export function createAuraEngine(
       if (!owned(actor)) throw new AuraUserError("Only the configured creator can view the gift budget.");
       return store.transaction(async (tx) => {
         const { remaining } = await giftBudget(tx, 0);
-        return { remaining, limit: 500000, day: dayKey(now()) };
+        return { remaining, limit: 512000000, day: dayKey(now()) };
       });
     },
     setNickname: (actor, value, event) =>

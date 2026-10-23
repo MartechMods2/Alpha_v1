@@ -196,7 +196,7 @@ const handler = async (sock, msg, from, args, info) => {
       if (args[0] === "budget") {
         if (args.length !== 1) throw new AuraUserError("Use $aura gift budget.");
         const budget = await aura.giftBudget(actor);
-        return reply(`🎁 Creator gift/coupon budget · ${budget.day} (Lagos)\n${budget.remaining.toLocaleString("en-US")} / ${budget.limit.toLocaleString("en-US")} Aura remaining.\n$aura gift @all 50000 — group preview. No Aura sent without confirmation.`);
+        return reply(`🎁 Creator group-gift budget · ${budget.day} (Lagos)\n${budget.remaining.toLocaleString("en-US")} / ${budget.limit.toLocaleString("en-US")} Aura remaining.\n$aura gift @all 500000 — 500,000 each, group preview. No Aura sent without confirmation.`);
       }
       if (!info.isGroup)
         throw new AuraUserError("Gift @all is available only inside a group.");
