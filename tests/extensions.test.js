@@ -41,15 +41,16 @@ test("pairing is opt-in, one session per verified number, capacity is serialized
   await f.manager.pair(b);assert.equal(f.children.length,2);
   await f.manager.shutdown();
 });
-test("pairing codes go only to their own account, are sent once and never persisted",async()=>{
+test("pairing codes are browser-only, account-scoped, never persisted and cleared after connection",async()=>{
   const f=fixture();await f.manager.enable(true);await f.manager.pair(a);
   const child=f.children[0];
   child.hooks.message({type:"code",code:"ABCD-1234"});child.hooks.message({type:"code",code:"ABCD-1234"});await settle();
-  assert.equal(f.notices.length,1);assert.equal(f.notices[0].phone,a);
+  assert.equal(f.notices.length,0);assert.equal((await f.manager.pairingStatus(a)).code,"ABCD-1234");
+  assert.equal((await f.manager.pairingStatus(b)).code,undefined);
   assert.ok(!JSON.stringify([...f.rows.values()]).includes("ABCD-1234"));
   child.hooks.message({type:"open"});child.hooks.message({type:"open"});await settle();
   assert.equal((await f.manager.status(a)).status,"connected");
-  assert.equal(f.notices.length,2);
+  assert.equal(f.notices.length,0);assert.equal((await f.manager.pairingStatus(a)).code,undefined);
   await f.manager.shutdown();
 });
 test("failed and expired pairing release capacity; restored sessions exclude pending and blocked users",async()=>{
@@ -72,13 +73,13 @@ test("creator pause stops workers while retaining resumable data; shutdown does 
   await f.manager.enable(true);assert.equal(f.children.length,2);
   await f.manager.shutdown();await assert.rejects(f.manager.pair(b),/OFF/);
 });
-test("extension command rejects group use and user-supplied foreign numbers before launching anything",async()=>{
+test("extension chat command only directs users to dashboard without launching anything",async()=>{
   const {default:create}=await import("../commands/public/extension.js");
   const replies=[],info={isGroup:true,sendMessageWTyping:async(_to,p)=>replies.push(p.text)};
   await create().handler({}, {}, "12345@g.us",["pair"],info);
-  assert.match(replies.pop(),/private chat/);
+  assert.match(replies.pop(),/only through the dashboard/);
   await create().handler({}, {}, a+"@s.whatsapp.net",["pair",b],{...info,isGroup:false,senderJid:a+"@s.whatsapp.net"});
-  assert.match(replies.pop(),/another person's phone/);
+  assert.match(replies.pop(),/Chat cannot create sessions/);
 });
 test("extension workers do not start a web server or inherit fromMe creator authorization",async()=>{
   const worker=await fs.readFile(new URL("../extensions/worker.js",import.meta.url),"utf8");
@@ -92,7 +93,7 @@ test("paired account owner flags cannot activate extensions or claim creator aut
   const {default:create}=await import("../commands/public/extension.js");
   const replies=[];
   await create().handler({}, {}, a+"@s.whatsapp.net",["on"],{isOwner:true,isGroup:false,senderJid:a+"@s.whatsapp.net",sendMessageWTyping:async(_to,p)=>replies.push(p.text)});
-  assert.match(replies[0],/Only the configured creator/);
+  assert.match(replies[0],/only through the dashboard/);
 });
 test("group activation is scoped to the current group and requires actual admin authorization",async()=>{
   let source=await fs.readFile(new URL("../commands/group/admins/extensionGroup.js",import.meta.url),"utf8");

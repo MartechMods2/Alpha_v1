@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import client from "../db/client.js";
-import { getSock } from "../core/socketRef.js";
 import { createExtensionManager } from "../utils/extensionManager.js";
 const registry = client.db("MyBotDataDB").collection("AlphaExtensions");
 export const extensions = createExtensionManager({
@@ -12,11 +11,6 @@ export const extensions = createExtensionManager({
     },
     list: () => registry.find({_id:{$ne:"settings"}}).limit(101).toArray(),
     put: row => registry.replaceOne({_id:row._id},row,{upsert:true}),
-  },
-  notify: (phone,text) => {
-    const sock=getSock();
-    if (!sock?.user) throw Error("Primary connection unavailable");
-    return sock.sendMessage(`${phone}@s.whatsapp.net`,{text});
   },
   launch: (row, callbacks) => {
     const child=spawn(process.versions.bun ? "node" : process.execPath,["--max-old-space-size=256",fileURLToPath(new URL("./worker.js",import.meta.url))],{
