@@ -1,6 +1,8 @@
 import { lazy, Suspense, useState, useEffect, createContext, useContext, useCallback, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from './components/Layout.jsx'
+const Extensions = lazy(() => import('./pages/Extensions.jsx'))
+const ExtensionPair = lazy(() => import('./pages/Extensions.jsx').then(module => ({default: module.ExtensionPair})))
 const Login = lazy(() => import('./pages/Login.jsx'))
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'))
 const OperationsHub = lazy(() => import('./pages/OperationsHub.jsx'))
@@ -73,6 +75,7 @@ export default function App() {
       <ToastCtx.Provider value={showToast}>
         <BrowserRouter basename={basename}>
           <Suspense fallback={<div className="route-loading" role="status"><div className="spinner" /><span>Loading workspace…</span></div>}><Routes>
+            <Route path="/extension-pair" element={<ExtensionPair />} />
             <Route path="/login" element={<Login />} />
             <Route path="/*" element={<AuthGuard><Layout><Routes>
               <Route index element={<StartupLanding />} />
@@ -89,6 +92,7 @@ export default function App() {
               <Route path="members" element={<Members />} />
               <Route path="analytics" element={<Analytics />} />
               <Route path="broadcast" element={<Broadcast />} />
+              <Route path="extensions" element={<Extensions />} />
               <Route path="health" element={<Health />} />
               <Route path="logs" element={<Logs />} />
               <Route path="dm" element={<DirectMessage />} />

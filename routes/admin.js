@@ -1,3 +1,5 @@
+import { createExtensionRouter } from "./extensions.js";
+import { extensions } from "../extensions/service.js";
 import { defenseHealth } from "../utils/defenseHealth.js";
 import { Router } from "express";
 import { group } from "../db/groupData.js";
@@ -62,6 +64,10 @@ function requireAdmin(req, res, next) {
 	if (req.path.startsWith("/api/")) return res.status(401).json({ error: "Unauthorized" });
 	return res.redirect("/admin/login");
 }
+
+router.use(createExtensionRouter({manager:extensions,requireAdmin,
+  normalizePhone:value=>typeof value==="string" ? normalizeLookupNumber(value)?.number : null,
+  primaryPhone:req=>String(req.app.locals.sock?.authState?.creds?.me?.id || req.app.locals.sock?.user?.id || process.env.BOT_NUMBER || "").replace(/:\d+@/,"@").split("@")[0].replace(/\D/g,"") }));
 
 // ── Public bot status (no auth — used by index.ejs to poll connection state) ──
 router.get("/api/status", (req, res) => {

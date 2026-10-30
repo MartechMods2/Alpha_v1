@@ -44,6 +44,7 @@ const NAV_SECTIONS = [
       { to: '/customize', icon: '✎', label: 'Customize Alpha' },
       { to: '/safe-pack', icon: '🛡', label: 'Safe Pack' },
       { to: '/logs', icon: '≡', label: 'Logs' },
+      { to: '/extensions', icon: '🔌', label: 'Extensions' },
       { to: '/health', icon: '♡', label: 'Bot Health' },
       { to: '/settings', icon: '⚙', label: 'Settings' },
     ],
