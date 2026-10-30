@@ -98,15 +98,17 @@ test("group activation is scoped to the current group and requires actual admin 
   let source=await fs.readFile(new URL("../commands/group/admins/extensionGroup.js",import.meta.url),"utf8");
   const updates=[];globalThis.__extensionGroupUpdates=updates;
   const mock="data:text/javascript;base64,"+Buffer.from('export const group={updateOne:async(...args)=>globalThis.__extensionGroupUpdates.push(args)};').toString("base64");
-  source=source.replace('"../../../db/groupData.js"',JSON.stringify(mock));
+  source=source.replace('"../../../db/groupData.js"',JSON.stringify(mock)).replace('"../../../utils/groupParticipants.js"',JSON.stringify(new URL("../utils/groupParticipants.js",import.meta.url).href));
   const {default:create}=await import("data:text/javascript;base64,"+Buffer.from(source).toString("base64"));
   const previous=process.env.ALPHA_EXTENSION_ID;process.env.ALPHA_EXTENSION_ID=extensionId(a);
   try{
-    const info={isGroup:true,sendMessageWTyping:async()=>{}};
+    const info={isGroup:true,senderJid:a+"@s.whatsapp.net",sendMessageWTyping:async()=>{}};
+    const sock={groupMetadata:async()=>({participants:[{id:a+"@s.whatsapp.net",admin:"admin"}]})};
     await create().handler({}, {},"12345@g.us",["on"],info);assert.equal(updates.length,0);
-    await create().handler({}, {},"12345@g.us",["on"],{...info,isGroupAdmin:true});
+    await create().handler({groupMetadata:async()=>({participants:[{id:a+"@s.whatsapp.net"}]})}, {},"12345@g.us",["on"],{...info,isGroupAdmin:true});assert.equal(updates.length,0);
+    await create().handler(sock, {},"12345@g.us",["on"],{...info,isGroupAdmin:true});
     assert.deepEqual(updates[0],[{_id:"12345@g.us"},{$set:{isBotOn:true,isChatBotOn:true}}]);
-    await create().handler({}, {},"12345@g.us",["off"],{...info,isGroupAdmin:true});assert.equal(updates[1][1].$set.isBotOn,false);
+    await create().handler(sock, {},"12345@g.us",["off"],{...info,isGroupAdmin:true});assert.equal(updates[1][1].$set.isBotOn,false);
   }finally{if(previous===undefined)delete process.env.ALPHA_EXTENSION_ID;else process.env.ALPHA_EXTENSION_ID=previous;delete globalThis.__extensionGroupUpdates;}
 });
 test("permission notices are English and do not retain the old romanized Hindi replies",async()=>{
