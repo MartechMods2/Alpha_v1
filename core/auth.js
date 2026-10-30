@@ -1,3 +1,5 @@
+import { extensionAuthCodec } from "../utils/extensionPolicy.js";
+const codec = extensionAuthCodec(process.env.ALPHA_EXTENSION_ID, process.env.ALPHA_EXTENSION_AUTH_KEY || process.env.MONGODB_KEY);
 import { BufferJSON, initAuthCreds, proto } from "baileys";
 import mdClient from "../db/client.js";
 
@@ -20,7 +22,7 @@ const useMongoDBAuthState = async () => {
 		const doc = await collection.findOne({ _id: key });
 		if (!doc?.value) return null;
         if (typeof doc.value !== "string" || doc.value.length > 2097152) throw new Error("Stored auth record exceeds its limit");
-		return JSON.parse(doc.value, BufferJSON.reviver);
+		return JSON.parse(codec.decode(doc.value), BufferJSON.reviver);
 	};
 
 	// ───────────────── WRITE (critical) ─────────────────
@@ -56,7 +58,7 @@ const useMongoDBAuthState = async () => {
 					filter: { _id: key },
 					update: {
 						$set: {
-							value: JSON.stringify(entry.value, BufferJSON.replacer),
+							value: codec.encode(JSON.stringify(entry.value, BufferJSON.replacer)),
 						},
 					},
 					upsert: true,
@@ -86,7 +88,7 @@ const useMongoDBAuthState = async () => {
 					const docs = await collection.find({ _id: { $in: keys } }).toArray();
 					const byKey = {};
 					for (const doc of docs) {
-						if (doc?.value) byKey[doc._id] = JSON.parse(doc.value, BufferJSON.reviver);
+						if (doc?.value) byKey[doc._id] = JSON.parse(codec.decode(doc.value), BufferJSON.reviver);
 					}
 					const data = {};
 					for (const id of ids) {
@@ -119,7 +121,7 @@ const useMongoDBAuthState = async () => {
 										filter: { _id: key },
 										update: {
 											$set: {
-												value: JSON.stringify(value, BufferJSON.replacer),
+												value: codec.encode(JSON.stringify(value, BufferJSON.replacer)),
 											},
 										},
 										upsert: true,
@@ -139,7 +141,7 @@ const useMongoDBAuthState = async () => {
 		saveCreds: async () => {
 			await collection.updateOne(
 				{ _id: "creds" },
-				{ $set: { value: JSON.stringify(creds, BufferJSON.replacer) } },
+				{ $set: { value: codec.encode(JSON.stringify(creds, BufferJSON.replacer)) } },
 				{ upsert: true }
 			);
 		},

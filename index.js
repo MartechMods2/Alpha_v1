@@ -1,3 +1,4 @@
+import { extensions } from "./extensions/service.js";
 import { startAuraScheduler, stopAuraScheduler } from "./utils/aura/scheduler.js";
 import { createControlledShutdown } from "./utils/controlledShutdown.js";
 import { defenseHealth, beginDraining, startDefenseMonitoring } from "./utils/defenseHealth.js";
@@ -291,6 +292,7 @@ async function startServer() {
 		console.warn("Could not load the saved Media Studio configuration:", error.message);
 	}
 	await startSock("start");
+	await extensions.restore().catch(() => console.warn("[EXTENSIONS] Restore unavailable; primary bot continues."));
 	startReminderScheduler();
 	startGroupAutomationScheduler();
 	startSafePackScheduler();
@@ -338,7 +340,7 @@ async function startServer() {
 const stopMonitoring = startDefenseMonitoring();
 const shutdown = createControlledShutdown({
  begin: () => { console.warn("[PROCESS] Controlled shutdown started."); beginDraining(); stopAuraScheduler(); stopMonitoring(); messageQueue.stop(); },
- flush: () => app.locals.sock?.flushAuth?.(),
+ flush: () => Promise.all([app.locals.sock?.flushAuth?.(), extensions.shutdown()]),
  closeSockets: () => { stopConnections(); for(const client of wss.clients) client.terminate(); wss.close(); },
  closeServer: () => new Promise(resolve => { server.close(resolve); server.closeIdleConnections?.(); }),
 });

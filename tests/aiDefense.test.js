@@ -184,3 +184,17 @@ test("Gemini forwards the timeout signal to the supported SDK request API", asyn
   await assert.rejects(ai.askSafeAi(options));
   assert.equal(aborted, true);
 });
+test("every AI provider request receives English default instructions while explicit translations remain allowed", async t => {
+  configure(t);
+  const ai = await load();
+  let request;
+  t.mock.method(globalThis,"fetch",async(_url,opts)=>{
+    request=JSON.parse(opts.body);
+    return new Response(JSON.stringify({choices:[{message:{content:"Hello!"}}]}),{status:200});
+  });
+  await ai.askSafeAi({...options,systemPrompt:"Prior history contains Hinglish greetings"});
+  const system=request.messages.find(row=>row.role==="system").content;
+  assert.match(system,/Use English by default/);
+  assert.match(system,/current user explicitly requests translation/);
+  assert.match(system,/Never spontaneously switch to Hindi or Hinglish/);
+});

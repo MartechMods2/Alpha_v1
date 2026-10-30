@@ -553,7 +553,7 @@ const askSafeAiInternal = async ({ groupJid = "direct", systemPrompt, messages, 
     ...item,
     content: settings.aiPiiRedaction === false ? String(item.content) : redactPii(item.content),
   }));
-  const effectiveSystemPrompt = `${String(systemPrompt || "").trim()}\n\n${creatorIdentity()}`.trim();
+  const effectiveSystemPrompt = `${String(systemPrompt || "").trim()}\n\n${creatorIdentity()}\n\nLanguage policy: Use English by default. Never spontaneously switch to Hindi or Hinglish based on names, greetings, previous chat history or provider defaults. Use another language only when the current user explicitly requests translation or a reply in that language. Preserve requested quotations, code and names.`.trim();
 
   metrics.requests += 1;
   const errors = [];

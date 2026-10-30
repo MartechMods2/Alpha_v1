@@ -162,6 +162,7 @@ const wrapCommandHandler = (originalHandler, registeredCommand) => async (sock, 
 };
 
 const loadCommands = async (dirPath, commandsObj, cmdDetails) => {
+	if (process.env.ALPHA_EXTENSION_ID && dirPath.replaceAll("\\", "/").endsWith("/owner/")) return;
 	const filenames = (await readdir(dirPath)).sort();
 	for (const file of filenames) {
 		if (!file.endsWith(".js")) continue;
