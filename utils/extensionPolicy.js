@@ -1,4 +1,4 @@
-import { createHash, createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createHash, createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 export const extensionId = phone => {
   if (!/^\d{7,15}$/.test(phone)) throw Error("A verified international phone number is required.");
   return createHash("sha256").update(`alpha-extension:${phone}`).digest("hex").slice(0,24);
@@ -13,14 +13,14 @@ export const extensionLimit = (value = process.env.ALPHA_EXTENSION_MAX) => {
   const n = Number(value ?? 1);
   return Number.isInteger(n) && n >= 1 && n <= 5 ? n : 1;
 };
-const authKey = secret => {
+const authKey = (secret, id) => {
   if (typeof secret !== "string" || secret.length < 32) throw Error("Extension auth requires a server secret of at least 32 characters");
-  return createHash("sha256").update(`alpha-extension-auth-v1:${secret}`).digest();
+  return scryptSync(secret, `alpha-extension-auth-v1:${id}`, 32);
 };
 export function extensionAuthCodec(id, secret) {
   if (!id) return { encode: value => value, decode: value => value };
   extensionDatabase("Auth", id);
-  const key = authKey(secret), aad = Buffer.from(id);
+  const key = authKey(secret, id), aad = Buffer.from(id);
   return {
     encode(value) {
       const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm",key,iv);

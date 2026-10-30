@@ -20,7 +20,7 @@ export default () => ({
         const r=await extensions.enable(action==="on");return reply(`Extensions ${r.enabled?"ON":"OFF"}. Capacity: ${r.max}. Members may use $extension pair privately to pair their own number.`);
       }
       if(action==="pair"){
-        const bot=String(sock.user?.id||"").replace(/:\d+@/,"@");
+        const bot=String(sock.authState?.creds?.me?.id || sock.user?.id || "").replace(/:\d+@/,"@");
         if(actor===bot || actor===String(process.env.BOT_NUMBER||"").replace(/\D/g,"")+"@s.whatsapp.net")return reply("The original Alpha number cannot pair as an extension.");
         await extensions.pair(phone);return reply("Preparing your private pairing code. Only link a number you own. Use $extension status to check progress.");
       }
