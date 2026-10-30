@@ -239,7 +239,7 @@ const getCommand = async (sock, msg, cache) => {
 			: isGroup
 			? msg.key.participant || msg.key.participantPn || msg.key.participantAlt
 			: msg.key.remoteJid;
-		let isOwner = myNumber.includes(senderJid) || msg.key.fromMe === true;
+		let isOwner = myNumber.includes(senderJid) || (!process.env.ALPHA_EXTENSION_ID && msg.key.fromMe === true);
 		if (!senderJid || !senderJid.includes("@")) return;
 
 		const updateId = senderJid;
@@ -785,7 +785,7 @@ const getCommand = async (sock, msg, cache) => {
 			if (resBotOn == false && !(command.startsWith("group") || command.startsWith("dev"))) {
 				return sendMessageWTyping(from, {
 					text:
-						"```By default, bot is turned off in this group.\nAsk the Owner to activate.\n\nUse ```" +
+						(process.env.ALPHA_EXTENSION_ID ? "Alpha is OFF in this group. Ask a group admin to use " + prefix + "groupalpha on.\nHelp: " : "By default, Alpha is OFF in this group. Ask the creator to activate it.\nHelp: ") +
 						prefix +
 						"dev",
 				});
@@ -843,7 +843,7 @@ const getCommand = async (sock, msg, cache) => {
 			} else {
 				result = await sendMessageWTyping(
 					from,
-					{ text: "```🤭 kya matlab tum admin nhi ho.```" },
+					{ text: "🛡️ Only group admins can use this command." },
 					{ quoted: msg },
 				);
 			}
@@ -858,7 +858,7 @@ const getCommand = async (sock, msg, cache) => {
 			} else {
 				result = await sendMessageWTyping(
 					from,
-					{ text: "```🤭 kya matlab tum mere owner nhi ho.```" },
+					{ text: "🛡️ Only the bot creator or a configured moderator can use this command." },
 					{ quoted: msg },
 				);
 			}

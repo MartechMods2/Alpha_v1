@@ -1,3 +1,4 @@
+import { extensionDatabase } from "../utils/extensionPolicy.js";
 import dotenv from "dotenv";
 import { MongoClient, ServerApiVersion } from "mongodb";
 
@@ -15,6 +16,9 @@ const mdClient = new MongoClient(uri, {
 		deprecationErrors: true,
 	},
 });
+
+const originalDb = mdClient.db.bind(mdClient);
+mdClient.db = (name = "MyBotDataDB", options) => originalDb(extensionDatabase(name), options);
 
 (async () => {
 	try {

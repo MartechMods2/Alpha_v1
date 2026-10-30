@@ -6,7 +6,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	let message = "";
 
 	// Check if there's text in args or quoted message
-	if (args.length > 0 && args[0] !== "hin") {
+	if (args.length > 0) {
 		message = evv; // Use the full text after command
 	} else if (extendedMessageOriginal?.quotedMessage) {
 		message =
@@ -17,28 +17,13 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 		message = evv;
 	}
 
-	// Handle Hindi language option
-	if (args[0] === "hin") {
-		lang = "hi";
-		if (evv && evv.includes("hin")) {
-			message = evv.split("hin")[1].trim();
-		} else {
-			// If "hin" is specified but no text follows, check quoted message
-			if (extendedMessageOriginal?.quotedMessage) {
-				message =
-					extendedMessageOriginal.quotedMessage.conversation ||
-					extendedMessageOriginal.quotedMessage.extendedTextMessage?.text ||
-					"";
-			}
-		}
-	}
 
 	// Validate message
 	if (!message || message.trim() === "") {
 		return sendMessageWTyping(
 			from,
 			{
-				text: `❌ Text is empty! \n\nUsage:\n• ${prefix}say <text>\n• ${prefix}say hin <hindi text>\n• Reply to a message with ${prefix}say`,
+				text: `❌ Text is empty! \n\nUsage:\n• ${prefix}say <text>\n• Reply to a message with ${prefix}say`,
 			},
 			{ quoted: msg }
 		);
@@ -68,10 +53,10 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			{ quoted: msg }
 		);
 	} catch (error) {
-		console.error("TTS Error:", error);
+		console.error("[TTS] Voice generation failed.");
 		return sendMessageWTyping(
 			from,
-			{ text: `❌ Error generating text-to-speech: ${error.message}` },
+			{ text: "❌ Voice generation is temporarily unavailable. Please try again." },
 			{ quoted: msg }
 		);
 	}
@@ -79,7 +64,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 
 export default () => ({
 	cmd: ["say", "tts"],
-	desc: "Convert text to speech (supports English and Hindi)",
-	usage: "say <text> | say hin <hindi text> | Reply to message with say",
+	desc: "Convert text to speech (English by default)",
+	usage: "say <text> | Reply to message with say",
 	handler,
 });
