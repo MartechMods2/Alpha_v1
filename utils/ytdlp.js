@@ -98,6 +98,7 @@ const probe = async (candidate) => {
 			windowsHide: true,
 		});
 		const version = String(stdout || stderr).trim().split(/\r?\n/)[0].slice(0, 80);
+		if (!version) return null; // A zero exit status alone does not prove this executable is yt-dlp.
 		return { path: candidate, version };
 	} catch {
 		return null;

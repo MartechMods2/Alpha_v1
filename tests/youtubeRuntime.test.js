@@ -185,3 +185,15 @@ test("rejected cookie fallback identifies deployment rejection instead of blamin
 	error.alphaCookieAttempted = true;
 	assert.match(describeYtDlpError(error), /every safe public client.*deployment IP/i);
 });
+
+test("yt-dlp resolver rejects an executable that exits successfully with no version", async (t) => {
+ if (process.platform === "win32") return t.skip("POSIX executable fixture");
+ const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "alpha-ytdlp-empty-"));
+ const executable = path.join(directory, "yt-dlp");
+ await fs.promises.writeFile(executable, "#!/bin/sh\nexit 0\n", {mode:0o700});
+ const previous = process.env.YTDLP_PATH;process.env.YTDLP_PATH=executable;
+ t.after(async()=>{if(previous===undefined)delete process.env.YTDLP_PATH;else process.env.YTDLP_PATH=previous;await fs.promises.rm(directory,{recursive:true,force:true});});
+ const result = await ensureYtDlp({allowDownload:false,refresh:true});
+ assert.notEqual(result?.path,executable);
+ if(result)assert.ok(result.version.trim());
+});
