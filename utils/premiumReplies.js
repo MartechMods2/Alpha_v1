@@ -4,6 +4,7 @@ export function premiumReply(text) {
   if (
     !value ||
     /^\s*╭/.test(value) ||
+    /^(?:✦  \*ALPHA\*  ✦|✦ ──────────)\n/.test(value) ||
     value.includes("```") ||
     value.length > 12000
   )
@@ -21,8 +22,9 @@ export function premiumReply(text) {
   const body = lines.join("\n").trim();
   if (!body || lines[0]?.length > 100 || /^https?:|^[{[]/.test(lines[0]))
     return body || value;
-  // Keep everyday replies conversational; avoid a branded frame on every line.
-  return body;
+  // Decorative headings only: keep body text, links and commands copyable.
+  const heading = /\balpha\b/i.test(lines[0]) ? "✦ ──────────" : "✦  *ALPHA*  ✦\n────────────";
+  return `${heading}\n\n${body}\n\n✧ ──────────`;
 }
 export const normalizeWords = (value) =>
   String(value || "")

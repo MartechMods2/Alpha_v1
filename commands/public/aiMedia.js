@@ -1,3 +1,4 @@
+import { premiumReply } from "../../utils/premiumReplies.js";
 import { askSafeAi } from "../../utils/safeAi.js";
 import { claimAlphaGroupAiUsage, refundAlphaGroupAiUsage } from "../../utils/alphaQuota.js";
 import { alphaPublicFailureMessage, notifyAlphaOwnerFailure } from "../../utils/alphaErrorReporter.js";
@@ -39,15 +40,19 @@ const handler = async (sock, msg, from, args, info) => {
 
 	if (IMAGE_STATUS_COMMANDS.includes(command)) {
 		const status = imageProviderStatus();
-		const ready = status.openai || status.gemini || status.pollinations;
-		return reply(
-			`🎨 *Alpha Image Status*\n\n` +
-			`Overall: *${ready ? "READY ✅" : "NOT CONFIGURED ❌"}*\n` +
-			`OpenAI: *${status.openai ? "configured" : "missing key"}* — ${status.openaiModel}\n` +
-			`Gemini: *${status.gemini ? "configured" : "missing key"}* — ${status.geminiModel}\n` +
-			`Pollinations fallback: *${status.pollinations ? "configured" : "missing key"}* — ${status.pollinationsModel}\n\n` +
-			`${ready ? `Try *${prefix}img a futuristic Lagos skyline at night*` : "Admin: configure GOOGLE_API_KEY, OPENAI_API_KEY or POLLINATIONS_API_KEY on the host, then restart Alpha."}`,
-		);
+        const ready = status.preferredProvider === "cloudflare" ? status.cloudflare :
+          status.preferredProvider === "openai" ? status.openai : status.preferredProvider === "gemini" ? status.gemini : status.preferredProvider === "pollinations" ? status.pollinations : status.cloudflare || status.openai || status.gemini || status.pollinations;
+        const missing = status.preferredProvider === "cloudflare" ? status.cloudflareMissing.join(" and ") :
+          status.preferredProvider === "gemini" ? "GOOGLE_API_KEY" : status.preferredProvider === "openai" ? "OPENAI_API_KEY" : status.preferredProvider === "pollinations" ? "POLLINATIONS_API_KEY" : "the selected provider credentials";
+        return reply(
+          `🎨 *Image Studio*\n\n` +
+          `Primary provider: *${status.preferredProvider}*\n` +
+          `Cloudflare: *${status.cloudflare ? "credentials configured" : "setup required"}*\n` +
+          `Model: ${status.cloudflareModel}\n` +
+          `Paid-provider fallback: *${status.fallbackEnabled ? "enabled" : "disabled"}*\n\n` +
+          (ready ? `Credentials are configured; generation availability depends on provider quota.\nTry *${prefix}img a futuristic Lagos skyline at night*` :
+            `Admin: add ${missing} in Render, then redeploy. No API token should be posted in chat.`)
+        );
 	}
 
 	if (mode === "help") {
@@ -90,7 +95,7 @@ const handler = async (sock, msg, from, args, info) => {
 			generated = true;
 			return sendMessageWTyping(
 				from,
-				{ image: image.buffer, mimetype: image.mimetype, caption: `🎨 *Alpha Image*\n${prompt.slice(0, 500)}` },
+				{ image: image.buffer, mimetype: image.mimetype, caption: premiumReply(`🎨 *Image ready*\n\n${prompt.slice(0, 500)}`) },
 				{ quoted: msg },
 			);
 		} catch (error) {
