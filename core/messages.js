@@ -287,7 +287,6 @@ const getCommand = async (sock, msg, cache) => {
 				groupData = await getGroupData(from);
 			}
 		}
-		if (senderData?.isBlock) return;
 
 		// Refresh group roles before administrator commands so promotions and
 		// demotions take effect immediately.
@@ -322,6 +321,15 @@ const getCommand = async (sock, msg, cache) => {
 
 		if (isGroup && !msg.key.fromMe) {
 			try {
+				const safeResult = await handleSafeModerationMessage({
+					sock, msg, groupJid: from, senderJid, body, isCommand: isCmd,
+					isOwner, isGroupAdmin, groupMetadata, botJids, isBotAdmin, sendMessageWTyping, confirmedBotsOnly: true,
+				});
+				if (safeResult.handled) return;
+			} catch (error) {
+				console.error("[safe moderation error]", error.message);
+			}
+			try {
 				const automodResult = await handleAutomodMessage({
 					sock,
 					msg,
@@ -348,10 +356,11 @@ const getCommand = async (sock, msg, cache) => {
 					isOwner, isGroupAdmin, groupMetadata, botJids, isBotAdmin, sendMessageWTyping,
 				});
 				if (safeResult.handled) return;
-			} catch (error) {
-				console.error("[safe moderation error]", error.message);
-			}
+			} catch (error) { console.error("[safe moderation error]", error.message); }
 		}
+
+		// Block commands/replies only after group safety has inspected the post.
+		if (senderData?.isBlock) return;
 
 		await rewardGroupText({ sock, msg, senderJid, groupMetadata, botJids,
 			groupEnabled: groupData?.isBotOn !== false });

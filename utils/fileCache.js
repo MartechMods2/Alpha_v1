@@ -4,12 +4,12 @@
  */
 
 export class FileCache {
-	constructor(maxSize = 30 * 1024 * 1024) {
-		// Reduced to 30MB max cache size for better memory efficiency
+	constructor(maxSize = 8 * 1024 * 1024) {
+		// Bounded media cache for the 512 MiB hosting tier
 		this.cache = new Map();
 		this.maxSize = maxSize;
 		this.currentSize = 0;
-		this.maxAge = 20 * 60 * 1000; // 20 minutes max age (reduced from unlimited)
+		this.maxAge = 5 * 60 * 1000; // Five-minute idle expiry
 		this.stats = {
 			hits: 0,
 			misses: 0,
@@ -78,7 +78,7 @@ export class FileCache {
 		this.delete(filePath);
 
 		// Evict old entries if needed
-		while (this.currentSize + size > this.maxSize && this.cache.size > 0) {
+		while ((this.currentSize + size > this.maxSize || this.cache.size >= 256) && this.cache.size > 0) {
 			this.evictOldest();
 		}
 

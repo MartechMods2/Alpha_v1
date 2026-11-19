@@ -47,7 +47,7 @@ const socket = async () => {
 			keys: makeCacheableSignalKeyStore(state.keys, logger),
 		},
 
-		generateHighQualityLinkPreview: true,
+		generateHighQualityLinkPreview: false,
 
 		getMessage,
 		markOnlineOnConnect: true,

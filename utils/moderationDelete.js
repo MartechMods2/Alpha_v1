@@ -1,3 +1,5 @@
+import { generateWAMessageFromContent, proto } from "baileys";
+import { isGroupStatusMessage } from "./groupSafety.js";
 import { normalizeUserJid, participantJids, isJidGroupAdmin, isGroupOwner } from "./groupParticipants.js";
 import { claimDeletionBudget } from "./moderationCircuit.js";
 
@@ -50,10 +52,21 @@ export function createModerationDeleter({ claim = claimDeletionBudget, now = () 
     roles.set(groupJid, { pending });
     return pending;
   };
-  const sendDelete = async (sock, groupJid, key) => {
+  const sendDelete = async (sock, groupJid, key, statusMessage) => {
     if (activeSends >= 4) return { status: "limited", deleted: false };
     activeSends++;
-    const work = Promise.resolve().then(() => sock.sendMessage(groupJid, { delete: key }))
+    const work = Promise.resolve().then(async () => {
+      if (!statusMessage) return sock.sendMessage(groupJid, { delete: key });
+      if (!sock.relayMessage || !sock.user?.id) throw Error("Status revoke unavailable");
+      const revoke = generateWAMessageFromContent(groupJid, {
+        protocolMessage: { key, type: proto.Message.ProtocolMessage.Type.REVOKE },
+      }, { userJid: sock.user.id });
+      return sock.relayMessage(groupJid, revoke.message, {
+        messageId: revoke.key.id,
+        additionalAttributes: { edit: "8" },
+        additionalNodes: [{ tag: "meta", attrs: { is_group_status: "true", origin: "group_status" } }],
+      });
+    })
       .finally(() => { activeSends--; });
     await bound(work, sendTimeoutMs);
     return { status: "requested", deleted: true };
@@ -73,14 +86,14 @@ export function createModerationDeleter({ claim = claimDeletionBudget, now = () 
       if (protectedMember(metadata)) return { status: "protected", deleted: false };
       if (!canDelete(metadata)) return { status: "not-admin", deleted: false, isBotAdmin: false };
       if (!claim(groupJid)) return { status: "limited", deleted: false };
-      try { return { ...await sendDelete(sock, groupJid, key), isBotAdmin: true }; }
+      try { return { ...await sendDelete(sock, groupJid, key, isGroupStatusMessage(msg)), isBotAdmin: true }; }
       catch (error) {
         if (error.moderationTimeout) return { status: "timeout", deleted: false, isBotAdmin: true };
         // Refresh roles once and retry the SAME message key once. No retry loop.
         metadata = await refresh(sock, groupJid, metadata, true);
         if (protectedMember(metadata)) return { status: "protected", deleted: false };
         if (!canDelete(metadata)) return { status: "not-admin", deleted: false, isBotAdmin: false };
-        try { return { ...await sendDelete(sock, groupJid, key), isBotAdmin: true }; }
+        try { return { ...await sendDelete(sock, groupJid, key, isGroupStatusMessage(msg)), isBotAdmin: true }; }
         catch (retryError) { return { status: retryError.moderationTimeout ? "timeout" : "failed", deleted: false, isBotAdmin: true }; }
       }
     })();

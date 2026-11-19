@@ -48,7 +48,7 @@ RUN bun install --frozen-lockfile
 
 # Copy full source and build dashboard
 COPY . .
-RUN bun run --cwd dashboard build
+RUN bun scripts/patch-baileys-status.mjs && bun run --cwd dashboard build
 
 RUN mkdir -p temp
 

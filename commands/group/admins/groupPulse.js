@@ -1,3 +1,4 @@
+import { getSafeSettings } from "../../../db/safePackData.js";
 import { group } from "../../../db/groupData.js";
 import { getGroupAutomation } from "../../../db/groupAutomation.js";
 import { mergeLiveGroupActivity, summarizeGroupActivity } from "../../../utils/groupActivity.js";
@@ -8,7 +9,7 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 	const { groupMetadata, botJids, sendMessageWTyping } = msgInfoObj;
 	const reply = (text) => sendMessageWTyping(from, { text }, { quoted: msg });
 	try {
-		const [groupData, automation] = await Promise.all([group.findOne({ _id: from }), getGroupAutomation(from)]);
+		const [groupData, automation, safe] = await Promise.all([group.findOne({ _id: from }), getGroupAutomation(from), getSafeSettings(from)]);
 		const members = mergeLiveGroupActivity({ participants: groupMetadata?.participants || [], trackedMembers: groupData?.members || [], botJids: botJids || [] });
 		const activity = summarizeGroupActivity(members, 20);
 		const safety = getGroupSafetySettings(groupData || {});
@@ -28,10 +29,12 @@ const handler = async (sock, msg, from, args, msgInfoObj) => {
 			icon: "📡", title: "Group Pulse",
 			lines: [
 				`Group: *${groupData?.grpName || groupMetadata?.subject || "Current group"}*`, `Readiness: *${readiness}%*`, "",
-				`👥 Current human members: *${activity.totalMembers}*`, `📈 Tracking coverage: *${activity.coverage}%*`,
+				`👥 Current eligible members: *${activity.totalMembers}*`, `📈 Tracking coverage: *${activity.coverage}%*`,
 				`💬 Tracked messages: *${activity.totalMessages.toLocaleString()}*`, `🪫 Zero recorded activity: *${activity.zeroMembers}*`,
 				`🛡️ Core protections: *${protectionsOn}/${protections.length}*`, `⚡ Scheduled automations: *${schedulesOn}/${schedules.length}*`,
-				`⚠️ Members with warnings: *${warningRecords}*`, `🔇 Muted members: *${muted}*`, "", "*Recommended next steps*", ...recommendations,
+				`🤖 Confirmed-bot enforcement: *${safe.antiBotEnabled ? "ON" : "OFF"}* (${(safe.blockedBotJids || []).length} confirmed accounts)`,
+                `🛠️ Alpha group-admin access: *${msgInfoObj.isBotAdmin ? "YES" : "NO — deletion/removal unavailable"}*`,
+                `⚠️ Members with warnings: *${warningRecords}*`, `🔇 Muted members: *${muted}*`, "", "*Recommended next steps*", ...recommendations,
 			],
 			footer: "Activity means what Alpha has recorded since tracking began; zero history is not proof of lifetime inactivity.",
 		}));

@@ -235,6 +235,7 @@ test("word and confirmed-bot enforcement deletes only when Alpha has admin right
     info.body = "badminton";
     assert.equal((await moderate(info)).handled, false);
     globalThis.__moderationTest.settings.blockedBotJids = ["123@lid"];
+    globalThis.__moderationTest.settings.antiBotEnabled = true;
     assert.equal((await moderate(info)).handled, true);
     info.isGroupAdmin = true;
     assert.equal((await moderate(info)).handled, false);

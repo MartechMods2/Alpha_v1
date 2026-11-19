@@ -154,3 +154,14 @@ export const renderTemplate = (template, { users, group, count }) =>
 		.replaceAll("{users}", users)
 		.replaceAll("{group}", group || "this group")
 		.replaceAll("{count}", String(count ?? ""));
+
+export const isGroupStatusMessage = (msg) => {
+  let content = msg?.message;
+  for (let depth = 0; content && depth < 6; depth++) {
+    if (content.groupStatusMessage || content.groupStatusMessageV2) return true;
+    if (Object.values(content).some(value => value?.contextInfo?.isGroupStatus === true)) return true;
+    content = content.ephemeralMessage?.message || content.viewOnceMessage?.message ||
+      content.viewOnceMessageV2?.message || content.associatedChildMessage?.message;
+  }
+  return false;
+};

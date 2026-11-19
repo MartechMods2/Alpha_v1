@@ -11,6 +11,17 @@ const getConnectionUpdate = async (startSock, update) => {
       ([name, value]) => typeof value === "number" && value === code,
     )?.[0] || "unknown";
     console.warn(`[CONNECTION] Closed: code=${Number.isInteger(code) ? code : "unknown"} reason=${reason}`);
+    const error = update.lastDisconnect?.error;
+    // Unknown stream errors also map to badSession upstream. Only the known
+    // missing-status-ACK error is transient; real invalid sessions remain stopped.
+    const statusAckError = code === DisconnectReason.badSession &&
+      error?.message === "Stream Errored (ack)" && error?.data?.tag === "ack" &&
+      error?.data?.attrs?.class === "status";
+    if (statusAckError) {
+      console.warn("[CONNECTION] Status acknowledgement failed; recovering transport.");
+      await startSock("reconnect");
+      return;
+    }
     // Replacement/conflict is not a reason to fight a second active session.
     if (
       [

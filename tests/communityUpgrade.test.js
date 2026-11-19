@@ -137,11 +137,11 @@ test("2048 detects won and immovable boards while permitting remaining merges", 
   assert.equal(game2048Status(full), null);
 });
 
-test("premium frame replaces provider branding once and preserves conversational text", () => {
+test("conversational replies remove redundant provider branding and preserves conversational text", () => {
   const body = "Rest mode? No be like say you dey chill for shade. 😎🛋️";
   for (const label of ["⚡Alpha⚡", "*ALPHA*", "✦ Alpha ✦"]) {
     const result = premiumReply(label + "\n\n" + body);
-    assert.equal((result.match(/alpha/gi) || []).length, 1);
+    assert.equal((result.match(/alpha/gi) || []).length, 0);
     assert.ok(result.includes(body));
     assert.equal(premiumReply(result), result);
   }
