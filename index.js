@@ -194,6 +194,7 @@ function broadcast(payload) {
 // This is the fix for the stale-sock bug: we always attach our listener to
 // whichever sock is currently live, and always keep app.locals.sock current.
 function handleNewSock(sock) {
+	botConnected = false;
 	sock.alphaConnected = false;
 	app.locals.sock = sock; // always up-to-date reference for admin routes
 

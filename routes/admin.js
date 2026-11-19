@@ -1,5 +1,6 @@
 import { createExtensionRouter } from "./extensions.js";
 import { extensions } from "../extensions/service.js";
+import { botHealth } from "../utils/botHealth.js";
 import { defenseHealth } from "../utils/defenseHealth.js";
 import { Router } from "express";
 import { group } from "../db/groupData.js";
@@ -79,11 +80,16 @@ router.get("/api/status", (req, res) => {
 });
 
 // Minimal probes for hosts and uptime monitors. They never expose credentials.
-router.get("/healthz", (_req, res) => { const health=defenseHealth(); res.status(health.status === "draining" ? 503 : 200).json({ status: health.status }); });
+router.get("/healthz", (req, res) => {
+  const health = botHealth(defenseHealth(), Boolean(req.app.locals.sock?.alphaConnected));
+  res.set("Cache-Control", "no-store");
+  res.status(health.status === "draining" ? 503 : 200).json(health);
+});
 router.get("/api/admin/defense-health", requireAdmin, (_req, res) => res.json(defenseHealth()));
 router.get("/readyz", async (req, res) => {
+	res.set("Cache-Control", "no-store");
 	try {
-		await mdClient.db("admin").command({ ping: 1 });
+		await mdClient.db("admin").command({ ping: 1 }, { timeoutMS: 3000 });
 		const connected = Boolean(req.app.locals.sock?.alphaConnected);
 		return res.status(connected ? 200 : 503).json({ status: connected ? "ready" : "degraded", database: "ready", whatsapp: connected ? "connected" : "disconnected" });
 	} catch (_) {

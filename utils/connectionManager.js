@@ -6,6 +6,7 @@ export function createConnectionManager({
   delay = setTimeout,
   cancel = clearTimeout,
   maxAttempts = 8,
+  cooldownMs = 300000,
 } = {}) {
   let current = null,
     inFlight = null,
@@ -17,7 +18,13 @@ export function createConnectionManager({
   function schedule() {
     if (stopped || timer) return;
     if (attempts >= maxAttempts) {
-      stopped = true;
+      console.warn("[CONNECTION] Retry budget reached; cooling down before recovery.");
+      timer = delay(() => {
+        timer = null;
+        attempts = 0;
+        void start("retry");
+      }, cooldownMs);
+      timer?.unref?.();
       return;
     }
     const ms = Math.min(60000, 1000 * 2 ** Math.min(attempts, 6));

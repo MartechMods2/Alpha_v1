@@ -7,6 +7,10 @@ const getConnectionUpdate = async (startSock, update) => {
   }
   if (update.connection === "close") {
     const code = update.lastDisconnect?.error?.output?.statusCode;
+    const reason = Object.entries(DisconnectReason).find(
+      ([name, value]) => typeof value === "number" && value === code,
+    )?.[0] || "unknown";
+    console.warn(`[CONNECTION] Closed: code=${Number.isInteger(code) ? code : "unknown"} reason=${reason}`);
     // Replacement/conflict is not a reason to fight a second active session.
     if (
       [

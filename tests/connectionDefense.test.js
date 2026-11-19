@@ -45,7 +45,7 @@ test("socket initialization is single-flight and stale close callbacks cannot re
   assert.equal(manager.stats().scheduled, false);
   manager.stop();
 });
-test("reconnect scheduling is deduplicated, backoff is capped, and failures exhaust a bounded budget", async () => {
+test("reconnect scheduling is deduplicated, backoff is capped, and failures cool down after a bounded retry burst", async () => {
   const clock = timers();
   const manager = createConnectionManager({
     create: async () => {
@@ -68,8 +68,13 @@ test("reconnect scheduling is deduplicated, backoff is capped, and failures exha
   await clock.rows[1].fn();
   await tick();
   assert.equal(manager.stats().attempts, 3);
-  assert.equal(manager.stats().scheduled, false);
-  assert.equal(manager.stats().stopped, true);
+  assert.equal(manager.stats().scheduled, true);
+  assert.equal(manager.stats().stopped, false);
+  assert.equal(clock.rows.at(-1).ms, 300000);
+  await clock.rows.at(-1).fn();
+  await tick();
+  assert.equal(manager.stats().attempts, 1);
+  assert.equal(manager.stats().scheduled, true);
   manager.stop();
 });
 test("logout stops pending retries; manual reconnect can recover without deleting session data", async () => {
@@ -135,4 +140,30 @@ test("controlled shutdown flushes state, runs once and exits nonzero on unsafe f
     exit: (code) => exits.push(code),
   });
   assert.equal(await blocked(), 1);
+});
+
+ test("session stop cancels cooldown and stale events cannot resume retries", async () => {
+  const clock = timers();
+  let created = 0;
+  const manager = createConnectionManager({
+    create: async () => { created++; throw Error("offline"); },
+    attach: async () => {}, maxAttempts: 1,
+    delay: clock.delay, cancel: clock.cancel,
+  });
+  await manager.start();
+  const cooldown = clock.rows.at(-1);
+  await manager.start("session-stop");
+  assert.equal(cooldown.cancelled, true);
+  await cooldown.fn();
+  await tick();
+  assert.equal(created, 1);
+  assert.equal(manager.stats().scheduled, false);
+  manager.stop();
+});
+
+test("liveness exposes WhatsApp disconnection without forcing session restart loops", async () => {
+  const { botHealth } = await import("../utils/botHealth.js");
+  assert.deepEqual(botHealth({ status: "ok" }, false), { status: "degraded", whatsapp: "disconnected" });
+  assert.equal(botHealth({ status: "ok" }, true).status, "ok");
+  assert.equal(botHealth({ status: "draining" }, true).status, "draining");
 });
