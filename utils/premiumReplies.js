@@ -21,7 +21,8 @@ export function premiumReply(text) {
   const body = lines.join("\n").trim();
   if (!body || lines[0]?.length > 100 || /^https?:|^[{[]/.test(lines[0]))
     return body || value;
-  return `╭─ ✦ *ALPHA* ✦\n│  ─── ◇ ───\n\n${body}\n\n╰─ ✧ ─────────────`;
+  // Keep everyday replies conversational; avoid a branded frame on every line.
+  return body;
 }
 export const normalizeWords = (value) =>
   String(value || "")

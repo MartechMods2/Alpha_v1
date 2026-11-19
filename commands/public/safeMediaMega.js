@@ -1,3 +1,4 @@
+import { BoundedTtlMap } from "../../utils/boundedTtlMap.js";
 import { fileTypeFromBuffer } from "file-type";
 import { downloadOpenMedia } from "../../utils/openMediaSources.js";
 import { findSafeImage, findSafeSound, findSafeVideo, providerStatus, searchGiphy, searchNasaImage } from "../../utils/safeMediaProviders.js";
@@ -17,7 +18,7 @@ const SOUND_PRESETS = {
 const NASA_PRESETS = { nasaimage:"space",spacepic:"space",earthpic:"planet Earth",moonpic:"Moon",marspic:"Mars",galaxypic:"galaxy",nebulapic:"nebula",astronautpic:"astronaut",rocketpic:"rocket launch",satellitepic:"satellite" };
 
 export const SAFE_MEDIA_COMMANDS = [...Object.keys(GIF_PRESETS),...Object.keys(IMAGE_PRESETS),...Object.keys(VIDEO_PRESETS),...Object.keys(SOUND_PRESETS),...Object.keys(NASA_PRESETS),"safemediahelp","mediacategories","freeproviders"];
-const cooldowns = new Map();
+const cooldowns = new BoundedTtlMap({ttl:60000});
 const safe = (v,m=120)=>String(v||"").replace(/[\r\n\t*_~`]/g," ").replace(/\s+/g," ").trim().slice(0,m);
 const reply=(send,from,msg,text)=>send(from,{text},{quoted:msg});
 const queryFor=(preset,args)=>safe([preset,args.join(" ")].filter(Boolean).join(" "),150);

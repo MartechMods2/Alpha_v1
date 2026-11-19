@@ -345,8 +345,16 @@ const shutdown = createControlledShutdown({
  closeSockets: () => { stopConnections(); for(const client of wss.clients) client.terminate(); wss.close(); },
  closeServer: () => new Promise(resolve => { server.close(resolve); server.closeIdleConnections?.(); }),
 });
-function gracefulShutdown(_signal, exitCode=0) { return shutdown(exitCode); }
-process.on("alpha:fatal", () => gracefulShutdown("DEFENSE_FATAL", 1));
+function gracefulShutdown(signal, exitCode=0) {
+  const safe = new Set(["DEFENSE_FATAL", "UNHANDLED_REJECTION", "UNCAUGHT_EXCEPTION", "SIGTERM", "SIGINT"]);
+  console.warn(`[PROCESS] Shutdown reason=${safe.has(signal) ? signal : "OTHER"} exit=${exitCode === 0 ? 0 : 1}`);
+  return shutdown(exitCode);
+}
+process.on("alpha:fatal", reason => {
+  const allowed = /^[a-z-]{1,40}$/.test(String(reason || "")) ? reason : "unknown";
+  console.warn(`[PROCESS] Fatal subsystem=${allowed}`);
+  void gracefulShutdown("DEFENSE_FATAL", 1);
+});
 process.on("unhandledRejection", () => gracefulShutdown("UNHANDLED_REJECTION", 1));
 process.on("uncaughtException", () => gracefulShutdown("UNCAUGHT_EXCEPTION", 1));
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));

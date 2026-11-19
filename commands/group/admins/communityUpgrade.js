@@ -1,3 +1,5 @@
+import { enforceConfirmedBot, botRemovalNotice } from "../../../utils/antiBotEnforcement.js";
+import { isSameGroupUser } from "../../../utils/groupParticipants.js";
 import {
   getSafeSettings,
   updateSafeSettings,
@@ -72,16 +74,15 @@ const handler = async (sock, msg, from, args, info) => {
     return reply("Reply design updated.");
   }
   if (command === "antibot") {
-    const action = args[0] || "status",
+    const action = String(args[0] || "status").toLowerCase(),
       target =
         info.extendedMessageOriginal?.mentionedJid?.[0] ||
         info.extendedMessageOriginal?.participant;
     if (["on", "off"].includes(action)) {
+      if (action === "on" && !isBotAdmin) return reply("Make Alpha a group admin before enabling anti-bot removal.");
       await updateSafeSettings(from, { antiBotEnabled: action === "on" });
       return reply(
-        "Anti-bot review " +
-          action +
-          ". Suspicious automation alerts are advisory. Use antibot block @member for confirmed bots.",
+        "Anti-bot enforcement " + action + ". Admin-confirmed bots are removed when they post or rejoin. Use antibot block @member to confirm and remove a bot; antibot scan checks the confirmed list. Uncertain signals only prompt review.",
       );
     }
     if (["block", "allow"].includes(action)) {
@@ -89,19 +90,27 @@ const handler = async (sock, msg, from, args, info) => {
         return reply(
           "Tag or reply to the confirmed account: antibot block|allow @member",
         );
+      if (action === "block" && !isBotAdmin) return reply("Make Alpha a group admin before blocking and removing accounts.");
+      const metadata = await sock.groupMetadata(from);
       const list = settings.blockedBotJids || [];
-      await updateSafeSettings(from, {
+      if (action === "block" && list.length >= 100 && !list.some(jid=>isSameGroupUser(metadata,jid,target))) return reply("Confirmed bot list is full. Allow an old entry before adding another.");
+      const updated = await updateSafeSettings(from, {
         blockedBotJids:
           action === "block"
             ? [...new Set([...list, target])].slice(0, 100)
-            : list.filter((x) => x !== target),
+            : list.filter((x) => !isSameGroupUser(metadata,x,target)),
       });
-      return reply(
-        "Confirmed-bot list updated. Blocking deletes future messages when Alpha is admin; it does not remove the account.",
-      );
+      const result = action === "block" ? await enforceConfirmedBot({sock, groupJid:from, memberJid:target, settings:updated, force:true}) : null;
+      await recordSafeAudit({groupJid:from,action:"antibot-"+action,actorJid:senderJid,targetJid:target,reason:result?.status || "allowed"});
+      return reply(action === "block" ? "Admin-confirmed bot list updated. " + botRemovalNotice(result) : "Account allowed; its confirmed-bot block was removed.");
+    }
+    if (action === "scan") {
+      const metadata = await sock.groupMetadata(from);
+      const present = (settings.blockedBotJids || []).filter(jid => (metadata.participants || []).some(p => isSameGroupUser(metadata,jid,p.id || p.lid || p.phoneNumber)));
+      return reply(`Confirmed blocked accounts still present: ${present.length}. Use antibot block @member to remove one. This scan cannot identify silent or disguised bots.`);
     }
     return reply(
-      `Anti-bot review: ${settings.antiBotEnabled ? "ON" : "OFF"}\nConfirmed blocked accounts: ${(settings.blockedBotJids || []).length}\nWhatsApp does not provide a reliable bot-account flag. Silent bots cannot be detected.`,
+      `Anti-bot enforcement: ${settings.antiBotEnabled ? "ON" : "OFF"}\nConfirmed blocked accounts: ${(settings.blockedBotJids || []).length}\nWhatsApp does not provide a reliable bot-account flag. Silent bots cannot be detected.`,
     );
   }
   if (command === "stickerreplies") {
@@ -130,7 +139,7 @@ export default () => ({
     "replydesign",
     "stickerreplies",
   ],
-  desc: "Compact mentions, word bans, honest bot review and premium presentation",
+  desc: "Compact mentions, word bans, confirmed-bot enforcement and premium presentation",
   usage: "everyone <message> | ban <phrase> | antibot on | replydesign premium",
   handler,
 });

@@ -1,7 +1,7 @@
 {
   "name": "whatsappbot",
   "version": "3.0.0",
-  "description": "Alpha \u2014 WhatsApp community assistant created by Martech",
+  "description": "Alpha — WhatsApp community assistant created by Martech",
   "main": "index.js",
   "type": "module",
   "private": true,
@@ -18,10 +18,10 @@
     "vendor/bgutil-ytdlp-pot-provider"
   ],
   "scripts": {
-    "build": "bun install --frozen-lockfile && bun run --cwd dashboard build",
-    "start": "bun index.js",
-    "start:dev": "bun --inspect index.js",
-    "start:production": "bun --smol index.js",
+    "build": "bun install --frozen-lockfile && node scripts/patch-baileys-status.mjs && bun run --cwd dashboard build",
+    "start": "bun scripts/patch-baileys-status.mjs && bun index.js",
+    "start:dev": "bun scripts/patch-baileys-status.mjs && bun --inspect index.js",
+    "start:production": "bun scripts/patch-baileys-status.mjs && bun --smol index.js",
     "test": "node --test --test-concurrency=2 tests/*.test.js",
     "check": "node scripts/check.mjs",
     "verify": "npm run check && npm test && npm run build --workspace dashboard",
@@ -33,42 +33,40 @@
   "dependencies": {
     "@erickwendel/meme-maker": "^3.0.0",
     "@google/generative-ai": "^0.24.1",
-    "@napi-rs/canvas": "^1.0.0",
+    "@napi-rs/canvas": "^1.1.1",
     "awesome-phonenumber": "^5.11.0",
-    "axios": "^1.18.0",
+    "axios": "^1.21.1",
     "baileys": "7.0.0-rc14",
-    "body-parser": "^2.3.0",
+    "body-parser": "^2.4.0",
     "cheerio": "^1.2.0",
     "connect-mongo": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "ejs": "^3.1.10",
-    "express": "^4.22.2",
+    "express": "^4.22.3",
     "express-session": "^1.19.0",
     "ffmpeg-static": "^5.3.0",
     "file-type": "^21.3.4",
     "fluent-ffmpeg": "^2.1.3",
     "form-data": "4.0.6",
     "genius-lyrics": "^4.4.7",
-    "genius-lyrics-api": "^3.2.1",
     "google-tts-api": "^0.0.6",
     "inshorts-api": "github:jacktheboss220/inshorts-api",
     "jsdom": "^26.1.0",
-    "mime": "^4.1.0",
-    "mongodb": "^6.21.0",
+    "mime": "^4.1.2",
+    "mongodb": "^6.22.0",
     "node-cache": "^5.1.2",
     "node-webpmux": "^3.2.1",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
-    "pino": "^10.3.1",
-    "redis": "^6.0.0",
+    "pino": "^10.4.0",
+    "redis": "^6.3.1",
     "snapsave-downloader": "github:jacktheboss220/insta-downloader",
     "truecallerjs": "^2.2.0",
-    "twitter-api-v2": "^1.29.0",
+    "twitter-api-v2": "^1.31.0",
     "urban-dictionary": "github:jacktheboss220/urban-dictionary",
-    "wa-sticker-formatter": "^3.6.0",
-    "ws": "^8.21.0",
-    "youtube-dl-exec": "^3.1.8",
+    "ws": "^8.23.0",
+    "youtube-dl-exec": "^3.1.19",
     "yt-search": "^2.13.1",
     "sharp": "0.35.5"
   },
@@ -79,12 +77,16 @@
   ],
   "overrides": {
     "form-data": "4.0.6",
-    "proxy-addr": "2.0.8"
+    "proxy-addr": "2.0.8",
+    "minimatch": "5.1.9",
+    "basic-ftp": "6.2.4"
   },
   "pnpm": {
     "overrides": {
       "form-data": "4.0.6",
-      "proxy-addr": "2.0.8"
+      "proxy-addr": "2.0.8",
+      "minimatch": "5.1.9",
+      "basic-ftp": "6.2.4"
     }
   }
 }

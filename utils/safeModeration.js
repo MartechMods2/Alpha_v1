@@ -1,3 +1,5 @@
+import { BoundedTtlMap } from "./boundedTtlMap.js";
+import { enforceConfirmedBot, botRemovalNotice } from "./antiBotEnforcement.js";
 import {isSameGroupUser} from "./groupParticipants.js";
 import {containsBannedPhrase} from "./premiumReplies.js";
 import { getSafeSettings, updateSafeSettings, recordSafeAudit, createSafeItem, listSafeItems } from "../db/safePackData.js";
@@ -5,10 +7,10 @@ import { isProtectedGroupMember } from "./moderation.js";
 import { moderationCircuitStatus } from "./moderationCircuit.js";
 import { deleteModerationMessage, deletionNotice } from "./moderationDelete.js";
 
-const lastMessages = new Map();
-const mediaWindows = new Map();
-const joinWindows = new Map();
-const noticeCooldowns = new Map();
+const lastMessages = new BoundedTtlMap();
+const mediaWindows = new BoundedTtlMap({ttl: 60000});
+const joinWindows = new BoundedTtlMap({max: 500, ttl: 300000});
+const noticeCooldowns = new BoundedTtlMap({ttl: 3600000});
 
 const mentionCount = (msg) => {
 	const message = msg?.message || {};
@@ -21,7 +23,7 @@ const mentionCount = (msg) => {
 
 const messageKind = (msg) => Object.keys(msg?.message || {}).find((key) => /^(image|video|audio|sticker|document)Message$/.test(key)) || "";
 
-export const handleSafeModerationMessage = async ({ sock, msg, groupJid, senderJid, body, isCommand, isOwner, isGroupAdmin, groupMetadata, botJids, isBotAdmin, sendMessageWTyping }) => {
+export const handleSafeModerationMessage = async ({ sock, msg, groupJid, senderJid, body, isCommand, isOwner, isGroupAdmin, groupMetadata, botJids, isBotAdmin, sendMessageWTyping, confirmedBotsOnly = false }) => {
 	if (isOwner || isGroupAdmin || isProtectedGroupMember(groupMetadata, senderJid, botJids)) return { handled: false };
 	const settings = await getSafeSettings(groupJid);
 	const violation = async (action, reason) => {
@@ -36,7 +38,11 @@ export const handleSafeModerationMessage = async ({ sock, msg, groupJid, senderJ
 		return { handled: true, deleted: deletion.deleted, deletionStatus: deletion.status };
 	};
 
-	if ((settings.blockedBotJids||[]).some(jid=>isSameGroupUser(groupMetadata,jid,senderJid))) return violation('confirmed-bot','This account is blocked by the group administrators.');
+	if (settings.antiBotEnabled && (settings.blockedBotJids||[]).some(jid=>isSameGroupUser(groupMetadata,jid,senderJid))) {
+      const removal = await enforceConfirmedBot({sock, groupJid, memberJid: senderJid, settings, botJids});
+      return violation('confirmed-bot', botRemovalNotice(removal));
+    }
+    if (confirmedBotsOnly) return {handled:false};
     // Message IDs alone are never evidence. A native bot marker only prompts review.
     if(settings.antiBotEnabled && msg?.message?.botInvokeMessage){
       const key=`${groupJid}:${senderJid}:bot-review`;
@@ -81,7 +87,15 @@ export const handleSafeModerationMessage = async ({ sock, msg, groupJid, senderJ
 export const handleSafeJoinEvent = async ({ sock, groupJid, participantJids }) => {
 	for (const memberJid of participantJids) await createSafeItem({ groupJid, type: "member-join", memberJid, status: "active" });
 	const settings = await getSafeSettings(groupJid);
-	if (!settings.antiRaidEnabled) return { locked: false };
+	if (settings.antiBotEnabled && settings.blockedBotJids?.length) {
+      const metadata = await sock.groupMetadata(groupJid);
+      for (const memberJid of participantJids) {
+        if (!(settings.blockedBotJids || []).some(jid => isSameGroupUser(metadata,jid,memberJid))) continue;
+        const result = await enforceConfirmedBot({sock, groupJid, memberJid, settings});
+        await recordSafeAudit({groupJid,action:'confirmed-bot-rejoin',targetJid:memberJid,reason:result.status});
+      }
+    }
+    if (!settings.antiRaidEnabled) return { locked: false };
 	const now = Date.now();
 	const entries = [...(joinWindows.get(groupJid) || []), ...participantJids.map(() => now)].filter((time) => now - time < settings.antiRaidWindowSeconds * 1_000);
 	joinWindows.set(groupJid, entries);

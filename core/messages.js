@@ -322,6 +322,15 @@ const getCommand = async (sock, msg, cache) => {
 
 		if (isGroup && !msg.key.fromMe) {
 			try {
+				const safeResult = await handleSafeModerationMessage({
+					sock, msg, groupJid: from, senderJid, body, isCommand: isCmd,
+					isOwner, isGroupAdmin, groupMetadata, botJids, isBotAdmin, sendMessageWTyping, confirmedBotsOnly: true,
+				});
+				if (safeResult.handled) return;
+			} catch (error) {
+				console.error("[safe moderation error]", error.message);
+			}
+			try {
 				const automodResult = await handleAutomodMessage({
 					sock,
 					msg,
@@ -348,9 +357,7 @@ const getCommand = async (sock, msg, cache) => {
 					isOwner, isGroupAdmin, groupMetadata, botJids, isBotAdmin, sendMessageWTyping,
 				});
 				if (safeResult.handled) return;
-			} catch (error) {
-				console.error("[safe moderation error]", error.message);
-			}
+			} catch (error) { console.error("[safe moderation error]", error.message); }
 		}
 
 		await rewardGroupText({ sock, msg, senderJid, groupMetadata, botJids,

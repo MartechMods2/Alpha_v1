@@ -26,6 +26,8 @@ jobs:
           # which is unauthenticated and can fail when shared runners hit a rate limit.
           YOUTUBE_DL_SKIP_DOWNLOAD: "true"
         run: bun install --frozen-lockfile
+      - name: Apply pinned WhatsApp status compatibility fix
+        run: node scripts/patch-baileys-status.mjs
       - name: Install media runtime
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: JavaScript syntax
