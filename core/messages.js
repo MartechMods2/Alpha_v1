@@ -287,7 +287,6 @@ const getCommand = async (sock, msg, cache) => {
 				groupData = await getGroupData(from);
 			}
 		}
-		if (senderData?.isBlock) return;
 
 		// Refresh group roles before administrator commands so promotions and
 		// demotions take effect immediately.
@@ -359,6 +358,9 @@ const getCommand = async (sock, msg, cache) => {
 				if (safeResult.handled) return;
 			} catch (error) { console.error("[safe moderation error]", error.message); }
 		}
+
+		// Block commands/replies only after group safety has inspected the post.
+		if (senderData?.isBlock) return;
 
 		await rewardGroupText({ sock, msg, senderJid, groupMetadata, botJids,
 			groupEnabled: groupData?.isBotOn !== false });

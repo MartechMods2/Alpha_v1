@@ -101,3 +101,16 @@ test('patched dependency interfaces and dashboard routes remain compatible',asyn
  assert.equal(router.matchRoutes(routes,'/groups/test')[0].params.id,'test');
  assert.equal(router.matchRoutes(routes,'/health')[0].route.path,'/health');
 });
+test('globally blocked senders still reach group moderation before command/reply blocking',async()=>{
+ const source=await readFile(new URL('../core/messages.js',import.meta.url),'utf8');
+ const begin=source.indexOf('\t\tif (senderData?.isBlock) return;');
+ const safety=source.indexOf('\t\tif (isGroup && !msg.key.fromMe) {');
+ // Execute the actual routing block with a blocked account and a moderation action.
+ const fragment=source.slice(safety,source.indexOf('\n\t\tawait rewardGroupText(',safety));
+ const context={sock:{},msg:{key:{fromMe:false}},from:group,senderJid:user,body:'blocked spam',isCmd:false,isOwner:false,isGroupAdmin:false,groupMetadata:{},botJids:[],isBotAdmin:true,sendMessageWTyping:async()=>{},groupData:{},senderData:{isBlock:true},isGroup:true};
+ let inspected=0;
+ const funcs={handleSafeModerationMessage:async()=>{inspected++;return {handled:true};},handleAutomodMessage:async()=>({handled:false}),isGroupStatusMentionMessage:()=>false};
+ const values={...context,...funcs};
+ await new (Object.getPrototypeOf(async()=>{}).constructor)(...Object.keys(values),fragment)(...Object.values(values));
+ assert.equal(inspected,1);assert.ok(begin>safety);
+});
