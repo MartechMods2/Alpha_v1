@@ -1,3 +1,5 @@
+import { cloudflareImageStatus, generateCloudflareImage } from "./cloudflareImage.js";
+import { BoundedTtlMap } from "./boundedTtlMap.js";
 import { randomUUID } from "node:crypto";
 import { readFile, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,8 +13,8 @@ import {
 	splitGoogleTtsText,
 } from "./googleTtsCompat.js";
 
-const imageUsage = new Map();
-const voiceUsage = new Map();
+const imageUsage = new BoundedTtlMap({ttl:600000});
+const voiceUsage = new BoundedTtlMap({ttl:600000});
 const WINDOW_MS = 10 * 60_000;
 const WHATSAPP_VOICE_MIMETYPE = "audio/ogg; codecs=opus";
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -34,7 +36,7 @@ const claimWindow = (store, key, limit, now = Date.now()) => {
 export const claimImageQuota = (memberJid) => claimWindow(imageUsage, memberJid, Math.max(1, Math.min(10, Number(process.env.IMAGE_WINDOW_LIMIT) || 3)));
 export const claimVoiceQuota = (memberJid) => claimWindow(voiceUsage, memberJid, Math.max(3, Math.min(40, Number(process.env.VOICE_WINDOW_LIMIT) || 12)));
 
-const imagePromptSafety = (prompt) => {
+export const imagePromptSafety = (prompt) => {
 	const text = String(prompt || "").trim();
 	if (!text) throw new Error("add an image description after the command");
 	if (text.length > 1400) throw new Error("image prompt is too long; keep it under 1,400 characters");
@@ -125,6 +127,9 @@ const generatePollinationsImage = async (prompt, apiKey) => {
 };
 
 export const imageProviderStatus = () => ({
+    ...cloudflareImageStatus(),
+    preferredProvider: String(process.env.ALPHA_IMAGE_PROVIDER || "cloudflare").trim().toLowerCase(),
+    fallbackEnabled: process.env.ALPHA_IMAGE_FALLBACK === "true",
 	openai: Boolean(String(process.env.OPENAI_API_KEY || "").trim()),
 	pollinations: Boolean(String(process.env.POLLINATIONS_API_KEY || "").trim()),
 	openaiModel: String(process.env.OPENAI_IMAGE_MODEL || "gpt-image-2").trim(),
@@ -133,11 +138,17 @@ export const imageProviderStatus = () => ({
 
 export const generateAlphaImage = async (rawPrompt) => {
 	const prompt = imagePromptSafety(rawPrompt);
+    const selected=String(process.env.ALPHA_IMAGE_PROVIDER || "cloudflare").trim().toLowerCase();
+    if (!["cloudflare","auto","openai","pollinations","gemini"].includes(selected)) throw new Error("ALPHA_IMAGE_PROVIDER is invalid");
+    if (selected === "cloudflare" || (selected === "auto" && cloudflareImageStatus().cloudflare)) {
+      try { const result=await generateCloudflareImage(prompt);return {...result,...validateImageBuffer(result.buffer)}; }
+      catch(error) { if(selected === "cloudflare" && process.env.ALPHA_IMAGE_FALLBACK !== "true")throw error; }
+    }
 	const openAiKey = String(process.env.OPENAI_API_KEY || "").trim();
 	const pollinationsKey = String(process.env.POLLINATIONS_API_KEY || "").trim();
 	const providers = [];
-	if (openAiKey) providers.push(() => generateOpenAiImage(prompt, openAiKey));
-	if (pollinationsKey) providers.push(() => generatePollinationsImage(prompt, pollinationsKey));
+	if (openAiKey && ["cloudflare","auto","openai"].includes(selected)) providers.push(() => generateOpenAiImage(prompt, openAiKey));
+	if (pollinationsKey && ["cloudflare","auto","pollinations"].includes(selected)) providers.push(() => generatePollinationsImage(prompt, pollinationsKey));
 	if (!providers.length) {
 		throw new Error("image generation is not configured. Ask the admin to add OPENAI_API_KEY or POLLINATIONS_API_KEY, then use $imgstatus to verify it");
 	}

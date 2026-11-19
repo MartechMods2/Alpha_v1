@@ -1,6 +1,7 @@
 import {
 	generateAlphaImage as generatePrimaryImage,
 	imageMimeFromBuffer,
+	imagePromptSafety,
 	imageProviderStatus as primaryProviderStatus,
 } from "./alphaMediaAi.js";
 
@@ -62,6 +63,8 @@ export const imageProviderStatus = () => {
 };
 
 export const generateAlphaImage = async (prompt) => {
+    prompt=imagePromptSafety(prompt);
+    if (primaryProviderStatus().preferredProvider === "gemini") return generateGeminiImage(prompt);
 	let primaryError = null;
 	try {
 		return await generatePrimaryImage(prompt);
@@ -69,7 +72,9 @@ export const generateAlphaImage = async (prompt) => {
 		primaryError = error;
 	}
 
-	if (String(process.env.GOOGLE_API_KEY || "").trim()) {
+    const status=primaryProviderStatus();
+    if(status.preferredProvider === "cloudflare" && !status.fallbackEnabled)throw primaryError;
+	if (["cloudflare","auto","gemini"].includes(status.preferredProvider) && String(process.env.GOOGLE_API_KEY || "").trim()) {
 		try {
 			return await generateGeminiImage(prompt);
 		} catch (error) {
