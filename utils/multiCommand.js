@@ -33,8 +33,23 @@ export const parseCommandChain = (body, prefix = "$", maxCommands = 6) => {
 	const p = String(prefix || "$");
 	const text = String(body || "").trim();
 	if (!text.startsWith(p)) return { commands: [], truncated: false };
-	const boundary = new RegExp(`\\s*(?:,|;|\\n)\\s*(?=${escapeRegex(p)})`, "g");
-	const rawParts = text.split(boundary).map((part) => part.trim()).filter(Boolean);
+    const rawParts = [];
+    let start = 0, quote = null;
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        if (char === "\\") { i++; continue; }
+        if (quote) { if (char === quote) quote = null; continue; }
+        if (char === "`" || ((char === '"' || char === "'") && (i === 0 || /\s/.test(text[i - 1])))) {
+            quote = char; continue;
+        }
+        if (![",", ";", "\n"].includes(char)) continue;
+        let next = i + 1;
+        while (/\s/.test(text[next] || "") && next < text.length) next++;
+        if (!text.startsWith(p, next)) continue;
+        rawParts.push(text.slice(start, i).trim());
+        start = next; i = next - 1;
+    }
+    rawParts.push(text.slice(start).trim());
 	const parsed = rawParts.map((part) => parseCommandSegment(part, p)).filter(Boolean);
 	const safeLimit = Math.min(8, Math.max(1, Number(maxCommands) || 6));
 	return {
@@ -51,7 +66,7 @@ const numberOf = (jid) => {
 export const contextForCommandSegment = (segment, context = {}) => {
 	if (!segment?.raw || !context) return context;
 	const wanted = [...String(segment.raw).matchAll(/@([0-9]{5,20})/g)].map((match) => match[1]);
-	if (!wanted.length) return context;
+	if (!wanted.length) return { ...context, mentionedJid: [] };
 	const original = Array.isArray(context.mentionedJid)
 		? context.mentionedJid
 		: context.mentionedJid
@@ -68,5 +83,27 @@ export const contextForCommandSegment = (segment, context = {}) => {
 			}
 		}
 	}
-	return ordered.length ? { ...context, mentionedJid: ordered } : context;
+	return { ...context, mentionedJid: ordered };
+};
+
+// Preserve quoted/media context while giving each handler only its own input.
+export const messageForCommandSegment = (msg, segment, type) => {
+ const message = { ...msg.message };
+ if (type === 'conversation') message.conversation = segment.raw;
+ else {
+  const original = message[type] || {};
+  const field = type === 'extendedTextMessage' ? 'text' :
+    ['buttonsResponseMessage', 'templateButtonReplyMessage'].includes(type) ? 'selectedDisplayText' :
+    type === 'listResponseMessage' ? 'title' : 'caption';
+  message[type] = { ...original, [field]: segment.raw,
+   ...(original.contextInfo ? {contextInfo: contextForCommandSegment(segment, original.contextInfo)} : {}) };
+ }
+ return { ...msg, message };
+};
+
+export const runCommandSegments = async (segments, dispatch, onError) => {
+ for (const [index, segment] of segments.entries()) {
+  try { await dispatch(segment, index); }
+  catch { await onError(segment); }
+ }
 };
