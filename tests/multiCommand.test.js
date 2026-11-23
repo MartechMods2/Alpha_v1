@@ -37,3 +37,38 @@ test("normal commas do not create extra commands", () => {
 	assert.equal(parsed.commands.length, 1);
 	assert.equal(parsed.commands[0].command, "meme");
 });
+
+test('quoted, escaped and ordinary argument commas remain intact', () => {
+ const parsed = parseCommandChain('$meme "Hello, $world"\\, $literal, $ping');
+ assert.deepEqual(parsed.commands.map(s=>s.command), ['meme','ping']);
+ assert.match(parsed.commands[0].inputText, /Hello, \$world/);
+ assert.equal(parseCommandChain("$meme don't stop, $ping").commands.length,2);
+ assert.equal(parseCommandChain('$meme `a, $b`, $ping').commands.length,2);
+});
+
+test('custom prefixes and unprefixed comma arguments work',()=>{
+ assert.deepEqual(parseCommandChain('!ping, !help','!').commands.map(s=>s.command),['ping','help']);
+ assert.equal(parseCommandChain('$meme hi, help me').commands.length,1);
+});
+
+test('segments preserve quote/media metadata and isolate mentions',async()=>{
+ const {messageForCommandSegment}=await import('../utils/multiCommand.js');
+ const original={key:{id:'same'},message:{extendedTextMessage:{text:'$a @2348011111111, $b',contextInfo:{stanzaId:'quoted',participant:'author@lid',mentionedJid:['2348011111111@s.whatsapp.net']}}}};
+ const segment=parseCommandChain(original.message.extendedTextMessage.text).commands[1];
+ const out=messageForCommandSegment(original,segment,'extendedTextMessage');
+ assert.equal(out.message.extendedTextMessage.text,'$b');
+ assert.deepEqual(out.message.extendedTextMessage.contextInfo.mentionedJid,[]);
+ assert.equal(out.message.extendedTextMessage.contextInfo.stanzaId,'quoted');
+ assert.equal(original.message.extendedTextMessage.contextInfo.mentionedJid.length,1);
+});
+
+test('dispatch runs serially, preserves permission denials and continues after failures',async()=>{
+ const {runCommandSegments}=await import('../utils/multiCommand.js');
+ const calls=[];let active=0;
+ await runCommandSegments(parseCommandChain('$ping, $restricted, $fail, $help').commands,async(s)=>{
+  assert.equal(active,0);active++;await Promise.resolve();calls.push(s.command);active--;
+  if(s.command==='restricted'){calls.push('denied');return;}
+  if(s.command==='fail')throw Error('private error');
+ },async(s)=>calls.push('failed:'+s.command));
+ assert.deepEqual(calls,['ping','restricted','denied','fail','failed:fail','help']);
+});

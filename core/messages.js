@@ -22,7 +22,7 @@ import { readFileEfficiently } from "../utils/file.js";
 import { getGroupMeta, setGroupMeta, checkRateLimit } from "../cache/redisCache.js";
 
 const prefix = process.env.PREFIX || "$";
-import { parseCommandSegment } from "../utils/multiCommand.js";
+import { parseCommandSegment, parseCommandChain, messageForCommandSegment, runCommandSegments } from "../utils/multiCommand.js";
 const moderatos = (process.env.MODERATORS || "")
 	.split(",")
 	.map((number) => number.replace(/[^0-9]/g, ""))
@@ -746,6 +746,31 @@ const getCommand = async (sock, msg, cache) => {
 			}
 		}
 		if (!isCmd) return;
+        const chain = parseCommandChain(body, prefix, 6);
+        if (chain.truncated) return sendMessageWTyping(from, {
+            text: `Use at most 6 commands per message. Separate them like ${prefix}ping, ${prefix}help. Nothing in this batch was executed.`,
+        }, { quoted: msg });
+        const originalMessage = msg;
+        const originalGroupData = groupData;
+        const originalGroupMetadata = groupMetadata;
+        const dispatchSegment = async (segment) => {
+            const { command, args, evv } = segment;
+            if (command.length > 64) return;
+            const parsedCommand = segment;
+            const msg = chain.commands.length > 1 ? messageForCommandSegment(originalMessage, segment, type) : originalMessage;
+            const extendedMessageOriginal = type === "extendedTextMessage" ? msg.message.extendedTextMessage.contextInfo : null;
+            const content = JSON.stringify(msg.message, (_key, value) => typeof value === "bigint" ? String(value) : value);
+            // Each segment re-enters the normal authorization path. Refresh mutable
+            // settings/roles between commands, since an earlier segment may change them.
+            const groupData = isGroup && chain.commands.length > 1 ? await getGroupData(from) : originalGroupData;
+            let groupMetadata = originalGroupMetadata;
+            if (isGroup && chain.commands.length > 1) {
+                groupMetadata = boundedGroupMetadata(await sock.groupMetadata(from), from);
+            }
+            const groupAdmins = isGroup ? getGroupAdmins(groupMetadata.participants) : [];
+            const isGroupAdmin = isGroup ? isJidGroupAdmin(groupMetadata, senderIdentityJids) : false;
+            const botJids = isGroup ? await getBotIdentityJids(sock, groupMetadata, botNumber) : [];
+            const isBotAdmin = isGroup ? isJidGroupAdmin(groupMetadata, botJids) : false;
 		//-------------------------------------------------------------------------------------------------------------//
 		// Keep command bursts from turning into high-volume automated sends.
 		// Owners are exempt so recovery/admin commands remain available.
@@ -753,12 +778,15 @@ const getCommand = async (sock, msg, cache) => {
 			const allowed = await checkRateLimit(senderJid, command, 3);
 			if (!allowed) {
 				console.log("[DEFENSE] Command quota reached.");
+                if (chain.commands.length > 1) await sendMessageWTyping(from, { text: `⏳ Skipped ${prefix}${command}: command cooldown reached.` }, { quoted: originalMessage });
 				return;
 			}
 		}
 		sock.readMessages([msg.key]).catch(() => {});
 
 		const msgInfoObj = {
+            multiCommandChild: true,
+            multiCommandCount: chain.commands.length,
 			prefix,
 			type,
 			content,
@@ -916,6 +944,13 @@ const getCommand = async (sock, msg, cache) => {
 				{ quoted: msg },
 			);
 		}
+        };
+        if (chain.commands.length === 1) return await dispatchSegment(chain.commands[0]);
+        return await runCommandSegments(chain.commands, dispatchSegment, async (segment) => {
+            console.warn("[COMMAND] Batch segment failed; payload suppressed.");
+            await sendMessageWTyping(from, { text: `❌ ${prefix}${segment.command} could not finish. Later commands will still be attempted. Check the result before retrying any action.` }, { quoted: originalMessage });
+        });
+
 	} catch {
         // No automatic error reply: malformed bursts must not amplify outbound traffic.
         console.warn("[DEFENSE] Message handler failed; payload suppressed.");
