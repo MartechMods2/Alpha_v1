@@ -72,3 +72,9 @@ test('dispatch runs serially, preserves permission denials and continues after f
  },async(s)=>calls.push('failed:'+s.command));
  assert.deepEqual(calls,['ping','restricted','denied','fail','failed:fail','help']);
 });
+
+test('each batch segment gets a unique billing index', async()=>{
+ const {runCommandSegments}=await import('../utils/multiCommand.js');
+ const indices=[];await runCommandSegments(parseCommandChain('$ping, $ping').commands,async(_s,i)=>indices.push(i),async()=>{});
+ assert.deepEqual(indices,[0,1]);
+});

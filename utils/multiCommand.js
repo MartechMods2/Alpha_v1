@@ -102,8 +102,8 @@ export const messageForCommandSegment = (msg, segment, type) => {
 };
 
 export const runCommandSegments = async (segments, dispatch, onError) => {
- for (const segment of segments) {
-  try { await dispatch(segment); }
+ for (const [index, segment] of segments.entries()) {
+  try { await dispatch(segment, index); }
   catch { await onError(segment); }
  }
 };

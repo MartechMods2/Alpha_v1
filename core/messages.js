@@ -753,7 +753,7 @@ const getCommand = async (sock, msg, cache) => {
         const originalMessage = msg;
         const originalGroupData = groupData;
         const originalGroupMetadata = groupMetadata;
-        const dispatchSegment = async (segment) => {
+        const dispatchSegment = async (segment, index = 0) => {
             const { command, args, evv } = segment;
             if (command.length > 64) return;
             const parsedCommand = segment;
@@ -786,6 +786,7 @@ const getCommand = async (sock, msg, cache) => {
 
 		const msgInfoObj = {
             multiCommandChild: true,
+            multiCommandIndex: index,
             multiCommandCount: chain.commands.length,
 			prefix,
 			type,
