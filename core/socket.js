@@ -1,3 +1,4 @@
+import { messageReceipts } from "../utils/messageReceipts.js";
 import { boundedGroupMetadata } from "../utils/groupMetadataDefense.js";
 import { validateMessage } from "../utils/ingestionDefense.js";
 import NodeCache from "node-cache";
@@ -87,6 +88,11 @@ const socket = async () => {
 	}
 
 	// Cache incoming messages for getMessage function with size limit
+	sock.ev.on("message-receipt.update", (updates) => {
+		try { messageReceipts.record(updates); }
+		catch { logger.warn("Receipt update rejected."); }
+	});
+
 	sock.ev.on("messages.upsert", (m) => {
 		try {
 			for (const raw of (Array.isArray(m?.messages) ? m.messages.slice(0, 128) : [])) {
